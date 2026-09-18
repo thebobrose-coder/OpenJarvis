@@ -8,7 +8,7 @@ from typing import Any
 
 import uvicorn
 
-from openjarvis.cli.daemon_cmd import clear_server_state, record_server_state
+from openjarvis.cli.daemon_cmd import LAUNCH_TOKEN_ENV, clear_server_state, record_server_state
 
 
 class DaemonServer(uvicorn.Server):
@@ -21,7 +21,9 @@ class DaemonServer(uvicorn.Server):
         )
         host, port = listener.getsockname()[:2]
         try:
-            record_server_state(os.getpid(), host, port)
+            record_server_state(
+                os.getpid(), host, port, launch_token=os.environ.get(LAUNCH_TOKEN_ENV)
+            )
         except Exception:
             # A second supervised server must not take over an existing live
             # daemon's entry. Close this listener and its application cleanly.

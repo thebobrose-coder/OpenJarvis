@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import subprocess
 import sys
 import time
@@ -16,6 +17,11 @@ from rich.console import Console
 from openjarvis.core.config import DEFAULT_CONFIG_DIR, load_config
 from openjarvis.core.utils import process_alive, terminate_process
 from openjarvis.security.file_utils import secure_write_json, secure_write_text
+
+# Env var `start` uses to hand its spawned child the token that proves, on
+# reconnect, that the child owns the pending placeholder `start` wrote for
+# it — see `_write_pid` for why PID equality alone cannot prove that.
+LAUNCH_TOKEN_ENV = "OPENJARVIS_LAUNCH_TOKEN"
 
 _PID_FILE = DEFAULT_CONFIG_DIR / "server.pid"
 _LOG_FILE = DEFAULT_CONFIG_DIR / "server.log"
@@ -88,14 +94,38 @@ def _read_pid() -> int | None:
 
 
 def _write_pid(
-    pid: int, host: str = "", port: int | None = None, *, ready: bool = True
+    pid: int,
+    host: str = "",
+    port: int | None = None,
+    *,
+    ready: bool = True,
+    launch_token: str | None = None,
 ) -> None:
-    """Write PID, plus the address the daemon actually bound to."""
+    """Write PID, plus the address the daemon actually bound to.
+
+    ``launch_token`` identifies one `start` invocation end-to-end. On Windows,
+    ``Popen.pid`` for a ``DETACHED_PROCESS`` child can disagree with that same
+    process's own ``os.getpid()`` (observed on this platform: some layer
+    between ``CreateProcess`` and the caller hands back a different number),
+    so PID equality alone cannot prove the caller owns a pending placeholder
+    it is confirming. The token — generated once by `start` and handed to the
+    child via env var — proves it instead.
+    """
     with _state_lock():
         existing = _read_pid_file()
-        if existing is not None and existing != pid and _pid_alive(existing):
-            raise RuntimeError(f"Another server is already registered (PID {existing})")
         current = _read_state()
+        owns_pending = (
+            launch_token is not None
+            and current.get("launch_token") == launch_token
+            and current.get("ready", True) is False
+        )
+        if (
+            existing is not None
+            and existing != pid
+            and _pid_alive(existing)
+            and not owns_pending
+        ):
+            raise RuntimeError(f"Another server is already registered (PID {existing})")
         if not ready and current.get("pid") == pid and current.get("ready", True):
             # The child may have finished binding before its parent records
             # the spawn. Never replace that actual address with a request.
@@ -105,6 +135,8 @@ def _write_pid(
             state = {"pid": pid, "host": host, "port": port}
             if not ready:
                 state["ready"] = False
+                if launch_token is not None:
+                    state["launch_token"] = launch_token
             secure_write_json(_STATE_FILE, state)
         else:
             _STATE_FILE.unlink(missing_ok=True)
@@ -148,13 +180,18 @@ def _server_url(host: str, port: int) -> str:
     return f"http://[{host}]:{port}" if ":" in host else f"http://{host}:{port}"
 
 
-def record_server_state(pid: int, host: str, port: int) -> None:
+def record_server_state(
+    pid: int, host: str, port: int, *, launch_token: str | None = None
+) -> None:
     """Register a running server so `jarvis status` can find it.
 
     Called by `jarvis serve` itself, so a server supervised by launchd/systemd
     (which never goes through `jarvis start`) is still reported as running.
+    ``launch_token``, when set (by `jarvis start` via env var), proves this
+    call is confirming that specific launch's pending placeholder — see
+    `_write_pid` for why PID equality alone cannot prove that on Windows.
     """
-    _write_pid(pid, host, port)
+    _write_pid(pid, host, port, launch_token=launch_token)
 
 
 def clear_server_state(pid: int) -> None:
@@ -217,6 +254,8 @@ def start(
     # group additionally stops a Ctrl-C in the parent reaching it.
     DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     log_fh = open(_LOG_FILE, "a")  # noqa: SIM115
+    launch_token = secrets.token_hex(16)
+    child_env = {**os.environ, LAUNCH_TOKEN_ENV: launch_token}
     spawn_kwargs: dict = {}
     if sys.platform == "win32":
         spawn_kwargs["creationflags"] = (
@@ -228,10 +267,11 @@ def start(
         cmd,
         stdout=log_fh,
         stderr=log_fh,
+        env=child_env,
         **spawn_kwargs,
     )
     try:
-        _write_pid(proc.pid, bind_host, bind_port, ready=False)
+        _write_pid(proc.pid, bind_host, bind_port, ready=False, launch_token=launch_token)
     except RuntimeError as exc:
         terminate_process(proc.pid, grace_seconds=10.0)
         raise click.ClickException(str(exc)) from exc
