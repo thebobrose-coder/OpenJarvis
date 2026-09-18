@@ -950,6 +950,32 @@ async fn verify_openjarvis_rust_extension(
     }
 }
 
+/// Probe `/health`, retrying on transport errors before concluding nothing
+/// is listening. A single 2s timeout can trip on a slow-but-healthy first
+/// response (cold caches, first-request import costs) and get misread as an
+/// empty port, which then collides with the real listener on the raw TCP
+/// bind check below — this cannot happen for a genuinely empty port, where
+/// connection-refused returns near-instantly on every attempt.
+async fn probe_jarvis_health(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<reqwest::Response, reqwest::Error> {
+    const ATTEMPTS: u32 = 3;
+    let mut last_err = None;
+    for attempt in 0..ATTEMPTS {
+        match client.get(url).send().await {
+            Ok(resp) => return Ok(resp),
+            Err(err) => {
+                last_err = Some(err);
+                if attempt + 1 < ATTEMPTS {
+                    tokio::time::sleep(Duration::from_millis(400)).await;
+                }
+            }
+        }
+    }
+    Err(last_err.expect("loop runs at least once"))
+}
+
 fn port_owner_hint() -> String {
     if cfg!(target_os = "windows") {
         format!("netstat -ano | findstr :{}", JARVIS_PORT)
@@ -1327,11 +1353,8 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             .timeout(Duration::from_secs(2))
             .build()
             .unwrap();
-        match client
-            .get(format!("http://127.0.0.1:{}/health", JARVIS_PORT))
-            .send()
-            .await
-        {
+        let health_url = format!("http://127.0.0.1:{}/health", JARVIS_PORT);
+        match probe_jarvis_health(&client, &health_url).await {
             Ok(resp) if resp.status().is_success() => {
                 // Confirm with a second probe — the first might have caught
                 // a flickering server (engine half-loaded, dying mid-stop,
@@ -1339,7 +1362,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 // snapshot. Small sleep between to give the server room.
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 let confirm = client
-                    .get(format!("http://127.0.0.1:{}/health", JARVIS_PORT))
+                    .get(&health_url)
                     .send()
                     .await
                     .map(|r| r.status().is_success())
