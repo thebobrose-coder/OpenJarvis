@@ -205,13 +205,13 @@ def digest(
         console.print(f"[dim]Audio path: '{audio_path}'[/dim]")
         has_audio = bool(audio_path) and artifact.audio_path.exists()
         console.print(f"[dim]Audio available: {has_audio}[/dim]")
-        if has_audio:
+        if has_audio and not text_only:
             audio_thread = threading.Thread(
                 target=_play_audio, args=(audio_path,), daemon=True
             )
             audio_thread.start()
             console.print("[dim]Playing audio...[/dim]")
-        else:
+        elif not has_audio:
             console.print("[yellow]Audio unavailable — TTS failed.[/yellow]")
             console.print("[yellow]Check OPENAI_API_KEY is set.[/yellow]")
 
