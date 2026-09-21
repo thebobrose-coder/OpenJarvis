@@ -93,6 +93,10 @@ class MorningDigestAgent(ToolUsingAgent):
             "- NEVER mention disconnected or unavailable sources.\n"
             "- NEVER invent personal context or claim, offer, or suggest actions.\n"
             "- Acknowledge every source that returned data, even briefly.\n"
+            "- Email items that are account/service administrivia -- subscription "
+            "confirmations, \"welcome to X\" or \"confirm your registration\" "
+            "messages, unsubscribe notices -- are NOT news content. Skip them "
+            "entirely; do not report that they exist.\n"
             "- No markdown, emojis, bullets, or headers.\n"
             "- STRICT LIMIT: 200 words. Be concise."
         )
@@ -230,6 +234,17 @@ class MorningDigestAgent(ToolUsingAgent):
         store = DigestStore(db_path=self._digest_store_path)
         store.save(artifact)
         store.close()
+
+        # Also write to the shared memory pool so other agents (operators,
+        # managed agents) can draw on today's digest via memory_retrieve --
+        # DigestStore is separate storage and nothing else can see into it
+        # otherwise. Best-effort: must never block digest delivery.
+        try:
+            from openjarvis.tools.storage.sqlite import SQLiteMemory
+
+            SQLiteMemory().store(narrative, source="daily_briefing")
+        except Exception:  # noqa: BLE001
+            pass
 
         self._emit_turn_end(turns=1)
         return AgentResult(
