@@ -7,6 +7,23 @@ import { VitePWA } from 'vite-plugin-pwa';
 // VITE_SUPABASE_ANON_KEY is intentionally NOT required here: a missing key
 // disables the savings leaderboard at runtime (see src/lib/supabase.ts) rather
 // than failing the build, so the package/app stays publishable without it.
+//
+// The PWA service worker is skipped entirely for the Tauri desktop build
+// (detected via TAURI_ENV_PLATFORM, which tauri-cli injects around
+// beforeBuildCommand/beforeDevCommand). It buys the embedded webview nothing
+// -- Tauri already bundles every asset into the binary, no offline caching
+// is needed -- and it's actively harmful there: a Workbox generateSW
+// precache pins hashed filenames from whatever build produced it, and
+// `emptyOutDir: true` across the frequent rebuilds a desktop app goes
+// through deletes those exact files, so a still-active old service worker
+// starts routing everything (including live API calls like the digest
+// audio stream) through fetch handlers referencing files that no longer
+// exist -- surfacing as silent 503s no error boundary catches. Only the
+// browser-facing copy (`npm run build`, served from
+// src/openjarvis/server/static) keeps the service worker, where offline
+// support is genuinely useful and rebuilds are infrequent.
+const isTauriBuild = !!process.env.TAURI_ENV_PLATFORM;
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -16,25 +33,29 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      manifest: {
-        name: 'OpenJarvis',
-        short_name: 'Jarvis',
-        description: 'On-device AI assistant',
-        theme_color: '#161618',
-        background_color: '#161618',
-        display: 'standalone',
-        icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
-        ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        navigateFallbackDenylist: [/^\/v1\//, /^\/health/, /^\/dashboard/, /^\/api\//],
-      },
-    }),
+    ...(isTauriBuild
+      ? []
+      : [
+          VitePWA({
+            registerType: 'autoUpdate',
+            manifest: {
+              name: 'OpenJarvis',
+              short_name: 'Jarvis',
+              description: 'On-device AI assistant',
+              theme_color: '#161618',
+              background_color: '#161618',
+              display: 'standalone',
+              icons: [
+                { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+                { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+              ],
+            },
+            workbox: {
+              globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+              navigateFallbackDenylist: [/^\/v1\//, /^\/health/, /^\/dashboard/, /^\/api\//],
+            },
+          }),
+        ]),
   ],
   build: {
     outDir: '../src/openjarvis/server/static',
