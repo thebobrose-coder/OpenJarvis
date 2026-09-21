@@ -65,7 +65,86 @@ stack with `mss`/`Pillow` fallbacks on other platforms. Adds the
 `JARVIS_NUM_CTX` environment variable to tune the Ollama context window
 (default `16384`).
 
+**Dedicated Briefing page for the morning digest.** The digest previously
+surfaced only by piggybacking on whatever chat message happened to be
+current -- `InputArea.tsx` polled `/api/digest` after every response and
+attached audio to it when available. A new sidebar entry and `/briefing`
+route give it its own page: narrative text, the existing `AudioPlayer`,
+a Regenerate button, and digest history, all against the existing
+`/api/digest` REST endpoints (no backend changes required). The
+chat-hijack in `InputArea.tsx` stays in place for now, pending removal
+once the new page is proven out.
+
 ### Fixed
+
+**Backend console window killed the server when closed** (Windows
+desktop). Every `uv.exe`/`git.exe` child spawned from the GUI-subsystem
+desktop app got its own console window -- `CreateProcess`'s default when
+no console-suppression flag is set. Closing that window sent
+`CTRL_CLOSE_EVENT` to the console host, killing `jarvis serve` along
+with it, so a production build appeared to require a terminal window
+left open to stay running. Fixed by setting `CREATE_NO_WINDOW` on every
+backend subprocess spawn: the Ollama sidecar, git clone, `uv sync`, the
+Rust-extension verification, and `jarvis serve` itself on both the boot
+path and the manual `run_jarvis_command` path.
+
+**`tauri build` hard-failed on drifted plugin versions.**
+`tauri-plugin-notification`/`tauri-plugin-updater`'s npm packages and
+Rust crates had drifted to different minor versions over time (both
+manifests pin loosely, `"2"` / `"^2"`). `tauri dev` tolerates the
+mismatch; `tauri build` does not -- it exits immediately with "Found
+version mismatched Tauri packages" before compiling anything. Realigned
+both sides to matching versions (notification 2.4.0, updater 2.12.0).
+
+**Desktop pinned a stale model from first-run onboarding.** The desktop
+app resolves its Ollama model from `~/.openjarvis/inference.json`
+(written once during setup), not from `config.toml`, and passes it as an
+explicit `--model` flag to `jarvis serve` -- which wins over
+`config.toml`'s `default_model`. A model changed later via `config.toml`
+or the CLI silently had no effect on desktop-app launches.
+
+**`jarvis start` crashed on its own PID registration** (Windows).
+`Popen.pid` for a `DETACHED_PROCESS` child can disagree with that same
+process's own `os.getpid()`, so the daemon's pending-placeholder check
+(PID equality) treated a server as conflicting with itself. Fixed with a
+shared launch token, handed to the child via an env var, to prove
+placeholder ownership instead.
+
+**Desktop health probe misread a slow-starting server as an empty
+port.** A single 2s `/health` timeout tripping on a slow-but-healthy
+first response fell through to spawning a duplicate server, which then
+collided with the real one on the raw TCP bind. Now retries up to 3
+times before concluding the port is genuinely empty -- a truly empty
+port still fails near-instantly on every attempt.
+
+**Boot-time `uv sync` silently pruned the `voice` extra.** Every backend
+boot re-runs `uv sync` reconciled to a hardcoded extras list; anything
+installed outside that list (e.g. `voice`, for Kokoro TTS) was
+uninstalled on the very next app restart. Added `voice` to the boot
+sync list.
+
+**`OperatorManager.activate()` duplicated scheduler tasks.**
+`create_task()` always persists a task under a fresh random uuid4-hex
+id; `activate()` renamed it to a deterministic `operator:<id>` by
+resaving a mutated copy under that id, but never removed the original
+row -- leaving it active, so it fired its own tick alongside the renamed
+one every cycle. Now deletes the original row once the deterministic-id
+row is saved.
+
+**Morning digest wrote only to its own store, invisible to every other
+agent.** `MorningDigestAgent` wrote exclusively to `DigestStore`;
+operators and managed agents had no way to draw on the daily digest via
+`memory_retrieve`. Now also writes a best-effort copy to the shared
+`memory_store` pool, tagged `source="daily_briefing"`. The agent is also
+now instructed to skip email administrivia (subscription confirmations,
+"welcome to X" messages) rather than report it as briefing content. Its
+strict word limit was widened from 200 to 275 words for more narrative
+room without added TTS risk.
+
+**`jarvis digest --fresh --text-only` played audio anyway.** The
+cached-digest display path gated playback on `not text_only`; the
+`--fresh` generation path didn't, so `--text-only` never actually
+suppressed audio playback for a freshly generated digest.
 
 **Apple Silicon energy was never measured, only modelled.**
 `telemetry/energy_apple.py` imported `AppleSiliconMonitor` from
