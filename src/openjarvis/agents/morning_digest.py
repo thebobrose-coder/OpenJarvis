@@ -98,7 +98,7 @@ class MorningDigestAgent(ToolUsingAgent):
             "messages, unsubscribe notices -- are NOT news content. Skip them "
             "entirely; do not report that they exist.\n"
             "- No markdown, emojis, bullets, or headers.\n"
-            "- STRICT LIMIT: 200 words. Be concise."
+            "- STRICT LIMIT: 275 words. Be concise -- more room than before, not license to pad."
         )
 
     def _resolve_sources(self) -> List[str]:
@@ -154,7 +154,7 @@ class MorningDigestAgent(ToolUsingAgent):
                     "</collected_data>\n\nUse configured sections only. Omit missing "
                     "data and sources. Do not add personal context or activities. "
                     "Use the honorific no more than three times and keep the "
-                    "briefing under 200 words."
+                    "briefing under 275 words."
                 ),
             ),
         ]

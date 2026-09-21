@@ -481,6 +481,72 @@ export interface AgentMessage {
   tool_calls?: PersistedToolCall[] | null;
 }
 
+// ---------------------------------------------------------------------------
+// Morning digest
+// ---------------------------------------------------------------------------
+
+export interface Digest {
+  text: string;
+  sections: Record<string, unknown>;
+  sources_used: string[];
+  generated_at: string;
+  model_used: string;
+  voice_used: string;
+  audio_available: boolean;
+}
+
+export interface DigestHistoryEntry {
+  text: string;
+  generated_at: string;
+  model_used: string;
+  voice_used: string;
+}
+
+export interface DigestSchedule {
+  enabled: boolean;
+  cron: string;
+}
+
+export async function fetchDigest(): Promise<Digest | null> {
+  const res = await apiFetch(`/api/digest`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
+}
+
+/** URL for the digest audio stream — pass directly as an <audio> src. */
+export function fetchDigestAudioUrl(): string {
+  return `${getBase()}/api/digest/audio`;
+}
+
+export async function fetchDigestHistory(): Promise<DigestHistoryEntry[]> {
+  const res = await apiFetch(`/api/digest/history`);
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
+}
+
+export async function regenerateDigest(): Promise<{ status: string; text: string }> {
+  const res = await apiFetch(`/api/digest/generate`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getDigestSchedule(): Promise<DigestSchedule> {
+  const res = await apiFetch(`/api/digest/schedule`);
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
+}
+
+export async function setDigestSchedule(body: DigestSchedule): Promise<DigestSchedule> {
+  const res = await apiFetch(`/api/digest/schedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchManagedAgents(): Promise<ManagedAgent[]> {
   const res = await apiFetch(`/v1/managed-agents`);
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
