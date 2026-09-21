@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 const OLLAMA_PORT: u16 = 11434;
 const JARVIS_PORT: u16 = 8000;
 const DESKTOP_UV_SYNC_COMMAND: &str =
-    "uv sync --extra desktop --extra inference-cloud --extra inference-google --group desktop-native";
+    "uv sync --extra desktop --extra inference-cloud --extra inference-google --extra voice --group desktop-native";
 
 /// Small, fast model used when startup needs a default Ollama tag.
 const STARTUP_MODEL: &str = "qwen3.5:4b";
@@ -1490,6 +1490,13 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             "inference-cloud",
             "--extra",
             "inference-google",
+            // `uv sync` reconciles to exactly the extras named here -- any
+            // extra installed by hand (e.g. `voice` for Kokoro TTS) and left
+            // out of this list gets silently removed on the app's next
+            // boot, since every boot re-runs this sync. Must be named here
+            // to survive a restart.
+            "--extra",
+            "voice",
             // openjarvis_rust lives in a uv dependency group (not the published
             // `desktop` extra) so pip installs from PyPI don't require it (#584).
             "--group",
