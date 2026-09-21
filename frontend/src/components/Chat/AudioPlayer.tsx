@@ -16,16 +16,23 @@ export function AudioPlayer({ src }: AudioPlayerProps) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const toggle = useCallback(() => {
     const el = audioRef.current;
     if (!el) return;
     if (playing) {
       el.pause();
+      setPlaying(false);
     } else {
-      el.play();
+      setError(null);
+      el.play()
+        .then(() => setPlaying(true))
+        .catch((e) => {
+          setPlaying(false);
+          setError(e?.message ?? 'Playback failed.');
+        });
     }
-    setPlaying(!playing);
   }, [playing]);
 
   useEffect(() => {
@@ -38,16 +45,22 @@ export function AudioPlayer({ src }: AudioPlayerProps) {
       setPlaying(false);
       setCurrentTime(0);
     };
+    const onError = () => {
+      setPlaying(false);
+      setError(el.error?.message || 'This audio file could not be played.');
+    };
 
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('loadedmetadata', onMeta);
     el.addEventListener('ended', onEnded);
+    el.addEventListener('error', onError);
     return () => {
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('loadedmetadata', onMeta);
       el.removeEventListener('ended', onEnded);
+      el.removeEventListener('error', onError);
     };
-  }, []);
+  }, [src]);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -92,27 +105,35 @@ export function AudioPlayer({ src }: AudioPlayerProps) {
           </span>
         </div>
 
-        <div
-          className="h-1.5 rounded-full cursor-pointer"
-          style={{ background: 'var(--color-bg-tertiary)' }}
-          onClick={seek}
-        >
-          <div
-            className="h-full rounded-full transition-all"
-            style={{
-              width: `${progress}%`,
-              background: 'var(--color-accent)',
-            }}
-          />
-        </div>
+        {error ? (
+          <span className="text-xs" style={{ color: 'var(--color-error)' }}>
+            {error}
+          </span>
+        ) : (
+          <>
+            <div
+              className="h-1.5 rounded-full cursor-pointer"
+              style={{ background: 'var(--color-bg-tertiary)' }}
+              onClick={seek}
+            >
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${progress}%`,
+                  background: 'var(--color-accent)',
+                }}
+              />
+            </div>
 
-        <div
-          className="flex justify-between text-xs"
-          style={{ color: 'var(--color-text-tertiary)' }}
-        >
-          <span>{formatTime(currentTime)}</span>
-          <span>{duration > 0 ? formatTime(duration) : '--:--'}</span>
-        </div>
+            <div
+              className="flex justify-between text-xs"
+              style={{ color: 'var(--color-text-tertiary)' }}
+            >
+              <span>{formatTime(currentTime)}</span>
+              <span>{duration > 0 ? formatTime(duration) : '--:--'}</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

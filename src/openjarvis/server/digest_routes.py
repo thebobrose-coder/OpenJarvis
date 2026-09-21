@@ -25,6 +25,15 @@ class ScheduleUpdate(BaseModel):
     cron: Optional[str] = None
 
 
+_AUDIO_MEDIA_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+}
+
+
 def _generate_digest_sync() -> str:
     """Generate a digest with the whole Jarvis lifecycle on one worker."""
     from openjarvis.sdk import Jarvis
@@ -64,10 +73,12 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
             raise HTTPException(status_code=404, detail="No digest for today")
         if not artifact.audio_path.exists():
             raise HTTPException(status_code=404, detail="Audio not available")
+        suffix = artifact.audio_path.suffix.lower()
+        media_type = _AUDIO_MEDIA_TYPES.get(suffix, "application/octet-stream")
         return FileResponse(
             str(artifact.audio_path),
-            media_type="audio/mpeg",
-            filename="digest.mp3",
+            media_type=media_type,
+            filename=f"digest{suffix}",
         )
 
     @router.post("/generate")
