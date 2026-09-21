@@ -95,7 +95,13 @@ class OperatorManager:
             "metrics": manifest.metrics,
         }
 
-        # Use the scheduler's create_task but with a deterministic ID
+        # create_task() always assigns and persists a random uuid4-hex id
+        # (scheduler.py has no way to request a specific id at creation), so
+        # renaming to our deterministic id means an extra row under the
+        # random id — orphaned, and still "active", so it fires its own tick
+        # alongside the renamed one every cycle. Delete it once the
+        # deterministic-id row is saved, or every activate() duplicates the
+        # task (#reported 2026-09-21).
         task = scheduler.create_task(
             prompt=_TICK_PROMPT,
             schedule_type=manifest.schedule_type,
@@ -109,6 +115,7 @@ class OperatorManager:
         task_dict = task.to_dict()
         task_dict["id"] = task_id
         scheduler._store.save_task(task_dict)
+        scheduler._store.delete_task(task.id)
         logger.info("Activated operator %s (task_id=%s)", operator_id, task_id)
         return task_id
 

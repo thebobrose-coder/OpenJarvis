@@ -86,6 +86,9 @@ class FakeSchedulerStore:
     def update_task(self, task_dict: Dict) -> None:
         self._tasks[task_dict["id"]] = task_dict
 
+    def delete_task(self, task_id: str) -> None:
+        self._tasks.pop(task_id, None)
+
     def list_tasks(self, *, status=None) -> List[Dict]:
         tasks = list(self._tasks.values())
         if status:
