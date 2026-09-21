@@ -374,9 +374,23 @@ impl ChildHandle {
 /// source reset.  Every subprocess on the boot path must opt in here (or call
 /// `kill_on_drop(true)` before `output()`).
 fn spawn_owned_child(cmd: &mut tokio::process::Command) -> std::io::Result<tokio::process::Child> {
+    suppress_console_window(cmd);
     cmd.kill_on_drop(true);
     cmd.spawn()
 }
+
+/// Stop Windows from allocating a visible console for a console-subsystem
+/// child (uv.exe, git.exe, ollama.exe) spawned from this GUI-subsystem app.
+/// Without this, CreateProcess pops a new console window per child, and
+/// closing that window sends CTRL_CLOSE_EVENT, killing the backend with it.
+#[cfg(target_os = "windows")]
+fn suppress_console_window(cmd: &mut tokio::process::Command) {
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn suppress_console_window(_cmd: &mut tokio::process::Command) {}
 
 /// Rolling buffer holding the most recent ~16 KB of jarvis stderr.
 ///
@@ -935,6 +949,7 @@ async fn verify_openjarvis_rust_extension(
         .current_dir(root);
     prepare_subprocess_for_appimage(&mut cmd);
     add_cargo_bin_to_path(&mut cmd);
+    suppress_console_window(&mut cmd);
     cmd.kill_on_drop(true);
 
     match cmd.output().await {
@@ -1508,6 +1523,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455).
     prepare_subprocess_for_appimage(&mut sync_cmd);
     add_cargo_bin_to_path(&mut sync_cmd);
+    suppress_console_window(&mut sync_cmd);
     sync_cmd.kill_on_drop(true);
     let sync_output = sync_cmd.output().await;
     match sync_output {
@@ -1945,6 +1961,7 @@ async fn run_jarvis_command(args: Vec<String>) -> Result<String, String> {
     if let Some(ref root) = find_project_root() {
         cmd.current_dir(root);
     }
+    suppress_console_window(&mut cmd);
 
     let is_serve = args.first().map(|a| a.as_str() == "serve").unwrap_or(false);
 
