@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { RefreshCw, Newspaper } from 'lucide-react';
 import {
   fetchDigest,
-  fetchDigestAudioBlobUrl,
   fetchDigestHistory,
   regenerateDigest,
+  resolveDigestAudioSrc,
 } from '../lib/api';
 import type { Digest, DigestHistoryEntry } from '../lib/api';
 import { AudioPlayer } from '../components/Chat/AudioPlayer';
@@ -26,7 +26,6 @@ export function BriefingPage() {
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,17 +34,7 @@ export function BriefingPage() {
       const [d, h] = await Promise.all([fetchDigest(), fetchDigestHistory().catch(() => [])]);
       setDigest(d);
       setHistory(h);
-
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-        audioUrlRef.current = null;
-        setAudioUrl(null);
-      }
-      if (d?.audio_available) {
-        const url = await fetchDigestAudioBlobUrl().catch(() => null);
-        audioUrlRef.current = url;
-        setAudioUrl(url);
-      }
+      setAudioUrl(d ? await resolveDigestAudioSrc(d).catch(() => null) : null);
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load the briefing.');
     } finally {
@@ -55,9 +44,6 @@ export function BriefingPage() {
 
   useEffect(() => {
     load();
-    return () => {
-      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
-    };
   }, [load]);
 
   const handleRegenerate = async () => {

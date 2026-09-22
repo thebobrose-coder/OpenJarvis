@@ -53,6 +53,9 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
         artifact = store.get_today()
         if artifact is None:
             raise HTTPException(status_code=404, detail="No digest for today")
+        audio_available = (
+            artifact.audio_path.exists() if artifact.audio_path.name else False
+        )
         return {
             "text": artifact.text,
             "sections": artifact.sections,
@@ -60,9 +63,14 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
             "generated_at": artifact.generated_at.isoformat(),
             "model_used": artifact.model_used,
             "voice_used": artifact.voice_used,
-            "audio_available": (
-                artifact.audio_path.exists() if artifact.audio_path.name else False
-            ),
+            "audio_available": audio_available,
+            # Absolute filesystem path -- the desktop app loads this directly
+            # via Tauri's asset protocol (convertFileSrc), which is exempt
+            # from a WebView2 media-security check that blocks both plain
+            # http:// and blob: audio sources in a packaged app. Only ever
+            # meaningful to the Tauri build; the browser-facing copy ignores
+            # it and streams from /api/digest/audio instead.
+            "audio_path": str(artifact.audio_path) if audio_available else None,
         }
 
     @router.get("/audio")

@@ -493,6 +493,9 @@ export interface Digest {
   model_used: string;
   voice_used: string;
   audio_available: boolean;
+  /** Absolute filesystem path, only meaningful to the Tauri build (see
+   * resolveDigestAudioSrc). Null when audio_available is false. */
+  audio_path: string | null;
 }
 
 export interface DigestHistoryEntry {
@@ -514,31 +517,36 @@ export async function fetchDigest(): Promise<Digest | null> {
   return res.json();
 }
 
-/** URL for the digest audio stream — pass directly as an <audio> src. */
+/** URL for the digest audio stream — pass directly as an <audio> src.
+ * Only used outside Tauri (the browser-facing copy); see resolveDigestAudioSrc. */
 export function fetchDigestAudioUrl(): string {
   return `${getBase()}/api/digest/audio`;
 }
 
 /**
- * Fetch the digest audio and return a blob: URL wrapping the full file.
+ * Resolve the right <audio> src for the current environment.
  *
- * `<audio src="http://...">` with `preload="metadata"` intentionally fetches
- * only a partial byte range to read container metadata. For a large raw WAV
- * in the desktop app's WebView2, that partial read produces a `duration`
- * shorter than the file's real length -- verified directly: server-side
- * duration 143.8s, WebView2-reported duration ~102s, with the player firing
- * its "ended" reset at that wrong shorter value even though the underlying
- * audio data is complete (confirmed independently: sample count, WAV header,
- * and audio energy all check out for the full 143.8s). Fetching the full
- * file into a blob upfront removes the partial-read ambiguity entirely --
- * there's no streaming estimate left for the demuxer to get wrong. Caller
- * owns the returned URL and must revoke it (URL.revokeObjectURL) once done.
+ * Both a plain http:// URL and a blob: URL (fetched, then wrapped with
+ * URL.createObjectURL) hit the identical WebView2 media error in the Tauri
+ * desktop build: "MEDIA_ELEMENT_ERROR: Media load rejected by URL safety
+ * check" -- a real, documented Chromium media-security check that packaged
+ * apps run into (confirmed via search, not guessed), which blob: URLs are
+ * NOT exempt from despite being same-origin by construction. The fix is
+ * Tauri's own asset protocol (convertFileSrc), the first-party mechanism
+ * for handing the webview a local file directly -- our digest audio already
+ * is one (~/.openjarvis/digests/digest.wav). Requires
+ * app.security.assetProtocol enabled with the digests directory in scope
+ * (tauri.conf.json) and digest.audio_path from the API response.
+ *
+ * The plain browser-facing copy has no asset protocol and doesn't hit this
+ * WebView2-specific issue at all, so it keeps using the direct HTTP URL.
  */
-export async function fetchDigestAudioBlobUrl(): Promise<string> {
-  const res = await apiFetch(`/api/digest/audio`);
-  if (!res.ok) throw new Error(`Failed: ${res.status}`);
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
+export async function resolveDigestAudioSrc(digest: Digest): Promise<string | null> {
+  if (isTauri() && digest.audio_path) {
+    const { convertFileSrc } = await import('@tauri-apps/api/core');
+    return convertFileSrc(digest.audio_path);
+  }
+  return digest.audio_available ? fetchDigestAudioUrl() : null;
 }
 
 export async function fetchDigestHistory(): Promise<DigestHistoryEntry[]> {
