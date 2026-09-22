@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { RefreshCw, Newspaper } from 'lucide-react';
 import {
   fetchDigest,
-  fetchDigestAudioUrl,
+  fetchDigestAudioBlobUrl,
   fetchDigestHistory,
   regenerateDigest,
 } from '../lib/api';
@@ -22,9 +22,11 @@ function formatDate(iso: string): string {
 export function BriefingPage() {
   const [digest, setDigest] = useState<Digest | null>(null);
   const [history, setHistory] = useState<DigestHistoryEntry[]>([]);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,6 +35,17 @@ export function BriefingPage() {
       const [d, h] = await Promise.all([fetchDigest(), fetchDigestHistory().catch(() => [])]);
       setDigest(d);
       setHistory(h);
+
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
+        setAudioUrl(null);
+      }
+      if (d?.audio_available) {
+        const url = await fetchDigestAudioBlobUrl().catch(() => null);
+        audioUrlRef.current = url;
+        setAudioUrl(url);
+      }
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load the briefing.');
     } finally {
@@ -42,6 +55,9 @@ export function BriefingPage() {
 
   useEffect(() => {
     load();
+    return () => {
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    };
   }, [load]);
 
   const handleRegenerate = async () => {
@@ -104,7 +120,7 @@ export function BriefingPage() {
           </div>
         ) : (
           <>
-            {digest.audio_available && <AudioPlayer src={fetchDigestAudioUrl()} />}
+            {audioUrl && <AudioPlayer src={audioUrl} />}
 
             <div
               className="rounded-xl p-4 text-sm leading-relaxed whitespace-pre-wrap"

@@ -519,6 +519,28 @@ export function fetchDigestAudioUrl(): string {
   return `${getBase()}/api/digest/audio`;
 }
 
+/**
+ * Fetch the digest audio and return a blob: URL wrapping the full file.
+ *
+ * `<audio src="http://...">` with `preload="metadata"` intentionally fetches
+ * only a partial byte range to read container metadata. For a large raw WAV
+ * in the desktop app's WebView2, that partial read produces a `duration`
+ * shorter than the file's real length -- verified directly: server-side
+ * duration 143.8s, WebView2-reported duration ~102s, with the player firing
+ * its "ended" reset at that wrong shorter value even though the underlying
+ * audio data is complete (confirmed independently: sample count, WAV header,
+ * and audio energy all check out for the full 143.8s). Fetching the full
+ * file into a blob upfront removes the partial-read ambiguity entirely --
+ * there's no streaming estimate left for the demuxer to get wrong. Caller
+ * owns the returned URL and must revoke it (URL.revokeObjectURL) once done.
+ */
+export async function fetchDigestAudioBlobUrl(): Promise<string> {
+  const res = await apiFetch(`/api/digest/audio`);
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 export async function fetchDigestHistory(): Promise<DigestHistoryEntry[]> {
   const res = await apiFetch(`/api/digest/history`);
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
