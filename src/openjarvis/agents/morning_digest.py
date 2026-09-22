@@ -98,6 +98,9 @@ class MorningDigestAgent(ToolUsingAgent):
             "messages, unsubscribe notices -- are NOT news content. Skip them "
             "entirely; do not report that they exist.\n"
             "- No markdown, emojis, bullets, or headers.\n"
+            "- Separate distinct topics or sources with a blank line (a plain "
+            "double line break) so the briefing reads as short paragraphs, not "
+            "one unbroken block. Do not use any other paragraph marker.\n"
             "- STRICT LIMIT: 275 words. Be concise -- more room than before, not license to pad."
         )
 
@@ -153,8 +156,8 @@ class MorningDigestAgent(ToolUsingAgent):
                     f"the briefing:\n\n<collected_data>\n{collected_data}\n"
                     "</collected_data>\n\nUse configured sections only. Omit missing "
                     "data and sources. Do not add personal context or activities. "
-                    "Use the honorific no more than three times and keep the "
-                    "briefing under 275 words."
+                    "Use the honorific no more than three times, separate distinct "
+                    "topics with a blank line, and keep the briefing under 275 words."
                 ),
             ),
         ]
