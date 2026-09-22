@@ -1,8 +1,10 @@
+import { Clapperboard, Flag, Goal } from 'lucide-react';
 import { EnergyDashboard } from '../components/Dashboard/EnergyDashboard';
 import { CostComparison } from '../components/Dashboard/CostComparison';
 import { TraceDebugger } from '../components/Dashboard/TraceDebugger';
 import { DayAheadPanel } from '../components/Dashboard/DayAheadPanel';
 import { WeatherPanel } from '../components/Dashboard/WeatherPanel';
+import { NewsDigestPanel } from '../components/Dashboard/NewsDigestPanel';
 
 export function DashboardPage() {
   const now = new Date();
@@ -25,11 +27,20 @@ export function DashboardPage() {
           </p>
         </header>
 
-        <div className="grid grid-cols-12 gap-4 mb-10">
+        <div className="grid grid-cols-12 gap-4 mb-4">
           <DayAheadPanel />
           <WeatherPanel />
-          {/* Market Briefing, Soccer, and Motorsport panels join this row as
-              each pipeline ships. */}
+        </div>
+        <div className="grid grid-cols-12 gap-4 mb-10">
+          <NewsDigestPanel icon={Goal} title="Soccer" tag="1 hr" prefix="/api/digest/soccer" />
+          <NewsDigestPanel icon={Flag} title="Motorsport" tag="1 hr" prefix="/api/digest/motorsport" />
+          <NewsDigestPanel
+            icon={Clapperboard}
+            title="Entertainment"
+            tag="1 hr"
+            prefix="/api/digest/entertainment"
+          />
+          {/* Market Briefing panel joins here as that pipeline ships. */}
         </div>
 
         <div

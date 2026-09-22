@@ -34,7 +34,18 @@ _SECTION_ORDER: List[tuple] = [
         },
     ),
     ("CALENDAR", {"gcalendar"}),
-    ("WORLD", {"weather", "hackernews", "news_rss", "fmp_news"}),
+    (
+        "WORLD",
+        {
+            "weather",
+            "hackernews",
+            "news_rss",
+            "fmp_news",
+            "news_rss_soccer",
+            "news_rss_motorsport",
+            "news_rss_entertainment",
+        },
+    ),
     ("MUSIC", {"spotify", "apple_music"}),
 ]
 
@@ -365,6 +376,9 @@ _FORMATTERS: Dict[str, Any] = {
     "github_notifications": _format_github_notifications,
     "hackernews": _format_hackernews,
     "news_rss": _format_news_rss,
+    "news_rss_soccer": _format_news_rss,
+    "news_rss_motorsport": _format_news_rss,
+    "news_rss_entertainment": _format_news_rss,
     "fmp_news": _format_fmp_news,
     "spotify": _format_spotify,
     "apple_music": _format_apple_music,
@@ -383,6 +397,19 @@ def _format_doc(source: str, doc: Document) -> str:
     return f"[{source}] {doc.title}"
 
 
+
+# WORLD-section sources that are never ticker/market-relevant, so scoring
+# them against the watchlist would be actively wrong -- weather isn't news,
+# and soccer/motorsport/entertainment are explicitly general, unscored
+# coverage (not filtered/weighted like the market digest).
+_UNSCORED_WORLD_SOURCES = {
+    "weather",
+    "news_rss_soccer",
+    "news_rss_motorsport",
+    "news_rss_entertainment",
+}
+
+
 def _format_world_section_scored(
     collected_docs: Dict[str, List[Document]],
     world_sources: List[str],
@@ -390,24 +417,25 @@ def _format_world_section_scored(
 ) -> List[str]:
     """Score and bucket WORLD/news documents against the watchlist.
 
-    Weather passes through unscored (not news, always kept as-is). News
-    sources (news_rss, hackernews) are scored via digest_scoring and grouped
-    into buckets so the LLM narrates pre-sorted structure instead of a flat
-    dump. Only called when a watchlist is actually configured -- with none,
-    _format_doc's default flat listing is unchanged.
+    _UNSCORED_WORLD_SOURCES pass through unscored, unbucketed, in source
+    order. The remaining news sources (news_rss, hackernews, fmp_news) are
+    scored via digest_scoring and grouped into buckets so the LLM narrates
+    pre-sorted structure instead of a flat dump. Only called when a
+    watchlist is actually configured -- with none, _format_doc's default
+    flat listing is unchanged.
     """
     from openjarvis.agents.digest_scoring import filter_and_bucket, score_document
     from openjarvis.market_data import MarketCapClient
 
     market_cap_client = MarketCapClient()
-    weather_lines: List[str] = []
+    passthrough_lines: List[str] = []
     scored_by_doc_id: Dict[str, str] = {}
     scored = []
 
     for source in world_sources:
         docs = collected_docs.get(source, [])
-        if source == "weather":
-            weather_lines.extend(_format_doc(source, d) for d in docs)
+        if source in _UNSCORED_WORLD_SOURCES:
+            passthrough_lines.extend(_format_doc(source, d) for d in docs)
             continue
         for doc in docs:
             scored_by_doc_id[doc.doc_id] = source
@@ -431,7 +459,7 @@ def _format_world_section_scored(
             source = scored_by_doc_id.get(sd.document.doc_id, sd.document.source)
             lines.append(_format_doc(source, sd.document))
 
-    lines.extend(weather_lines)
+    lines.extend(passthrough_lines)
     return lines
 
 

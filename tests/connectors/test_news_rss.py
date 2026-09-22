@@ -356,3 +356,64 @@ def test_configure_writes_private_atomic_config(tmp_path):
     assert connector.is_connected()
     if os.name != "nt":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize(
+    ("connector_id", "class_name"),
+    [
+        ("news_rss_motorsport", "MotorsportRSSConnector"),
+        ("news_rss_entertainment", "EntertainmentRSSConnector"),
+        ("news_rss_soccer", "SoccerRSSConnector"),
+    ],
+)
+def test_category_rss_connectors_registered(connector_id, class_name):
+    """Each category RSS connector is its own registry entry, distinct id."""
+    import openjarvis.connectors.news_rss as news_rss_module
+
+    cls = getattr(news_rss_module, class_name)
+    ConnectorRegistry.register_value(connector_id, cls)
+    assert ConnectorRegistry.contains(connector_id)
+    assert ConnectorRegistry.get(connector_id).connector_id == connector_id
+
+
+@pytest.mark.parametrize(
+    ("class_name", "expected_filename"),
+    [
+        ("MotorsportRSSConnector", "news_rss_motorsport.json"),
+        ("EntertainmentRSSConnector", "news_rss_entertainment.json"),
+        ("SoccerRSSConnector", "news_rss_soccer.json"),
+    ],
+)
+def test_category_rss_connectors_default_to_their_own_config_file(
+    class_name, expected_filename
+):
+    """Each category connector defaults to its own file, not news_rss.json."""
+    import openjarvis.connectors.news_rss as news_rss_module
+
+    cls = getattr(news_rss_module, class_name)
+    connector = cls()
+    assert connector._config_path.name == expected_filename
+
+
+def test_category_rss_connector_reuses_base_sync_behavior(tmp_path):
+    """A category connector shares NewsRSSConnector's fetch/parse pipeline."""
+    import json
+
+    from openjarvis.connectors.news_rss import MotorsportRSSConnector
+
+    config_path = tmp_path / "news_rss_motorsport.json"
+    config_path.write_text(
+        json.dumps(
+            {"feeds": [{"name": "Autosport F1", "url": "https://example.com/rss.xml"}]}
+        ),
+        encoding="utf-8",
+    )
+    connector = MotorsportRSSConnector(config_path=str(config_path))
+    with patch(
+        "openjarvis.connectors.news_rss._fetch_feed", return_value=_SAMPLE_RSS
+    ):
+        docs = list(connector.sync())
+
+    assert len(docs) == 3
+    assert docs[0].source == "news_rss"
+    assert docs[0].metadata["feed_name"] == "Autosport F1"

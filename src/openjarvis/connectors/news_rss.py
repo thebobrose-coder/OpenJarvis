@@ -377,3 +377,48 @@ class NewsRSSConnector(BaseConnector):
 
     def sync_status(self) -> SyncStatus:
         return self._status
+
+
+_MOTORSPORT_CONFIG_PATH = str(
+    DEFAULT_CONFIG_DIR / "connectors" / "news_rss_motorsport.json"
+)
+_ENTERTAINMENT_CONFIG_PATH = str(
+    DEFAULT_CONFIG_DIR / "connectors" / "news_rss_entertainment.json"
+)
+_SOCCER_CONFIG_PATH = str(DEFAULT_CONFIG_DIR / "connectors" / "news_rss_soccer.json")
+
+
+@ConnectorRegistry.register("news_rss_motorsport")
+class MotorsportRSSConnector(NewsRSSConnector):
+    """Motorsport-only RSS coverage -- same fetch/parse pipeline as
+    NewsRSSConnector, pointed at a dedicated feed list instead of the
+    general digest's news_rss.json, so it can run as its own category
+    digest independently of the world/market briefing."""
+
+    connector_id = "news_rss_motorsport"
+    display_name = "Motorsport News"
+
+    def __init__(self, *, config_path: str = _MOTORSPORT_CONFIG_PATH) -> None:
+        super().__init__(config_path=config_path)
+
+
+@ConnectorRegistry.register("news_rss_entertainment")
+class EntertainmentRSSConnector(NewsRSSConnector):
+    """Entertainment-only RSS coverage -- see MotorsportRSSConnector."""
+
+    connector_id = "news_rss_entertainment"
+    display_name = "Entertainment News"
+
+    def __init__(self, *, config_path: str = _ENTERTAINMENT_CONFIG_PATH) -> None:
+        super().__init__(config_path=config_path)
+
+
+@ConnectorRegistry.register("news_rss_soccer")
+class SoccerRSSConnector(NewsRSSConnector):
+    """General (non-scored) soccer RSS coverage -- see MotorsportRSSConnector."""
+
+    connector_id = "news_rss_soccer"
+    display_name = "Soccer News"
+
+    def __init__(self, *, config_path: str = _SOCCER_CONFIG_PATH) -> None:
+        super().__init__(config_path=config_path)

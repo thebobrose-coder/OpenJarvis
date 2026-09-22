@@ -27,6 +27,18 @@ _SECTION_PROMPTS = {
         "WEATHER — Summarize only the provided current conditions and forecast. "
         "Keep it brief and practical, not a full narrative."
     ),
+    "soccer": (
+        "SOCCER — General coverage of the provided soccer/football headlines. "
+        "Not scored or ranked by relevance to anything -- just report what's there."
+    ),
+    "motorsport": (
+        "MOTORSPORT — General coverage of the provided F1/F2/F3/MotoGP/WEC/IMSA/"
+        "WRC/IndyCar/sportscar headlines across whichever series have news."
+    ),
+    "entertainment": (
+        "ENTERTAINMENT — General coverage of the provided entertainment-industry "
+        "headlines."
+    ),
 }
 
 # Config overrides for a MorningDigestAgent run outside the original
@@ -42,6 +54,21 @@ DIGEST_CATEGORY_PRESETS = {
         "persona": "weather",
         "sections": ["weather"],
         "section_sources": {"weather": ["weather"]},
+    },
+    "soccer": {
+        "persona": "soccer",
+        "sections": ["soccer"],
+        "section_sources": {"soccer": ["news_rss_soccer"]},
+    },
+    "motorsport": {
+        "persona": "motorsport",
+        "sections": ["motorsport"],
+        "section_sources": {"motorsport": ["news_rss_motorsport"]},
+    },
+    "entertainment": {
+        "persona": "entertainment",
+        "sections": ["entertainment"],
+        "section_sources": {"entertainment": ["news_rss_entertainment"]},
     },
 }
 
@@ -100,11 +127,29 @@ class MorningDigestAgent(ToolUsingAgent):
             for section in sections
         )
 
+        # The honorific opening is the original single daily-briefing's
+        # style. Category panels (weather, soccer, motorsport,
+        # entertainment...) run their own persona, which explicitly forbids
+        # it (a short utility read, not an address to the listener) -- so
+        # only inject the honorific instruction for "general", instead of
+        # letting this base instruction silently override every persona's
+        # own rule.
+        honorific_line = (
+            f"The user's preferred honorific is: {honorific}\n\n"
+            if self._category == "general"
+            else ""
+        )
+        opening_instruction = (
+            "Open briefly with the honorific and end after the last supported item. "
+            if self._category == "general"
+            else "End after the last supported item. "
+        )
+
         return (
             f"{persona_text}\n\n"
             f"Today is {now.strftime('%A, %B %d, %Y')}. "
             f"The time is {now.strftime('%I:%M %p')} in {self._timezone}.\n"
-            f"The user's preferred honorific is: {honorific}\n\n"
+            f"{honorific_line}"
             "You receive structured data from the user's connected services. "
             "The data has ALREADY been collected — it appears in the user "
             "message. You do NOT fetch anything yourself.\n\n"
@@ -112,7 +157,7 @@ class MorningDigestAgent(ToolUsingAgent):
             "Cover only the configured sections below and only when the collected "
             "data supports them. Silently omit absent data and sources.\n\n"
             f"CONFIGURED SECTIONS:\n{section_block or '- None'}\n\n"
-            "Open briefly with the honorific and end after the last supported item. "
+            f"{opening_instruction}"
             "Do not add conversational offers or personal asides.\n\n"
             "ABSOLUTE RULES (violations are unacceptable):\n"
             "- ONLY facts from the data. Zero hallucination.\n"
@@ -173,6 +218,13 @@ class MorningDigestAgent(ToolUsingAgent):
 
         # Step 2: Synthesize narrative via LLM
         system_prompt = self._build_system_prompt()
+        closing_instruction = (
+            "Use the honorific no more than three times, separate distinct "
+            "topics with a blank line, and keep the briefing under 275 words."
+            if self._category == "general"
+            else "Separate distinct topics with a blank line, and follow the "
+            "persona's own length limit."
+        )
         messages = [
             Message(role=Role.SYSTEM, content=system_prompt),
             Message(
@@ -182,8 +234,7 @@ class MorningDigestAgent(ToolUsingAgent):
                     f"the briefing:\n\n<collected_data>\n{collected_data}\n"
                     "</collected_data>\n\nUse configured sections only. Omit missing "
                     "data and sources. Do not add personal context or activities. "
-                    "Use the honorific no more than three times, separate distinct "
-                    "topics with a blank line, and keep the briefing under 275 words."
+                    f"{closing_instruction}"
                 ),
             ),
         ]

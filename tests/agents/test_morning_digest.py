@@ -81,3 +81,35 @@ def test_load_persona():
     # Nonexistent persona returns empty string
     result = _load_persona("nonexistent_persona_xyz")
     assert result == ""
+
+
+def test_general_category_system_prompt_includes_honorific():
+    from openjarvis.agents.morning_digest import MorningDigestAgent
+
+    agent = MorningDigestAgent(
+        MagicMock(), "test-model", tools=[], persona="jarvis", sections=["world"]
+    )
+    prompt = agent._build_system_prompt()
+    assert "preferred honorific" in prompt
+    assert "Open briefly with the honorific" in prompt
+
+
+def test_non_general_category_system_prompt_omits_honorific():
+    """A category persona (weather/soccer/...) explicitly forbids the
+    honorific -- the shared base prompt must not silently override that by
+    always injecting an "open with the honorific" instruction (#weather
+    persona bug: a live soccer-category run produced "Sir, regarding the
+    English Premier League..." despite the persona's "No honorific, ever")."""
+    from openjarvis.agents.morning_digest import MorningDigestAgent
+
+    agent = MorningDigestAgent(
+        MagicMock(),
+        "test-model",
+        tools=[],
+        persona="soccer",
+        sections=["soccer"],
+        category="soccer",
+    )
+    prompt = agent._build_system_prompt()
+    assert "preferred honorific" not in prompt
+    assert "Open briefly with the honorific" not in prompt

@@ -58,3 +58,54 @@ def test_digest_collect_missing_connector():
 
     assert result.success is True  # Partial success
     assert "not available" in result.content
+
+
+def test_category_rss_sources_pass_through_unscored_even_with_watchlist():
+    """news_rss_soccer/motorsport/entertainment must never be ticker-scored.
+
+    They share the WORLD section with the watchlist-scored general news_rss/
+    fmp_news/hackernews sources, so a watchlist being configured must not
+    cause a soccer headline to get bucketed as "MARKET MOVERS" etc. -- these
+    categories are explicitly general, unscored coverage.
+    """
+    from openjarvis.agents.digest_scoring import WatchlistEntry
+    from openjarvis.tools.digest_collect import DigestCollectTool
+
+    tool = DigestCollectTool()
+
+    mock_docs = [
+        Document(
+            doc_id="soccer-1",
+            source="news_rss",
+            doc_type="article",
+            content="Match report",
+            title="Big club wins derby",
+            timestamp=datetime(2026, 4, 1, 10, 0),
+            metadata={"feed_name": "BBC Sport Football"},
+        )
+    ]
+    mock_connector = MagicMock()
+    mock_connector.return_value.is_connected.return_value = True
+    mock_connector.return_value.sync.return_value = mock_docs
+    watchlist = [WatchlistEntry(ticker="NVDA", aliases=["Nvidia"], category="ai")]
+
+    with (
+        patch.object(ConnectorRegistry, "contains", return_value=True),
+        patch.object(ConnectorRegistry, "get", return_value=mock_connector),
+        patch(
+            "openjarvis.agents.digest_scoring.load_watchlist",
+            return_value=watchlist,
+        ),
+    ):
+        result = tool.execute(sources=["news_rss_soccer"], hours_back=24)
+
+    assert result.success is True
+    assert "=== WORLD ===" in result.content
+    assert "Big club wins derby" in result.content
+    for bucket_header in (
+        "MARKET MOVERS",
+        "STRATEGIC RISKS",
+        "NICHE BREAKTHROUGHS",
+        "GENERAL",
+    ):
+        assert bucket_header not in result.content

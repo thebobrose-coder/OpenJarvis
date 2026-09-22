@@ -37,6 +37,9 @@ _AUDIO_MEDIA_TYPES = {
 _GENERATE_PROMPTS = {
     "general": "Generate my morning digest",
     "weather": "Generate the weather briefing",
+    "soccer": "Generate the soccer briefing",
+    "motorsport": "Generate the motorsport briefing",
+    "entertainment": "Generate the entertainment briefing",
 }
 
 
