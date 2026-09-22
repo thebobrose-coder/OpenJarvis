@@ -2,6 +2,7 @@ import { EnergyDashboard } from '../components/Dashboard/EnergyDashboard';
 import { CostComparison } from '../components/Dashboard/CostComparison';
 import { TraceDebugger } from '../components/Dashboard/TraceDebugger';
 import { DayAheadPanel } from '../components/Dashboard/DayAheadPanel';
+import { WeatherPanel } from '../components/Dashboard/WeatherPanel';
 
 export function DashboardPage() {
   const now = new Date();
@@ -26,8 +27,9 @@ export function DashboardPage() {
 
         <div className="grid grid-cols-12 gap-4 mb-10">
           <DayAheadPanel />
-          {/* Weather, Market Briefing, Soccer, and Motorsport panels join this
-              row as each pipeline ships. */}
+          <WeatherPanel />
+          {/* Market Briefing, Soccer, and Motorsport panels join this row as
+              each pipeline ships. */}
         </div>
 
         <div

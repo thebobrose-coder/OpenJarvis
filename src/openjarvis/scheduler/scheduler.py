@@ -235,6 +235,8 @@ class TaskScheduler:
                 if meta.get("operator_id"):
                     ask_kwargs["system_prompt"] = meta.get("system_prompt", "")
                     ask_kwargs["operator_id"] = meta["operator_id"]
+                if meta.get("digest_category"):
+                    ask_kwargs["digest_category"] = meta["digest_category"]
                 result_text = self._system.ask(
                     task.prompt,
                     **ask_kwargs,

@@ -38,6 +38,54 @@ def store(tmp_path):
     s.close()
 
 
+def test_category_router_does_not_see_general_digest(tmp_path):
+    """A weather-scoped router must not surface the general digest's rows."""
+    from fastapi.testclient import TestClient
+
+    from openjarvis.server.digest_routes import create_digest_router
+
+    db_path = str(tmp_path / "digest.db")
+    s = DigestStore(db_path=db_path)
+    s.save(
+        DigestArtifact(
+            text="General digest content",
+            audio_path=tmp_path / "digest.mp3",
+            sections={},
+            sources_used=["news_rss"],
+            generated_at=datetime.now(),
+            model_used="test",
+            voice_used="jarvis",
+            category="general",
+        )
+    )
+    s.close()
+
+    weather_router = create_digest_router(
+        db_path=db_path, category="weather", prefix="/api/digest/weather"
+    )
+    app = __import__("fastapi").FastAPI()
+    app.include_router(weather_router)
+    resp = TestClient(app).get("/api/digest/weather")
+    assert resp.status_code == 404
+
+
+def test_category_router_schedule_endpoints_only_on_general(tmp_path):
+    """Only the general-category router exposes /schedule."""
+    from openjarvis.server.digest_routes import create_digest_router
+
+    weather_router = create_digest_router(
+        db_path=str(tmp_path / "digest.db"),
+        category="weather",
+        prefix="/api/digest/weather",
+    )
+    paths = {route.path for route in weather_router.routes}
+    assert "/api/digest/weather/schedule" not in paths
+
+    general_router = create_digest_router(db_path=str(tmp_path / "digest.db"))
+    paths = {route.path for route in general_router.routes}
+    assert "/api/digest/schedule" in paths
+
+
 def _make_app(db_path: str):
     """Create a FastAPI app with the digest router."""
     from fastapi import FastAPI
@@ -111,10 +159,11 @@ def test_generate_runs_entire_jarvis_lifecycle_on_one_worker(tmp_path, monkeypat
             calls.append(("enter", threading.get_ident()))
             return self
 
-        def ask(self, prompt, *, agent):
+        def ask(self, prompt, *, agent, digest_category="general"):
             calls.append(("ask", threading.get_ident()))
             assert prompt == "Generate my morning digest"
             assert agent == "morning_digest"
+            assert digest_category == "general"
             return "digest"
 
         def __exit__(self, exc_type, exc, tb):

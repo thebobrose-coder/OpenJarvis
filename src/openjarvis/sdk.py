@@ -254,6 +254,7 @@ class Jarvis:
         max_tokens: Optional[int] = None,
         context: bool = True,
         channel: Optional[Any] = None,
+        digest_category: str = "general",
     ) -> str:
         """Send a query and return the response text."""
         result = self.ask_full(
@@ -265,6 +266,7 @@ class Jarvis:
             max_tokens=max_tokens,
             context=context,
             channel=channel,
+            digest_category=digest_category,
         )
         return result["content"]
 
@@ -279,6 +281,7 @@ class Jarvis:
         max_tokens: Optional[int] = None,
         context: bool = True,
         channel: Optional[Any] = None,
+        digest_category: str = "general",
     ) -> Dict[str, Any]:
         """Send a query and return the full result dict.
 
@@ -311,6 +314,7 @@ class Jarvis:
                 max_tokens=max_tokens,
                 context=context,
                 channel=channel,
+                digest_category=digest_category,
             )
 
         # Direct engine mode
@@ -451,6 +455,7 @@ class Jarvis:
         max_tokens: int,
         context: bool,
         channel: Optional[Any] = None,
+        digest_category: str = "general",
     ) -> Dict[str, Any]:
         """Run an agent and return the result dict."""
         import openjarvis.agents  # noqa: F401
@@ -500,22 +505,36 @@ class Jarvis:
 
         # Inject DigestConfig for morning_digest agent
         if agent_name == "morning_digest" and hasattr(self._config, "digest"):
+            from openjarvis.agents.morning_digest import DIGEST_CATEGORY_PRESETS
+
             dc = self._config.digest
-            section_sources: Dict[str, Any] = {}
-            for s in dc.sections:
-                sc = getattr(dc, s, None)
-                if sc and hasattr(sc, "sources"):
-                    section_sources[s] = sc.sources
-            agent_kwargs.update(
-                {
+            preset = DIGEST_CATEGORY_PRESETS.get(digest_category)
+            if preset:
+                digest_kwargs = {
+                    "persona": preset["persona"],
+                    "sections": preset["sections"],
+                    "section_sources": preset["section_sources"],
+                }
+            else:
+                section_sources: Dict[str, Any] = {}
+                for s in dc.sections:
+                    sc = getattr(dc, s, None)
+                    if sc and hasattr(sc, "sources"):
+                        section_sources[s] = sc.sources
+                digest_kwargs = {
                     "persona": dc.persona,
                     "sections": dc.sections,
                     "section_sources": section_sources,
+                }
+            agent_kwargs.update(digest_kwargs)
+            agent_kwargs.update(
+                {
                     "timezone": dc.timezone,
                     "voice_id": dc.voice_id,
                     "voice_speed": dc.voice_speed,
                     "tts_backend": dc.tts_backend,
                     "honorific": dc.honorific,
+                    "category": digest_category,
                 }
             )
             # Ensure digest agent always has its required tools

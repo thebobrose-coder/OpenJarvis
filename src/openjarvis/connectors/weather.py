@@ -141,6 +141,16 @@ class WeatherConnector(BaseConnector):
             return None
         return value.strip() or None
 
+    def stored_location(self) -> str | None:
+        """Return the stored connector location, or ``None`` when unavailable."""
+        try:
+            value = self._load_config().get("location", "")
+        except (AttributeError, json.JSONDecodeError, OSError, TypeError):
+            return None
+        if not isinstance(value, str):
+            return None
+        return value.strip() or None
+
     def configure(self, *, api_key: str, location: str) -> None:
         """Validate and persist the API key and required location."""
         api_key = api_key.strip()

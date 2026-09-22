@@ -43,7 +43,7 @@ def _current_response():
             "temp_max": 21.0,
             "humidity": 61,
         },
-        "weather": [{"description": "leichter Regen"}],
+        "weather": [{"description": "leichter Regen", "icon": "10d"}],
         "wind": {"speed": 3.4, "deg": 250},
         "rain": {"1h": 0.4},
     }
@@ -55,7 +55,7 @@ def _forecast_response():
             {
                 "dt_txt": "2027-01-15 12:00:00",
                 "main": {"temp": 20.0, "humidity": 59},
-                "weather": [{"description": "bewölkt"}],
+                "weather": [{"description": "bewölkt", "icon": "03d"}],
                 "wind": {"speed": 3.0},
                 "pop": 0.375,
                 "rain": {"3h": 1.2},
@@ -143,6 +143,7 @@ def test_dynamic_location_units_language_and_structured_current():
     }
     assert payload["current"]["temperature"] == 19.5
     assert payload["current"]["description"] == "leichter Regen"
+    assert payload["current"]["icon"] == "10d"
     assert payload["current"]["humidity_percent"] == 61
     assert payload["current"]["wind_speed"] == 3.4
     assert "secret-key" not in result.content
@@ -165,6 +166,7 @@ def test_forecast_is_bounded_and_structured():
     assert fetch.call_args.kwargs["forecast_count"] == 9
     forecast = json.loads(result.content)["forecast"]
     assert forecast[0]["time"] == "2027-01-15 12:00:00"
+    assert forecast[0]["icon"] == "03d"
     assert forecast[0]["precipitation_probability_percent"] == 37.5
     assert forecast[0]["rain_mm"] == 1.2
     assert result.metadata["forecast_entries"] == 1

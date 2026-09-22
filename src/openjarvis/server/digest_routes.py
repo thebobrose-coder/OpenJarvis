@@ -34,23 +34,40 @@ _AUDIO_MEDIA_TYPES = {
 }
 
 
-def _generate_digest_sync() -> str:
+_GENERATE_PROMPTS = {
+    "general": "Generate my morning digest",
+    "weather": "Generate the weather briefing",
+}
+
+
+def _generate_digest_sync(category: str) -> str:
     """Generate a digest with the whole Jarvis lifecycle on one worker."""
     from openjarvis.sdk import Jarvis
 
+    prompt = _GENERATE_PROMPTS.get(category, _GENERATE_PROMPTS["general"])
     with Jarvis() as jarvis:
-        return jarvis.ask("Generate my morning digest", agent="morning_digest")
+        return jarvis.ask(prompt, agent="morning_digest", digest_category=category)
 
 
-def create_digest_router(*, db_path: str = "") -> APIRouter:
-    """Create a digest API router with the given store path."""
-    router = APIRouter(prefix="/api/digest", tags=["digest"])
+def create_digest_router(
+    *, db_path: str = "", category: str = "general", prefix: str = "/api/digest"
+) -> APIRouter:
+    """Create a digest API router with the given store path.
+
+    `category` scopes every query to that category's rows in the shared
+    DigestStore table (see digest_store.py) -- "general" is the original
+    world/market digest; other values (e.g. "weather") are independent
+    pipelines on their own schedule. Schedule management (/schedule) only
+    makes sense for the user-configurable general digest, so it's omitted
+    for any other category.
+    """
+    router = APIRouter(prefix=prefix, tags=["digest", category])
     store = DigestStore(db_path=db_path) if db_path else DigestStore()
 
     @router.get("")
     async def get_digest():
         """Return the latest digest artifact."""
-        artifact = store.get_today()
+        artifact = store.get_today(category=category)
         if artifact is None:
             raise HTTPException(status_code=404, detail="No digest for today")
         audio_available = (
@@ -76,7 +93,7 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
     @router.get("/audio")
     async def get_digest_audio():
         """Stream the digest audio file."""
-        artifact = store.get_today()
+        artifact = store.get_today(category=category)
         if artifact is None:
             raise HTTPException(status_code=404, detail="No digest for today")
         if not artifact.audio_path.exists():
@@ -93,7 +110,7 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
     async def generate_digest():
         """Force re-generation of the digest."""
         try:
-            result = await asyncio.to_thread(_generate_digest_sync)
+            result = await asyncio.to_thread(_generate_digest_sync, category)
             return {"status": "ok", "text": result}
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
@@ -101,7 +118,7 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
     @router.get("/history")
     async def get_digest_history():
         """Return past digests."""
-        history = store.history(limit=10)
+        history = store.history(limit=10, category=category)
         return [
             {
                 "text": a.text[:200],
@@ -112,38 +129,40 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
             for a in history
         ]
 
-    @router.get("/schedule")
-    async def get_schedule():
-        """Return the current digest schedule configuration."""
-        cfg = load_config()
-        return {
-            "enabled": cfg.digest.enabled,
-            "cron": cfg.digest.schedule,
-        }
+    if category == "general":
 
-    @router.post("/schedule")
-    async def update_schedule(body: ScheduleUpdate):
-        """Update the digest schedule configuration."""
-        cfg = load_config()
-        cron = body.cron if body.cron is not None else cfg.digest.schedule
+        @router.get("/schedule")
+        async def get_schedule():
+            """Return the current digest schedule configuration."""
+            cfg = load_config()
+            return {
+                "enabled": cfg.digest.enabled,
+                "cron": cfg.digest.schedule,
+            }
 
-        try:
-            _save_digest_schedule(enabled=body.enabled, cron=cron)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to save config: {exc}",
-            )
+        @router.post("/schedule")
+        async def update_schedule(body: ScheduleUpdate):
+            """Update the digest schedule configuration."""
+            cfg = load_config()
+            cron = body.cron if body.cron is not None else cfg.digest.schedule
 
-        # Sync with the TaskScheduler
-        if body.enabled:
-            _create_scheduler_task(cron, cfg.digest.timezone)
-        else:
-            _cancel_scheduler_tasks()
+            try:
+                _save_digest_schedule(enabled=body.enabled, cron=cron)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to save config: {exc}",
+                )
 
-        return {
-            "enabled": body.enabled,
-            "cron": cron,
-        }
+            # Sync with the TaskScheduler
+            if body.enabled:
+                _create_scheduler_task(cron, cfg.digest.timezone)
+            else:
+                _cancel_scheduler_tasks()
+
+            return {
+                "enabled": body.enabled,
+                "cron": cron,
+            }
 
     return router

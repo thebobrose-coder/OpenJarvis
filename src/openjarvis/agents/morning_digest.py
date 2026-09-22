@@ -23,6 +23,26 @@ _SECTION_PROMPTS = {
     "health": "HEALTH — Describe only supported trends; omit raw measurements.",
     "world": "WORLD — Summarize only provided world items.",
     "music": "MUSIC — Summarize only provided listening information.",
+    "weather": (
+        "WEATHER — Summarize only the provided current conditions and forecast. "
+        "Keep it brief and practical, not a full narrative."
+    ),
+}
+
+# Config overrides for a MorningDigestAgent run outside the original
+# single global [digest] section -- e.g. a 15-minute weather pipeline
+# running independently of the once-daily general digest. "general"
+# (the original digest) needs no entry: it keeps reading straight from
+# config.toml's [digest] section, as it always has. Voice/TTS backend
+# and honorific are intentionally NOT overridden here -- every category
+# shares the same configured voice, so the whole dashboard reads as one
+# consistent narrator, not a different voice per panel.
+DIGEST_CATEGORY_PRESETS = {
+    "weather": {
+        "persona": "weather",
+        "sections": ["weather"],
+        "section_sources": {"weather": ["weather"]},
+    },
 }
 
 
@@ -57,6 +77,12 @@ class MorningDigestAgent(ToolUsingAgent):
         self._tts_backend = kwargs.pop("tts_backend", "cartesia")
         self._digest_store_path = kwargs.pop("digest_store_path", "")
         self._honorific = kwargs.pop("honorific", "sir")
+        # "general" is the original world/market digest. A distinct category
+        # (e.g. "weather") shares the same DigestStore table/TTS backend but
+        # gets its own row filter and its own audio subdirectory so two
+        # categories running on independent schedules never overwrite each
+        # other's digest.wav.
+        self._category = kwargs.pop("category", "general")
         super().__init__(*args, **kwargs)
 
     def _build_system_prompt(self) -> str:
@@ -203,6 +229,8 @@ class MorningDigestAgent(ToolUsingAgent):
         tts_text = tts_text.strip()
 
         output_dir = str(get_config_dir() / "digests")
+        if self._category != "general":
+            output_dir = str(get_config_dir() / "digests" / self._category)
         tts_call = ToolCall(
             id="digest-tts-1",
             name="text_to_speech",
@@ -232,6 +260,7 @@ class MorningDigestAgent(ToolUsingAgent):
             voice_used=self._voice_id,
             quality_score=quality_score,
             evaluator_feedback=evaluator_feedback,
+            category=self._category,
         )
 
         store = DigestStore(db_path=self._digest_store_path)
@@ -245,7 +274,12 @@ class MorningDigestAgent(ToolUsingAgent):
         try:
             from openjarvis.tools.storage.sqlite import SQLiteMemory
 
-            SQLiteMemory().store(narrative, source="daily_briefing")
+            memory_source = (
+                "daily_briefing"
+                if self._category == "general"
+                else f"daily_briefing:{self._category}"
+            )
+            SQLiteMemory().store(narrative, source=memory_source)
         except Exception:  # noqa: BLE001
             pass
 

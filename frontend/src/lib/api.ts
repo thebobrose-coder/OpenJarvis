@@ -510,8 +510,8 @@ export interface DigestSchedule {
   cron: string;
 }
 
-export async function fetchDigest(): Promise<Digest | null> {
-  const res = await apiFetch(`/api/digest`);
+export async function fetchDigest(prefix = '/api/digest'): Promise<Digest | null> {
+  const res = await apiFetch(prefix);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   return res.json();
@@ -519,8 +519,8 @@ export async function fetchDigest(): Promise<Digest | null> {
 
 /** URL for the digest audio stream — pass directly as an <audio> src.
  * Only used outside Tauri (the browser-facing copy); see resolveDigestAudioSrc. */
-export function fetchDigestAudioUrl(): string {
-  return `${getBase()}/api/digest/audio`;
+export function fetchDigestAudioUrl(prefix = '/api/digest'): string {
+  return `${getBase()}${prefix}/audio`;
 }
 
 /**
@@ -541,22 +541,22 @@ export function fetchDigestAudioUrl(): string {
  * The plain browser-facing copy has no asset protocol and doesn't hit this
  * WebView2-specific issue at all, so it keeps using the direct HTTP URL.
  */
-export async function resolveDigestAudioSrc(digest: Digest): Promise<string | null> {
+export async function resolveDigestAudioSrc(digest: Digest, prefix = '/api/digest'): Promise<string | null> {
   if (isTauri() && digest.audio_path) {
     const { convertFileSrc } = await import('@tauri-apps/api/core');
     return convertFileSrc(digest.audio_path);
   }
-  return digest.audio_available ? fetchDigestAudioUrl() : null;
+  return digest.audio_available ? fetchDigestAudioUrl(prefix) : null;
 }
 
-export async function fetchDigestHistory(): Promise<DigestHistoryEntry[]> {
-  const res = await apiFetch(`/api/digest/history`);
+export async function fetchDigestHistory(prefix = '/api/digest'): Promise<DigestHistoryEntry[]> {
+  const res = await apiFetch(`${prefix}/history`);
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   return res.json();
 }
 
-export async function regenerateDigest(): Promise<{ status: string; text: string }> {
-  const res = await apiFetch(`/api/digest/generate`, { method: 'POST' });
+export async function regenerateDigest(prefix = '/api/digest'): Promise<{ status: string; text: string }> {
+  const res = await apiFetch(`${prefix}/generate`, { method: 'POST' });
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   return res.json();
 }
@@ -602,6 +602,50 @@ export interface DayAhead {
 
 export async function fetchDayAhead(): Promise<DayAhead> {
   const res = await apiFetch(`/api/day-ahead`);
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Weather — live structured conditions for the graphical dashboard panel
+// ---------------------------------------------------------------------------
+
+export interface WeatherConditions {
+  time: string;
+  temperature: number | null;
+  feels_like: number | null;
+  temperature_min: number | null;
+  temperature_max: number | null;
+  description: string;
+  icon: string;
+  humidity_percent: number | null;
+  wind_speed: number | null;
+  wind_direction_degrees: number | null;
+  precipitation_probability_percent: number | null;
+  rain_mm: number | null;
+  snow_mm: number | null;
+}
+
+export interface WeatherPayload {
+  provider: string;
+  location: {
+    requested: string;
+    name: string | null;
+    country: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  };
+  units: string;
+  language: string;
+  current: WeatherConditions;
+  forecast?: WeatherConditions[];
+}
+
+/** Live current+forecast conditions, straight from WeatherTool — not cached,
+ * distinct from the narrated /api/digest/weather blurb (see fetchDigest). */
+export async function fetchWeather(): Promise<WeatherPayload | null> {
+  const res = await apiFetch(`/api/weather`);
+  if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   return res.json();
 }

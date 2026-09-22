@@ -25,6 +25,11 @@ class DigestArtifact:
     voice_used: str
     quality_score: float = 0.0
     evaluator_feedback: str = ""
+    # "general" is the original single digest (world/market). Other values
+    # (e.g. "weather") share this same table/schema rather than each getting
+    # a separate store -- same pattern, different content, one place to
+    # migrate.
+    category: str = "general"
 
 
 class DigestStore:
@@ -70,6 +75,10 @@ class DigestStore:
                 "ALTER TABLE digests"
                 " ADD COLUMN evaluator_feedback TEXT NOT NULL DEFAULT ''"
             )
+        if "category" not in existing:
+            self._conn.execute(
+                "ALTER TABLE digests ADD COLUMN category TEXT NOT NULL DEFAULT 'general'"
+            )
 
     def save(self, artifact: DigestArtifact) -> None:
         """Save a digest artifact."""
@@ -78,8 +87,8 @@ class DigestStore:
             INSERT INTO digests
                 (text, audio_path, sections, sources_used,
                  generated_at, model_used, voice_used,
-                 quality_score, evaluator_feedback)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 quality_score, evaluator_feedback, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 artifact.text,
@@ -91,6 +100,7 @@ class DigestStore:
                 artifact.voice_used,
                 artifact.quality_score,
                 artifact.evaluator_feedback,
+                artifact.category,
             ),
         )
         self._conn.commit()
@@ -106,21 +116,25 @@ class DigestStore:
             voice_used=row[6],
             quality_score=row[7] if len(row) > 7 else 0.0,
             evaluator_feedback=row[8] if len(row) > 8 else "",
+            category=row[9] if len(row) > 9 else "general",
         )
 
-    def get_latest(self) -> Optional[DigestArtifact]:
-        """Return the most recent digest, or None."""
+    def get_latest(self, category: str = "general") -> Optional[DigestArtifact]:
+        """Return the most recent digest for `category`, or None."""
         row = self._conn.execute(
             "SELECT text, audio_path, sections, sources_used,"
             " generated_at, model_used, voice_used,"
-            " quality_score, evaluator_feedback"
-            " FROM digests ORDER BY id DESC LIMIT 1"
+            " quality_score, evaluator_feedback, category"
+            " FROM digests WHERE category = ? ORDER BY id DESC LIMIT 1",
+            (category,),
         ).fetchone()
         if row is None:
             return None
         return self._row_to_artifact(row)
 
-    def get_today(self, timezone_name: Optional[str] = None) -> Optional[DigestArtifact]:
+    def get_today(
+        self, timezone_name: Optional[str] = None, category: str = "general"
+    ) -> Optional[DigestArtifact]:
         """Return today's digest if it exists, or None.
 
         `generated_at` is stored as naive system-local time (`datetime.now()`
@@ -145,22 +159,23 @@ class DigestStore:
         row = self._conn.execute(
             "SELECT text, audio_path, sections, sources_used,"
             " generated_at, model_used, voice_used,"
-            " quality_score, evaluator_feedback"
-            " FROM digests WHERE generated_at LIKE ? ORDER BY id DESC LIMIT 1",
-            (f"{today}%",),
+            " quality_score, evaluator_feedback, category"
+            " FROM digests WHERE generated_at LIKE ? AND category = ?"
+            " ORDER BY id DESC LIMIT 1",
+            (f"{today}%", category),
         ).fetchone()
         if row is None:
             return None
         return self._row_to_artifact(row)
 
-    def history(self, limit: int = 10) -> List[DigestArtifact]:
-        """Return the N most recent digests."""
+    def history(self, limit: int = 10, category: str = "general") -> List[DigestArtifact]:
+        """Return the N most recent digests for `category`."""
         rows = self._conn.execute(
             "SELECT text, audio_path, sections, sources_used,"
             " generated_at, model_used, voice_used,"
-            " quality_score, evaluator_feedback"
-            " FROM digests ORDER BY id DESC LIMIT ?",
-            (limit,),
+            " quality_score, evaluator_feedback, category"
+            " FROM digests WHERE category = ? ORDER BY id DESC LIMIT ?",
+            (category, limit),
         ).fetchall()
         return [self._row_to_artifact(r) for r in rows]
 

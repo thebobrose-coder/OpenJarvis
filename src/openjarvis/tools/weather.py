@@ -45,6 +45,14 @@ def _utc_timestamp(value: Any, fallback: Any = "") -> str:
     return str(fallback or "")
 
 
+def _weather_icon(payload: dict[str, Any]) -> str:
+    weather = payload.get("weather")
+    if not isinstance(weather, list) or not weather:
+        return ""
+    first = weather[0]
+    return str(first.get("icon", "")) if isinstance(first, dict) else ""
+
+
 def _structured_conditions(payload: dict[str, Any]) -> dict[str, Any]:
     main = payload.get("main")
     wind = payload.get("wind")
@@ -65,6 +73,9 @@ def _structured_conditions(payload: dict[str, Any]) -> dict[str, Any]:
         "temperature_min": main.get("temp_min"),
         "temperature_max": main.get("temp_max"),
         "description": _weather_description(payload),
+        # OpenWeatherMap's icon code (e.g. "01d", "10n") -- maps to a
+        # condition + day/night pair a frontend can render symbolically.
+        "icon": _weather_icon(payload),
         "humidity_percent": main.get("humidity"),
         "wind_speed": wind.get("speed"),
         "wind_direction_degrees": wind.get("deg"),
