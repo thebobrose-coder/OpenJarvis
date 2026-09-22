@@ -577,6 +577,35 @@ export async function setDigestSchedule(body: DigestSchedule): Promise<DigestSch
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Day Ahead — live calendar/tasks panel, never cached
+// ---------------------------------------------------------------------------
+
+export interface DayAheadEvent {
+  id: string;
+  title: string;
+  time: string;
+}
+
+export interface DayAheadTask {
+  id: string;
+  title: string;
+  due: string;
+}
+
+export interface DayAhead {
+  events: DayAheadEvent[];
+  tasks: DayAheadTask[];
+  calendar_connected: boolean;
+  tasks_connected: boolean;
+}
+
+export async function fetchDayAhead(): Promise<DayAhead> {
+  const res = await apiFetch(`/api/day-ahead`);
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchManagedAgents(): Promise<ManagedAgent[]> {
   const res = await apiFetch(`/v1/managed-agents`);
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
