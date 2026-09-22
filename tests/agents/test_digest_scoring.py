@@ -19,7 +19,7 @@ from openjarvis.agents.digest_scoring import (
 from openjarvis.connectors._stubs import Document
 
 
-def _doc(doc_id: str, title: str, content: str = "") -> Document:
+def _doc(doc_id: str, title: str, content: str = "", metadata: dict | None = None) -> Document:
     return Document(
         doc_id=doc_id,
         source="news_rss",
@@ -27,6 +27,7 @@ def _doc(doc_id: str, title: str, content: str = "") -> Document:
         content=content,
         title=title,
         timestamp=datetime(2026, 9, 21, 12, 0),
+        metadata=metadata or {},
     )
 
 
@@ -173,6 +174,24 @@ def test_score_document_wraps_title_and_content():
     assert scored.document is doc
     assert scored.matched_tickers == ["NVDA"]
     assert scored.event_impact_score == 0.85  # "merger"
+
+
+def test_score_document_prefers_authoritative_symbol_metadata():
+    # Title/content mention nothing matchable by text, but metadata carries
+    # an authoritative ticker tag (as fmp_news documents do) -- should still match.
+    watchlist = [WatchlistEntry(ticker="IONQ")]
+    doc = _doc("d2", "Quantum computing milestone reported", metadata={"symbol": "IONQ"})
+    scored = score_document(doc, watchlist, None)
+    assert scored.matched_tickers == ["IONQ"]
+
+
+def test_score_document_symbol_metadata_not_in_watchlist_falls_back_to_text():
+    # symbol metadata present but doesn't match any watchlist entry --
+    # should still fall back to text matching rather than giving up.
+    watchlist = [WatchlistEntry(ticker="NVDA", aliases=("Nvidia",))]
+    doc = _doc("d3", "Nvidia news", "Nvidia announced something.", metadata={"symbol": "UNRELATED"})
+    scored = score_document(doc, watchlist, None)
+    assert scored.matched_tickers == ["NVDA"]
 
 
 def test_filter_and_bucket_keeps_all_ticker_matches_regardless_of_score():

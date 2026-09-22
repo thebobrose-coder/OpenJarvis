@@ -34,7 +34,7 @@ _SECTION_ORDER: List[tuple] = [
         },
     ),
     ("CALENDAR", {"gcalendar"}),
-    ("WORLD", {"weather", "hackernews", "news_rss"}),
+    ("WORLD", {"weather", "hackernews", "news_rss", "fmp_news"}),
     ("MUSIC", {"spotify", "apple_music"}),
 ]
 
@@ -333,6 +333,20 @@ def _format_news_rss(doc: Document) -> str:
     return line
 
 
+def _format_fmp_news(doc: Document) -> str:
+    """Format a ticker-tagged FMP news item."""
+    symbol = doc.metadata.get("symbol", "")
+    publisher = doc.metadata.get("publisher", "")
+    prefix = f"[{symbol}]" if symbol else "[fmp_news]"
+    description = doc.content[:150].replace("\n", " ").strip() if doc.content else ""
+    line = f"{prefix} {doc.title}"
+    if publisher:
+        line += f" ({publisher})"
+    if description:
+        line += f" — {description}"
+    return line
+
+
 # Map connector IDs to their formatting functions
 _FORMATTERS: Dict[str, Any] = {
     "oura": _format_oura,
@@ -351,6 +365,7 @@ _FORMATTERS: Dict[str, Any] = {
     "github_notifications": _format_github_notifications,
     "hackernews": _format_hackernews,
     "news_rss": _format_news_rss,
+    "fmp_news": _format_fmp_news,
     "spotify": _format_spotify,
     "apple_music": _format_apple_music,
 }

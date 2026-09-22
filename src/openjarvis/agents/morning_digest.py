@@ -116,7 +116,7 @@ class MorningDigestAgent(ToolUsingAgent):
             ],
             "calendar": ["gcalendar"],
             "health": ["oura", "apple_health"],
-            "world": ["weather", "hackernews", "news_rss"],
+            "world": ["weather", "hackernews", "news_rss", "fmp_news"],
             "music": ["spotify", "apple_music"],
         }
         sources = set()

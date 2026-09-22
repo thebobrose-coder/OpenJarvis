@@ -255,13 +255,11 @@ def compute_market_cap_factor(
     return max(factors) if factors else _UNKNOWN_CAP_FACTOR
 
 
-def score_text(
+def _build_score_result(
+    matches: List[WatchlistEntry],
     text: str,
-    watchlist: List[WatchlistEntry],
-    market_cap_client: Optional[MarketCapClient] = None,
+    market_cap_client: Optional[MarketCapClient],
 ) -> ScoreResult:
-    """Score arbitrary text (a headline, a story summary) against the watchlist."""
-    matches = match_watchlist(text, watchlist)
     event_score = compute_event_impact_score(text)
     cap_factor = compute_market_cap_factor(matches, market_cap_client)
     final = cap_factor * _MARKET_CAP_WEIGHT + event_score * _EVENT_IMPACT_WEIGHT
@@ -273,14 +271,43 @@ def score_text(
     )
 
 
+def score_text(
+    text: str,
+    watchlist: List[WatchlistEntry],
+    market_cap_client: Optional[MarketCapClient] = None,
+) -> ScoreResult:
+    """Score arbitrary text (a headline, a story summary) against the watchlist."""
+    matches = match_watchlist(text, watchlist)
+    return _build_score_result(matches, text, market_cap_client)
+
+
+def _match_for_document(doc: Document, watchlist: List[WatchlistEntry]) -> List[WatchlistEntry]:
+    """Prefer an authoritative Document.metadata["symbol"] tag (e.g. from
+    fmp_news, which FMP already ticker-tags itself) over fuzzy text matching.
+    Falls back to text matching when no symbol metadata is present (e.g.
+    news_rss, hackernews).
+    """
+    symbol = str(doc.metadata.get("symbol", "")).strip()
+    if symbol:
+        for entry in watchlist:
+            if entry.ticker.casefold() == symbol.casefold():
+                return [entry]
+    return match_watchlist(f"{doc.title} {doc.content}", watchlist)
+
+
 def score_document(
     doc: Document,
     watchlist: List[WatchlistEntry],
     market_cap_client: Optional[MarketCapClient] = None,
 ) -> ScoredDocument:
-    """Score a collected Document (title + content) against the watchlist."""
+    """Score a collected Document against the watchlist.
+
+    Uses Document.metadata["symbol"] directly when present (authoritative);
+    otherwise falls back to matching title + content text.
+    """
+    matches = _match_for_document(doc, watchlist)
     text = f"{doc.title} {doc.content}"
-    return ScoredDocument(document=doc, result=score_text(text, watchlist, market_cap_client))
+    return ScoredDocument(document=doc, result=_build_score_result(matches, text, market_cap_client))
 
 
 def filter_and_bucket(
