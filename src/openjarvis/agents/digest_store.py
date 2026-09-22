@@ -120,13 +120,26 @@ class DigestStore:
             return None
         return self._row_to_artifact(row)
 
-    def get_today(self, timezone_name: str = "UTC") -> Optional[DigestArtifact]:
-        """Return today's digest if it exists, or None."""
-        try:
-            from zoneinfo import ZoneInfo
+    def get_today(self, timezone_name: Optional[str] = None) -> Optional[DigestArtifact]:
+        """Return today's digest if it exists, or None.
 
-            today = datetime.now(ZoneInfo(timezone_name)).strftime("%Y-%m-%d")
-        except ImportError:
+        `generated_at` is stored as naive system-local time (`datetime.now()`
+        in MorningDigestAgent -- never converted to any particular zone), so
+        "today" must default to that same naive local clock. A UTC default
+        here previously desynced from local evenings once the UTC calendar
+        date rolled over ahead of the local one, silently hiding every
+        digest generated that evening. Pass `timezone_name` only if the
+        caller genuinely wants "today" in a specific zone rather than the
+        machine's own clock.
+        """
+        if timezone_name:
+            try:
+                from zoneinfo import ZoneInfo
+
+                today = datetime.now(ZoneInfo(timezone_name)).strftime("%Y-%m-%d")
+            except Exception:
+                today = datetime.now().strftime("%Y-%m-%d")
+        else:
             today = datetime.now().strftime("%Y-%m-%d")
 
         row = self._conn.execute(

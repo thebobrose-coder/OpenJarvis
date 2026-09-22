@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 
@@ -23,7 +23,11 @@ def store(tmp_path):
             audio_path=tmp_path / "digest.mp3",
             sections={"messages": "3 emails"},
             sources_used=["gmail"],
-            generated_at=datetime.now(timezone.utc),
+            # Naive local time -- matches how MorningDigestAgent actually
+            # stores it (plain datetime.now(), never made timezone-aware).
+            # A tz-aware UTC value here would silently paper over a
+            # get_today()/storage timezone mismatch instead of catching it.
+            generated_at=datetime.now(),
             model_used="test",
             voice_used="jarvis",
         )
@@ -35,26 +39,13 @@ def store(tmp_path):
 
 
 def _make_app(db_path: str):
-    """Create a FastAPI app with the digest router using get_latest as fallback."""
-    from unittest.mock import patch
-
+    """Create a FastAPI app with the digest router."""
     from fastapi import FastAPI
 
-    from openjarvis.agents.digest_store import DigestStore
     from openjarvis.server.digest_routes import create_digest_router
 
-    # Patch get_today to fall back to get_latest — avoids timezone issues in CI
-    original_get_today = DigestStore.get_today
-
-    def _get_today_or_latest(self, timezone_name="UTC"):
-        result = original_get_today(self, timezone_name=timezone_name)
-        if result is None:
-            return self.get_latest()
-        return result
-
     app = FastAPI()
-    with patch.object(DigestStore, "get_today", _get_today_or_latest):
-        app.include_router(create_digest_router(db_path=db_path))
+    app.include_router(create_digest_router(db_path=db_path))
     return app
 
 

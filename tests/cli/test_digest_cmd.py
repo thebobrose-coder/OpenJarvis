@@ -31,7 +31,9 @@ def test_digest_displays_cached(tmp_path):
             audio_path=Path("/nonexistent/audio.mp3"),
             sections={},
             sources_used=["gmail"],
-            generated_at=datetime.now(tz=__import__("datetime").timezone.utc),
+            # Naive local time -- matches how MorningDigestAgent actually
+            # stores it (plain datetime.now(), never made timezone-aware).
+            generated_at=datetime.now(),
             model_used="test",
             voice_used="jarvis",
         )
