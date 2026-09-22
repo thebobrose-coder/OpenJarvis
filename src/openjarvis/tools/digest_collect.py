@@ -368,6 +368,58 @@ def _format_doc(source: str, doc: Document) -> str:
     return f"[{source}] {doc.title}"
 
 
+def _format_world_section_scored(
+    collected_docs: Dict[str, List[Document]],
+    world_sources: List[str],
+    watchlist: List[Any],
+) -> List[str]:
+    """Score and bucket WORLD/news documents against the watchlist.
+
+    Weather passes through unscored (not news, always kept as-is). News
+    sources (news_rss, hackernews) are scored via digest_scoring and grouped
+    into buckets so the LLM narrates pre-sorted structure instead of a flat
+    dump. Only called when a watchlist is actually configured -- with none,
+    _format_doc's default flat listing is unchanged.
+    """
+    from openjarvis.agents.digest_scoring import filter_and_bucket, score_document
+    from openjarvis.market_data import MarketCapClient
+
+    market_cap_client = MarketCapClient()
+    weather_lines: List[str] = []
+    scored_by_doc_id: Dict[str, str] = {}
+    scored = []
+
+    for source in world_sources:
+        docs = collected_docs.get(source, [])
+        if source == "weather":
+            weather_lines.extend(_format_doc(source, d) for d in docs)
+            continue
+        for doc in docs:
+            scored_by_doc_id[doc.doc_id] = source
+            scored.append(score_document(doc, watchlist, market_cap_client))
+
+    buckets = filter_and_bucket(scored, top_n=8)
+    bucket_labels = {
+        "market_movers": "MARKET MOVERS",
+        "strategic_risks": "STRATEGIC RISKS",
+        "niche_breakthroughs": "NICHE BREAKTHROUGHS",
+        "general": "GENERAL",
+    }
+
+    lines: List[str] = []
+    for bucket_key in ("market_movers", "strategic_risks", "niche_breakthroughs", "general"):
+        items = buckets.get(bucket_key, [])
+        if not items:
+            continue
+        lines.append(f"-- {bucket_labels[bucket_key]} --")
+        for sd in items:
+            source = scored_by_doc_id.get(sd.document.doc_id, sd.document.source)
+            lines.append(_format_doc(source, sd.document))
+
+    lines.extend(weather_lines)
+    return lines
+
+
 def _format_music_section(
     collected_docs: Dict[str, List[Document]],
     music_connectors: set,
@@ -473,7 +525,9 @@ class DigestCollectTool(BaseTool):
     def execute(self, **params: Any) -> ToolResult:
         # Ensure connectors are registered
         import openjarvis.connectors  # noqa: F401
+        from openjarvis.agents.digest_scoring import load_watchlist
 
+        watchlist = load_watchlist()
         sources: List[str] = params.get("sources", [])
         hours_back: float = params.get("hours_back", 24)
         unacted_only: bool = bool(params.get("unacted_only", False))
@@ -539,6 +593,10 @@ class DigestCollectTool(BaseTool):
                 # Music gets special grouped formatting
                 section_lines = _format_music_section(
                     collected_docs, section_connectors
+                )
+            elif section_name == "WORLD" and watchlist:
+                section_lines = _format_world_section_scored(
+                    collected_docs, section_sources, watchlist
                 )
             else:
                 for source in section_sources:
