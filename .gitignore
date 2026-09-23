@@ -131,3 +131,7 @@ learning.db
 minion_logs/
 *.oj-debug.json
 oj-debug.*.json
+
+# Private business/ops planning docs — this repo is a public fork, never
+# commit revenue/store/vendor strategy here.
+BUSINESS_ROADMAP.md

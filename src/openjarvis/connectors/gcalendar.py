@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterator, List, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -56,7 +57,7 @@ def _gcal_api_user_email(token: str) -> str:
 def _gcal_api_event_get(token: str, calendar_id: str, event_id: str) -> Dict[str, Any]:
     """Fetch a single calendar event resource."""
     resp = httpx.get(
-        f"{_GCAL_API_BASE}/calendars/{calendar_id}/events/{event_id}",
+        f"{_GCAL_API_BASE}/calendars/{quote(calendar_id, safe='')}/events/{event_id}",
         headers={"Authorization": f"Bearer {token}"},
         timeout=30.0,
     )
@@ -72,7 +73,7 @@ def _gcal_api_event_patch(
 ) -> Dict[str, Any]:
     """Patch a calendar event with a partial update body."""
     resp = httpx.patch(
-        f"{_GCAL_API_BASE}/calendars/{calendar_id}/events/{event_id}",
+        f"{_GCAL_API_BASE}/calendars/{quote(calendar_id, safe='')}/events/{event_id}",
         headers={"Authorization": f"Bearer {token}"},
         json=body,
         timeout=30.0,
@@ -140,8 +141,13 @@ def _gcal_api_events_list(
     if time_min:
         params["timeMin"] = time_min
 
+    # calendar_id is not always a plain email/opaque id -- Google's built-in
+    # calendars (e.g. the US Holidays calendar) contain a literal '#', which
+    # an unencoded f-string truncates the path at (everything after becomes
+    # a URL fragment, never sent to the server) and silently 404s that one
+    # calendar's events out of the sync.
     resp = httpx.get(
-        f"{_GCAL_API_BASE}/calendars/{calendar_id}/events",
+        f"{_GCAL_API_BASE}/calendars/{quote(calendar_id, safe='')}/events",
         headers={"Authorization": f"Bearer {token}"},
         params=params,
         timeout=30.0,

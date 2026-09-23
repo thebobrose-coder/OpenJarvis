@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { CalendarClock } from 'lucide-react';
 import { fetchDayAhead } from '../../lib/api';
 import type { DayAhead } from '../../lib/api';
@@ -23,6 +24,7 @@ function formatTaskDue(iso: string): string {
  * No regen button -- there's nothing to regenerate, it's always current.
  */
 export function DayAheadPanel() {
+  const navigate = useNavigate();
   const [data, setData] = useState<DayAhead | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,10 +50,17 @@ export function DayAheadPanel() {
   const neitherConnected = data && !data.calendar_connected && !data.tasks_connected;
 
   return (
-    <DashboardPanel icon={CalendarClock} title="Day Ahead" tag="Live" size="tall" priority loading={loading} error={error}>
+    <DashboardPanel icon={CalendarClock} title="Day Ahead" tag="Live" size="half" priority loading={loading} error={error}>
       {neitherConnected ? (
         <p style={{ color: 'var(--color-text-tertiary)' }}>
-          Connect Google Calendar and Google Tasks to populate this panel.
+          <button
+            onClick={() => navigate('/data-sources')}
+            className="underline cursor-pointer"
+            style={{ background: 'transparent', border: 'none', padding: 0, color: 'inherit', font: 'inherit' }}
+          >
+            Connect Google Calendar and Google Tasks
+          </button>{' '}
+          to populate this panel.
         </p>
       ) : (
         <div className="flex flex-col gap-3">

@@ -24,7 +24,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { SOURCE_CATALOG } from '../types/connectors';
 import type { ConnectRequest, ConnectorMeta, SyncStatus, OAuthSetupInfo } from '../types/connectors';
-import { listConnectors, connectSource, disconnectSourceUntilComplete, getConnector, getSyncStatus, triggerSync, startServerOAuth } from '../lib/connectors-api';
+import { listConnectors, connectSource, disconnectSourceUntilComplete, getConnector, getSyncStatus, triggerSync, startServerOAuth, addShopifyStore } from '../lib/connectors-api';
 
 // ---------------------------------------------------------------------------
 // Inline connect form (reused from AgentsPage pattern)
@@ -241,6 +241,32 @@ function GenericConnectPanel({
                 { name: 'location', placeholder: 'City, country (for example: Boston,US)', type: 'text' },
               ]
             : [{ name: 'token', placeholder: `${displayName} API token`, type: 'password' }]}
+          loading={loading}
+          disabled={disabled}
+          onSubmit={onConnect}
+        />
+      </div>
+    );
+  }
+
+  // Shopify: dedicated OAuth flow (see server/shopify_oauth_routes.py) --
+  // its authorize/token endpoints are per-shop, not one fixed URL per
+  // provider, so it isn't part of the generic oauth_setup/has_credentials
+  // mechanism the branch below uses for Google/Strava/Spotify. One card per
+  // store (connector_id "shopify_{slug}", registered dynamically per the
+  // Add Store flow -- see ShopifyStoresSection below).
+  if (authType === 'oauth' && connectorId.startsWith('shopify_')) {
+    return (
+      <div>
+        <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10 }}>
+          Enter the app's shop domain and OAuth credentials from Shopify's Partners dashboard.
+        </div>
+        <InlineConnectForm
+          fields={[
+            { name: 'shop_domain', placeholder: 'yourstore.myshopify.com', type: 'text' },
+            { name: 'client_id', placeholder: 'Client ID', type: 'text' },
+            { name: 'client_secret', placeholder: 'Client Secret', type: 'password' },
+          ]}
           loading={loading}
           disabled={disabled}
           onSubmit={onConnect}
@@ -846,6 +872,17 @@ function DataSourcesSection() {
   const [disconnectError, setDisconnectError] = useState<{ id: string; message: string } | null>(null);
   const disconnectAbortRef = useRef<AbortController | null>(null);
 
+  // "Add Store" -- Shopify multi-store (see connectors/shopify_stores.py).
+  // Creating a store just registers its connector_id server-side; the
+  // resulting card then goes through the normal connect flow above like
+  // any other connector, so this only needs to trigger a loadConnectors()
+  // refresh on success, not its own connect logic.
+  const [addingStore, setAddingStore] = useState(false);
+  const [newStoreName, setNewStoreName] = useState('');
+  const [newStoreGscUrl, setNewStoreGscUrl] = useState('');
+  const [addStoreError, setAddStoreError] = useState('');
+  const [addStoreLoading, setAddStoreLoading] = useState(false);
+
   const loadConnectors = useCallback(async () => {
     try {
       const list = await listConnectors();
@@ -864,6 +901,27 @@ function DataSourcesSection() {
   }, [setCachedConnectors]);
 
   const setConnectors = setCachedConnectors;
+
+  const handleAddStore = async () => {
+    if (!newStoreName.trim()) return;
+    setAddStoreLoading(true);
+    setAddStoreError('');
+    try {
+      const resp = await addShopifyStore(newStoreName, newStoreGscUrl);
+      setNewStoreName('');
+      setNewStoreGscUrl('');
+      setAddingStore(false);
+      await loadConnectors();
+      // Jump straight into that store's connect form -- it's already
+      // expecting a shop_domain/client_id/client_secret entry, same as any
+      // freshly-added connector card.
+      setExpandedId(resp.connector_id);
+    } catch (err: any) {
+      setAddStoreError(err.message || 'Failed to add store');
+    } finally {
+      setAddStoreLoading(false);
+    }
+  };
 
   // Poll sync status for connected sources
   const loadSyncStatuses = useCallback(async () => {
@@ -970,11 +1028,13 @@ function DataSourcesSection() {
       setConnectStage('Connected! Starting sync...');
 
       // Wait for connector to show as connected
+      let becameConnected = false;
       for (let i = 0; i < 20; i++) {
         await new Promise((r) => setTimeout(r, 2000));
         const updated = await listConnectors();
         const target = updated.find((c) => c.connector_id === id);
         if (target?.connected) {
+          becameConnected = true;
           setConnectors(updated.map((c) => ({
             connector_id: c.connector_id,
             display_name: c.display_name,
@@ -985,6 +1045,17 @@ function DataSourcesSection() {
           break;
         }
         setConnectStage(i < 5 ? 'Authenticating...' : 'Waiting for connection...');
+      }
+
+      // Previously this fell through to "Syncing data..." and silently
+      // collapsed the form even when the loop above never actually saw
+      // connected:true -- the connector would then reload as still
+      // disconnected with no visible error, indistinguishable from success
+      // until the form closed and reality reasserted itself.
+      if (!becameConnected) {
+        throw new Error(
+          'Did not confirm the connection completed -- check that the OAuth consent screen actually opened and was approved.',
+        );
       }
 
       // Trigger sync
@@ -1143,6 +1214,67 @@ function DataSourcesSection() {
           </div>
         </section>
       )}
+
+      {/* Shopify multi-store -- add a new store's connector card without
+          touching the fixed SOURCE_CATALOG (see connectors/shopify_stores.py) */}
+      <section>
+        <div className="hud-panel" style={{ padding: '12px 14px' }}>
+          {!addingStore ? (
+            <button
+              onClick={() => setAddingStore(true)}
+              className="hud-label"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--color-accent-purple)',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              + Add Shopify Store
+            </button>
+          ) : (
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
+                Store name (e.g. "OrbitCom")
+              </div>
+              <input
+                value={newStoreName}
+                onChange={(e) => setNewStoreName(e.target.value)}
+                placeholder="Store name"
+                type="text"
+                style={{ width: '100%', padding: '7px 10px', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text)', fontSize: 12, marginBottom: 6, boxSizing: 'border-box' }}
+              />
+              <input
+                value={newStoreGscUrl}
+                onChange={(e) => setNewStoreGscUrl(e.target.value)}
+                placeholder="Search Console site URL (optional, e.g. sc-domain:example.com)"
+                type="text"
+                style={{ width: '100%', padding: '7px 10px', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-text)', fontSize: 12, marginBottom: 6, boxSizing: 'border-box' }}
+              />
+              {addStoreError && (
+                <div style={{ fontSize: 11, color: 'var(--color-error)', marginBottom: 6 }}>{addStoreError}</div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={handleAddStore}
+                  disabled={addStoreLoading || !newStoreName.trim()}
+                  style={{ flex: 1, padding: 8, background: addStoreLoading || !newStoreName.trim() ? 'var(--color-disabled-bg)' : 'var(--color-accent-purple)', color: 'var(--color-on-accent)', border: 'none', borderRadius: 6, fontSize: 12, cursor: addStoreLoading || !newStoreName.trim() ? 'default' : 'pointer' }}
+                >
+                  {addStoreLoading ? 'Adding...' : 'Add Store'}
+                </button>
+                <button
+                  onClick={() => { setAddingStore(false); setAddStoreError(''); }}
+                  disabled={addStoreLoading}
+                  style={{ padding: 8, background: 'transparent', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Not connected list */}
       {notConnected.length > 0 && (

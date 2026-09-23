@@ -8,6 +8,7 @@ narrated pipeline.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -31,6 +32,15 @@ def _connected_connector(connector_id: str) -> Optional[Any]:
 async def get_day_ahead() -> dict:
     """Return the rolling next-24h calendar events and open tasks, live."""
     now = datetime.now()
+    # gcalendar/google_tasks .sync() make synchronous httpx calls (real
+    # timeouts, but still blocking). Run off the event loop thread --
+    # inline, this froze the entire single-worker server for every other
+    # request for the full duration of the fetch (observed: 35s of total
+    # unresponsiveness, including /health, for one Day Ahead load).
+    return await asyncio.to_thread(_fetch_day_ahead, now)
+
+
+def _fetch_day_ahead(now: datetime) -> dict:
     window_end = now + timedelta(hours=24)
 
     events: list[dict] = []

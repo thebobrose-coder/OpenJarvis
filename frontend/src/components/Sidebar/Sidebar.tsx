@@ -20,6 +20,7 @@ import {
   Newspaper,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
+import { LatestNewsPanel } from './LatestNewsPanel';
 import { useAppStore } from '../../lib/store';
 
 export function Sidebar() {
@@ -192,6 +193,10 @@ export function Sidebar() {
           <div className="flex-1 overflow-y-auto px-2">
             <ConversationList searchQuery={searchQuery} />
           </div>
+
+          {/* Latest News -- breaking news + Daily Brief anchor, persists
+              across pages, sits above the nav menu */}
+          <LatestNewsPanel />
 
           {/* Bottom nav */}
           <nav className="px-2 pb-3 pt-2 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--color-border)' }}>

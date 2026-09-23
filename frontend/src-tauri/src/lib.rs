@@ -362,6 +362,23 @@ struct ChildHandle {
 
 impl ChildHandle {
     async fn kill(&mut self) {
+        // `Child::kill()` only terminates the exact PID we spawned (`uv`,
+        // e.g.) via TerminateProcess -- it does not touch that process's own
+        // children. `uv run jarvis serve` forks into `jarvis.exe` and that
+        // forks again into the venv's python.exe; none of them share a
+        // Windows Job Object, so killing just the top PID leaves every
+        // descendant running, still bound to the server port. That's the
+        // actual mechanism behind the backend surviving Quit -- this isn't
+        // new, `stop_all_with_timeout`'s 8s bound only fixed the *shell*
+        // hanging on exit, not this. `taskkill /T` recursively kills the
+        // whole tree in one call; no extra Windows API crate needed.
+        #[cfg(target_os = "windows")]
+        if let Some(pid) = self.child.id() {
+            let mut cmd = tokio::process::Command::new("taskkill");
+            cmd.args(["/T", "/F", "/PID", &pid.to_string()]);
+            suppress_console_window(&mut cmd);
+            let _ = cmd.status().await;
+        }
         let _ = self.child.kill().await;
     }
 }
@@ -440,6 +457,27 @@ impl BackendManager {
 }
 
 type SharedBackend = Arc<Mutex<BackendManager>>;
+
+/// Bound how long shutdown cleanup may block process exit. Without this, a
+/// stuck child (`ChildHandle::kill().await` never returning) or a boot task
+/// wedged in a non-yielding blocking call (`task.abort()` only takes effect
+/// at the next await point, so the `task.await` in `stop_all()` can hang if
+/// the boot task never yields -- e.g. closed mid-`uv sync`) leaves
+/// `app_handle.exit(0)` unreachable and the whole app just sits there.
+/// Observed 2026-09-23: an app closed mid-boot never exited and was still
+/// "running" hours later, blocking every scheduled pipeline until it was
+/// killed by hand. Exit unconditionally once the timeout fires; a straggler
+/// child gets caught by the stale-PID check on next launch instead of
+/// hanging the app forever.
+async fn stop_all_with_timeout(backend: &SharedBackend) {
+    let backend = backend.clone();
+    let stop = async move { backend.lock().await.stop_all().await };
+    if tokio::time::timeout(Duration::from_secs(8), stop).await.is_err() {
+        eprintln!(
+            "stop_all() did not finish within 8s -- exiting anyway; a child process may be left running"
+        );
+    }
+}
 
 /// Spawn exactly one tracked boot task. Keeping its handle lets recovery
 /// abort an in-flight endpoint check/model download before killing children.
@@ -3302,6 +3340,19 @@ async fn hide_overlay() -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let backend: SharedBackend = Arc::new(Mutex::new(BackendManager::default()));
+    // Guards the ExitRequested handler below against itself: AppHandle::exit()
+    // tears down every window, and closing the last one re-emits
+    // ExitRequested -- observed directly (trace logging): without this guard,
+    // prevent_exit() re-arms on that second firing, spawns another cleanup
+    // task, calls exit(0) again, which re-emits ExitRequested again... an
+    // unbounded loop that never lets the process actually terminate. The
+    // backend dies on the first pass (stop_all_with_timeout runs fine), but
+    // the app itself spins forever -- exactly the "Quit does nothing, still
+    // have to kill it from Task Manager" symptom, confirmed via a captured
+    // trace showing hundreds of repeated
+    // "[exit] app_handle.exit(0) returned" / "[exit] ExitRequested fired"
+    // pairs within seconds of a single close.
+    let is_exiting = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let configured_at_launch = match read_configured_inference_config() {
         Some(cfg) if cfg.confirmed => {
             // A confirmed source never consumes a staging slot. Clear any
@@ -3330,6 +3381,8 @@ pub fn run() {
 
     let boot_backend_ref = backend.clone();
     let boot_status_ref = status.clone();
+    let run_backend = backend.clone();
+    let run_is_exiting = is_exiting.clone();
 
     tauri::Builder::default()
         .manage(backend.clone())
@@ -3365,6 +3418,7 @@ pub fn run() {
                 .item(&quit)
                 .build()?;
 
+            let tray_backend = backend.clone();
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("OpenJarvis")
@@ -3381,7 +3435,23 @@ pub fn run() {
                         }
                     }
                     "quit" => {
-                        app.exit(0);
+                        // Same reasoning as the ExitRequested handler below:
+                        // don't let the process die before the backend child
+                        // is actually dead. Whether AppHandle::exit() re-fires
+                        // ExitRequested (so that handler's cleanup would also
+                        // run) isn't something to rely on -- clean up
+                        // explicitly on this path too. stop_all() is
+                        // idempotent (already-None children no-op), so
+                        // running it twice if the paths do overlap is harmless.
+                        let b = tray_backend.clone();
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            eprintln!("[quit] tray Quit clicked, calling stop_all_with_timeout");
+                            stop_all_with_timeout(&b).await;
+                            eprintln!("[quit] stop_all_with_timeout returned, calling app.exit(0)");
+                            app.exit(0);
+                            eprintln!("[quit] app.exit(0) returned");
+                        });
                     }
                     _ => {}
                 })
@@ -3454,11 +3524,36 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building OpenJarvis Desktop")
-        .run(move |_app, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                let b = backend.clone();
+        .run(move |app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                // exit(0) below closes every window, and closing the last one
+                // re-emits ExitRequested right back into this same handler.
+                // Without this guard that re-arms prevent_exit(), spawns a
+                // second cleanup task, and calls exit(0) again -- forever.
+                // Only the first firing should be intercepted; let a
+                // self-triggered repeat fall through and actually exit.
+                if run_is_exiting.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
+                // Without prevent_exit(), the process tears down as soon as
+                // this closure returns -- the spawned cleanup task below
+                // (and the tokio::process::Child::kill().await inside
+                // stop_all()) gets abandoned mid-flight, never actually
+                // killing the backend child. That's exactly how the backend
+                // orphans itself on every window close: BackendManager's
+                // kill_on_drop only fires if the Child is actually dropped,
+                // which never happens when the whole process is torn down
+                // out from under the future that owns it. Hold the process
+                // open until stop_all() genuinely finishes, then exit.
+                api.prevent_exit();
+                let b = run_backend.clone();
+                let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
-                    b.lock().await.stop_all().await;
+                    eprintln!("[exit] ExitRequested fired, calling stop_all_with_timeout");
+                    stop_all_with_timeout(&b).await;
+                    eprintln!("[exit] stop_all_with_timeout returned, calling app_handle.exit(0)");
+                    app_handle.exit(0);
+                    eprintln!("[exit] app_handle.exit(0) returned");
                 });
             }
         });

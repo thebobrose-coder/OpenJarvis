@@ -485,9 +485,21 @@ export interface AgentMessage {
 // Morning digest
 // ---------------------------------------------------------------------------
 
+export interface DigestArticle {
+  title: string;
+  url: string;
+  source: string;
+  category: string;
+  score: number;
+  published_at: string;
+}
+
 export interface Digest {
   text: string;
   sections: Record<string, unknown>;
+  /** Ranked article list -- only populated for the "culture" category
+   * (Culture & Sports panel). Empty/absent for every other category. */
+  articles?: DigestArticle[];
   sources_used: string[];
   generated_at: string;
   model_used: string;
@@ -496,13 +508,6 @@ export interface Digest {
   /** Absolute filesystem path, only meaningful to the Tauri build (see
    * resolveDigestAudioSrc). Null when audio_available is false. */
   audio_path: string | null;
-}
-
-export interface DigestHistoryEntry {
-  text: string;
-  generated_at: string;
-  model_used: string;
-  voice_used: string;
 }
 
 export interface DigestSchedule {
@@ -547,12 +552,6 @@ export async function resolveDigestAudioSrc(digest: Digest, prefix = '/api/diges
     return convertFileSrc(digest.audio_path);
   }
   return digest.audio_available ? fetchDigestAudioUrl(prefix) : null;
-}
-
-export async function fetchDigestHistory(prefix = '/api/digest'): Promise<DigestHistoryEntry[]> {
-  const res = await apiFetch(`${prefix}/history`);
-  if (!res.ok) throw new Error(`Failed: ${res.status}`);
-  return res.json();
 }
 
 export async function regenerateDigest(prefix = '/api/digest'): Promise<{ status: string; text: string }> {
@@ -648,6 +647,90 @@ export async function fetchWeather(): Promise<WeatherPayload | null> {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Store Performance -- live Shopify catalog diff + Search Console query
+// performance. Two independent sources that come online separately, so
+// the payload is never all-or-nothing -- each section has its own
+// `connected` flag (and an optional `error` when connected but the fetch
+// itself failed, e.g. a missing OAuth scope or an unverified property).
+// ---------------------------------------------------------------------------
+
+export interface ShopifyPerformanceSection {
+  connected: boolean;
+  error?: string;
+  catalog_count?: number;
+  new_today?: { title: string; price: number | null }[];
+  price_changes?: { title: string; old_price: number | null; new_price: number | null }[];
+  stockouts?: { title: string }[];
+}
+
+export interface SearchConsoleQuery {
+  query: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+export interface SearchConsolePerformanceSection {
+  connected: boolean;
+  error?: string;
+  top_queries?: SearchConsoleQuery[];
+  total_clicks?: number;
+  total_impressions?: number;
+  avg_position?: number;
+}
+
+export interface StorePerformanceEntry {
+  slug: string;
+  display_name: string;
+  shopify: ShopifyPerformanceSection;
+  search_console: SearchConsolePerformanceSection;
+}
+
+export interface StorePerformancePayload {
+  stores: StorePerformanceEntry[];
+}
+
+export async function fetchStorePerformance(): Promise<StorePerformancePayload | null> {
+  const res = await apiFetch('/api/store-performance');
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Breaking news -- the breaking_news_monitor operator's latest alert, if
+// any. Sparse/event-driven, unlike the scheduled digests above: most of
+// its 15-minute cycles produce nothing, by design.
+// ---------------------------------------------------------------------------
+
+export interface BreakingNewsAlert {
+  headline: string;
+  summary: string;
+  url: string;
+  alerted_at: string;
+  audio_available: boolean;
+  audio_path: string | null;
+}
+
+export async function fetchBreakingNews(): Promise<BreakingNewsAlert | null> {
+  const res = await apiFetch('/api/breaking-news');
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
+}
+
+export async function resolveBreakingNewsAudioSrc(
+  alert: BreakingNewsAlert,
+): Promise<string | null> {
+  if (isTauri() && alert.audio_path) {
+    const { convertFileSrc } = await import('@tauri-apps/api/core');
+    return convertFileSrc(alert.audio_path);
+  }
+  return alert.audio_available ? `${getBase()}/api/breaking-news/audio` : null;
 }
 
 export async function fetchManagedAgents(): Promise<ManagedAgent[]> {

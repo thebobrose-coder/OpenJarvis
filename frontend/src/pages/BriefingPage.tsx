@@ -1,13 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, Newspaper } from 'lucide-react';
-import {
-  fetchDigest,
-  fetchDigestHistory,
-  regenerateDigest,
-  resolveDigestAudioSrc,
-} from '../lib/api';
-import type { Digest, DigestHistoryEntry } from '../lib/api';
-import { AudioPlayer } from '../components/Chat/AudioPlayer';
+import { Pause, Play, RefreshCw, Newspaper } from 'lucide-react';
+import { useDailyBriefAudio } from '../lib/DailyBriefAudioContext';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
@@ -19,45 +11,15 @@ function formatDate(iso: string): string {
   });
 }
 
+// Playback comes from the shared DailyBriefAudioContext (one real <audio>
+// element, owned at the Layout level) rather than this page's own fetch +
+// AudioPlayer instance -- the sidebar's pinned player is always mounted
+// alongside this page, and two independent players pointed at the same
+// physical file caused a WebView2 media pipeline decode error on both.
 export function BriefingPage() {
-  const [digest, setDigest] = useState<Digest | null>(null);
-  const [history, setHistory] = useState<DigestHistoryEntry[]>([]);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [regenerating, setRegenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [d, h] = await Promise.all([fetchDigest(), fetchDigestHistory().catch(() => [])]);
-      setDigest(d);
-      setHistory(h);
-      setAudioUrl(d ? await resolveDigestAudioSrc(d).catch(() => null) : null);
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load the briefing.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const handleRegenerate = async () => {
-    setRegenerating(true);
-    setError(null);
-    try {
-      await regenerateDigest();
-      await load();
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to regenerate the briefing.');
-    } finally {
-      setRegenerating(false);
-    }
-  };
+  const { digest, audioUrl, loading, error, regenerating, playing, regenerate, toggleAudio } =
+    useDailyBriefAudio();
+  const handleRegenerate = regenerate;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden px-6 py-10">
@@ -106,7 +68,23 @@ export function BriefingPage() {
           </div>
         ) : (
           <>
-            {audioUrl && <AudioPlayer src={audioUrl} />}
+            {audioUrl && (
+              <div
+                className="flex items-center gap-3 px-4 py-3 rounded-xl mb-3"
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+              >
+                <button
+                  onClick={toggleAudio}
+                  className="flex items-center justify-center w-9 h-9 rounded-full transition-colors shrink-0 cursor-pointer"
+                  style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
+                >
+                  {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+                </button>
+                <span className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                  {playing ? 'Playing Daily Brief' : 'Play Daily Brief'}
+                </span>
+              </div>
+            )}
 
             <div
               className="rounded-xl p-4 text-sm leading-relaxed whitespace-pre-wrap"
@@ -119,28 +97,6 @@ export function BriefingPage() {
               {digest.text}
             </div>
           </>
-        )}
-
-        {history.length > 0 && (
-          <div className="mt-8 shrink-0">
-            <h2 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--color-text-tertiary)' }}>
-              Past briefings
-            </h2>
-            <div className="flex flex-col gap-2">
-              {history.map((entry, i) => (
-                <div
-                  key={i}
-                  className="rounded-lg p-3 text-xs"
-                  style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
-                >
-                  <div className="font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
-                    {formatDate(entry.generated_at)}
-                  </div>
-                  <div style={{ color: 'var(--color-text-tertiary)' }}>{entry.text}</div>
-                </div>
-              ))}
-            </div>
-          </div>
         )}
       </div>
     </div>

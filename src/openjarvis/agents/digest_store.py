@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from openjarvis.core.paths import get_config_dir
 
@@ -30,6 +30,11 @@ class DigestArtifact:
     # a separate store -- same pattern, different content, one place to
     # migrate.
     category: str = "general"
+    # Ranked article list for categories that carry one (currently only
+    # "culture" -- the consolidated soccer/motorsport/entertainment panel).
+    # Empty for every other category. Each entry:
+    # {title, url, source, category, score, published_at}.
+    articles: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class DigestStore:
@@ -79,6 +84,10 @@ class DigestStore:
             self._conn.execute(
                 "ALTER TABLE digests ADD COLUMN category TEXT NOT NULL DEFAULT 'general'"
             )
+        if "articles_json" not in existing:
+            self._conn.execute(
+                "ALTER TABLE digests ADD COLUMN articles_json TEXT NOT NULL DEFAULT '[]'"
+            )
 
     def save(self, artifact: DigestArtifact) -> None:
         """Save a digest artifact."""
@@ -87,8 +96,8 @@ class DigestStore:
             INSERT INTO digests
                 (text, audio_path, sections, sources_used,
                  generated_at, model_used, voice_used,
-                 quality_score, evaluator_feedback, category)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 quality_score, evaluator_feedback, category, articles_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 artifact.text,
@@ -101,6 +110,7 @@ class DigestStore:
                 artifact.quality_score,
                 artifact.evaluator_feedback,
                 artifact.category,
+                json.dumps(artifact.articles),
             ),
         )
         self._conn.commit()
@@ -117,6 +127,7 @@ class DigestStore:
             quality_score=row[7] if len(row) > 7 else 0.0,
             evaluator_feedback=row[8] if len(row) > 8 else "",
             category=row[9] if len(row) > 9 else "general",
+            articles=json.loads(row[10]) if len(row) > 10 and row[10] else [],
         )
 
     def get_latest(self, category: str = "general") -> Optional[DigestArtifact]:
@@ -124,7 +135,7 @@ class DigestStore:
         row = self._conn.execute(
             "SELECT text, audio_path, sections, sources_used,"
             " generated_at, model_used, voice_used,"
-            " quality_score, evaluator_feedback, category"
+            " quality_score, evaluator_feedback, category, articles_json"
             " FROM digests WHERE category = ? ORDER BY id DESC LIMIT 1",
             (category,),
         ).fetchone()
@@ -159,7 +170,7 @@ class DigestStore:
         row = self._conn.execute(
             "SELECT text, audio_path, sections, sources_used,"
             " generated_at, model_used, voice_used,"
-            " quality_score, evaluator_feedback, category"
+            " quality_score, evaluator_feedback, category, articles_json"
             " FROM digests WHERE generated_at LIKE ? AND category = ?"
             " ORDER BY id DESC LIMIT 1",
             (f"{today}%", category),
@@ -173,7 +184,7 @@ class DigestStore:
         rows = self._conn.execute(
             "SELECT text, audio_path, sections, sources_used,"
             " generated_at, model_used, voice_used,"
-            " quality_score, evaluator_feedback, category"
+            " quality_score, evaluator_feedback, category, articles_json"
             " FROM digests WHERE category = ? ORDER BY id DESC LIMIT ?",
             (category, limit),
         ).fetchall()

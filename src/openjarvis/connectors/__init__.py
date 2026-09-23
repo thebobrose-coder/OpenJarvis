@@ -129,6 +129,22 @@ except ImportError:
     pass
 
 try:
+    # ShopifyConnector has no class-level @ConnectorRegistry.register --
+    # the store list is dynamic (Data Sources "Add Store" flow), so each
+    # configured store's connector is registered here at import time
+    # instead, one per store.
+    from openjarvis.connectors import shopify_stores as _shopify_stores
+
+    _shopify_stores.register_all_configured_stores()
+except ImportError:
+    pass
+
+try:
+    import openjarvis.connectors.google_search_console  # noqa: F401
+except ImportError:
+    pass
+
+try:
     import openjarvis.connectors.github_notifications  # noqa: F401
 except ImportError:
     pass

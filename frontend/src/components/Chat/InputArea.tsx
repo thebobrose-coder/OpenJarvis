@@ -100,6 +100,8 @@ export function InputArea() {
   const modelLoading = useAppStore((s) => s.modelLoading);
   const deepResearch = useAppStore((s) => s.deepResearch);
   const setDeepResearch = useAppStore((s) => s.setDeepResearch);
+  const pendingChatPrompt = useAppStore((s) => s.pendingChatPrompt);
+  const setPendingChatPrompt = useAppStore((s) => s.setPendingChatPrompt);
   const corpusSync = useResearchCorpusSync(deepResearch);
   const isCurrentChatStreaming = streamState.isStreaming && streamState.conversationId === activeId;
 
@@ -161,6 +163,16 @@ export function InputArea() {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 200) + 'px';
   }, [input]);
+
+  // Pick up a draft prompt seeded by another page (e.g. a dashboard
+  // article's "Ask" button), then clear it so it doesn't persist across
+  // future visits to chat.
+  useEffect(() => {
+    if (!pendingChatPrompt) return;
+    setInput(pendingChatPrompt);
+    setPendingChatPrompt(null);
+    textareaRef.current?.focus();
+  }, [pendingChatPrompt, setPendingChatPrompt]);
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort();

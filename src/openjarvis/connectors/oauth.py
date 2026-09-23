@@ -59,13 +59,17 @@ GOOGLE_ALL_SCOPES: List[str] = [
     "email",
     "profile",
     "https://www.googleapis.com/auth/drive.readonly",
-    # calendar (not .readonly) so the proactive agent can accept/decline events.
-    "https://www.googleapis.com/auth/calendar",
+    # Narrowed to read-only 2026-09-22: accept_event/decline_event on
+    # GCalendarConnector and delete_message/archive_message on
+    # GmailConnector both exist but are not exposed via mcp_tools() --
+    # nothing reachable by an agent actually uses the write capability
+    # today. Widen back to "calendar" if/when those get wired up and
+    # gated behind approval.
+    "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/contacts.readonly",
-    # gmail.modify (a superset of gmail.readonly) so the proactive agent
-    # can trash and label-modify (archive) emails after user approval.
-    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/tasks.readonly",
+    "https://www.googleapis.com/auth/webmasters.readonly",
 ]
 
 OAUTH_PROVIDERS: Dict[str, OAuthProvider] = {
@@ -84,6 +88,7 @@ OAUTH_PROVIDERS: Dict[str, OAuthProvider] = {
             "gcontacts",
             "gmail",
             "google_tasks",
+            "google_search_console",
         ),
         credential_files=(
             "google.json",
@@ -92,6 +97,7 @@ OAUTH_PROVIDERS: Dict[str, OAuthProvider] = {
             "gcontacts.json",
             "gmail.json",
             "google_tasks.json",
+            "google_search_console.json",
         ),
     ),
     "strava": OAuthProvider(

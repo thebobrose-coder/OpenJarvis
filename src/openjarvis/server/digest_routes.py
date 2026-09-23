@@ -52,6 +52,17 @@ def _generate_digest_sync(category: str) -> str:
         return jarvis.ask(prompt, agent="morning_digest", digest_category=category)
 
 
+def _generate_culture_digest_sync(db_path: str) -> str:
+    """Culture & Sports digest -- deterministic collection/ranking plus one
+    short LLM call, not the full Jarvis().ask() agent tool-loop above (see
+    agents/culture_digest.py for why: the ranking needs no model call, only
+    the summary write-up does).
+    """
+    from openjarvis.agents.culture_digest import generate_culture_digest
+
+    return generate_culture_digest(db_path=db_path)
+
+
 def create_digest_router(
     *, db_path: str = "", category: str = "general", prefix: str = "/api/digest"
 ) -> APIRouter:
@@ -79,6 +90,7 @@ def create_digest_router(
         return {
             "text": artifact.text,
             "sections": artifact.sections,
+            "articles": artifact.articles,
             "sources_used": artifact.sources_used,
             "generated_at": artifact.generated_at.isoformat(),
             "model_used": artifact.model_used,
@@ -113,7 +125,10 @@ def create_digest_router(
     async def generate_digest():
         """Force re-generation of the digest."""
         try:
-            result = await asyncio.to_thread(_generate_digest_sync, category)
+            if category == "culture":
+                result = await asyncio.to_thread(_generate_culture_digest_sync, db_path)
+            else:
+                result = await asyncio.to_thread(_generate_digest_sync, category)
             return {"status": "ok", "text": result}
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))

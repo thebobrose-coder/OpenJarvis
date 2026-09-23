@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -22,13 +22,9 @@ import {
   Play,
   Sun,
 } from 'lucide-react';
-import {
-  fetchDigest,
-  fetchWeather,
-  regenerateDigest,
-  resolveDigestAudioSrc,
-} from '../../lib/api';
-import type { Digest, WeatherPayload } from '../../lib/api';
+import { fetchWeather, regenerateDigest } from '../../lib/api';
+import type { WeatherPayload } from '../../lib/api';
+import { useDigestAudio } from '../../hooks/useDigestAudio';
 import { DashboardPanel } from './DashboardPanel';
 
 const WEATHER_PREFIX = '/api/digest/weather';
@@ -69,13 +65,19 @@ function formatHour(iso: string): string {
 
 export function WeatherPanel() {
   const [weather, setWeather] = useState<WeatherPayload | null>(null);
-  const [digest, setDigest] = useState<Digest | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const {
+    digest,
+    audioUrl,
+    audioRef,
+    playing,
+    load: loadNarration,
+    toggleAudio,
+    setPlaying,
+  } = useDigestAudio(WEATHER_PREFIX, { autoLoad: false });
 
   const loadLive = useCallback(async () => {
     try {
@@ -89,19 +91,11 @@ export function WeatherPanel() {
     }
   }, []);
 
-  const loadNarration = useCallback(async () => {
-    try {
-      const d = await fetchDigest(WEATHER_PREFIX);
-      setDigest(d);
-      setAudioUrl(d ? await resolveDigestAudioSrc(d, WEATHER_PREFIX).catch(() => null) : null);
-    } catch {
-      // Narration is a secondary affordance -- a failure here shouldn't
-      // block the live graphical read above it.
-    }
-  }, []);
-
   useEffect(() => {
     loadLive();
+    // Narration is a secondary affordance -- a failure here (swallowed
+    // inside the hook's own error state, which this panel doesn't surface)
+    // shouldn't block the live graphical read above it.
     loadNarration();
     const interval = setInterval(loadLive, LIVE_REFRESH_MS);
     return () => clearInterval(interval);
@@ -119,17 +113,6 @@ export function WeatherPanel() {
     }
   };
 
-  const toggleAudio = () => {
-    const el = audioRef.current;
-    if (!el) return;
-    if (playing) {
-      el.pause();
-      setPlaying(false);
-    } else {
-      el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
-    }
-  };
-
   const current = weather?.current;
   const Icon = current ? conditionIcon(current.icon) : CloudSun;
   const forecast = (weather?.forecast ?? []).slice(0, 8);
@@ -144,7 +127,7 @@ export function WeatherPanel() {
       icon={Icon}
       title="Weather"
       tag="15 min"
-      size="wide"
+      size="half"
       priority
       loading={loading}
       error={error}

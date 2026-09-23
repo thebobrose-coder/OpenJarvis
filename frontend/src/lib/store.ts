@@ -259,6 +259,11 @@ interface AppState {
   // Model loading
   modelLoading: boolean;
   setModelLoading: (loading: boolean) => void;
+
+  // Chat composer prefill -- set by other pages (e.g. a dashboard article's
+  // "Ask" button) to seed the next chat visit with a draft prompt.
+  pendingChatPrompt: string | null;
+  setPendingChatPrompt: (prompt: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => {
@@ -578,6 +583,10 @@ export const useAppStore = create<AppState>((set, get) => {
     // ── Model loading ───────────────────────────────────────────────
     modelLoading: false,
     setModelLoading: (loading) => set({ modelLoading: loading }),
+
+    // ── Chat composer prefill ───────────────────────────────────────
+    pendingChatPrompt: null,
+    setPendingChatPrompt: (prompt) => set({ pendingChatPrompt: prompt }),
 
     // ── Opt-in sharing ──────────────────────────────────────────────
 

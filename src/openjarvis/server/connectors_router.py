@@ -515,6 +515,49 @@ def create_connectors_router():
         try:
             auth_type = getattr(instance, "auth_type", "unknown")
 
+            if connector_id.startswith("shopify_"):
+                # Checked before auth_type is even consulted: Shopify's
+                # auth_type is "oauth", which the branch below also matches
+                # and handles first in an if/elif chain -- since none of its
+                # internal conditions (req.email/password, req.code,
+                # req.token) apply to Shopify's three req.config fields, that
+                # branch silently did nothing and fell through to the
+                # generic "pending" response, so oauth_start was never
+                # returned and the browser redirect never fired. Confirmed
+                # live 2026-09-22 (curled /connect directly, got
+                # {"status":"pending"} with no oauth_start).
+                #
+                # Multi-store 2026-09-22: connector_id is "shopify_{slug}"
+                # (one per store, registered dynamically by
+                # connectors/shopify_stores.py) -- the slug is recovered
+                # from the id itself rather than threaded through as a
+                # separate field, since it's a 1:1 derivation.
+                store_slug = connector_id.removeprefix("shopify_")
+                config = req.config or {}
+                shop_domain = config.get("shop_domain")
+                client_id = config.get("client_id")
+                client_secret = config.get("client_secret")
+                if not all(
+                    isinstance(v, str) and v.strip()
+                    for v in (shop_domain, client_id, client_secret)
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Shop domain, Client ID, and Client Secret are all required",
+                    )
+                instance.save_app_credentials(
+                    shop_domain=shop_domain,
+                    client_id=client_id,
+                    client_secret=client_secret,
+                )
+                return {
+                    "connector_id": connector_id,
+                    "connected": False,
+                    "status": "oauth_required",
+                    "oauth_start": f"/v1/shopify-oauth/{store_slug}/start",
+                    "sync_status": None,
+                }
+
             if auth_type == "filesystem":
                 # Filesystem connectors accept a vault / directory path.
                 if req.path:
