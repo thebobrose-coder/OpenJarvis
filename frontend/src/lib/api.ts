@@ -545,13 +545,21 @@ export function fetchDigestAudioUrl(prefix = '/api/digest'): string {
  *
  * The plain browser-facing copy has no asset protocol and doesn't hit this
  * WebView2-specific issue at all, so it keeps using the direct HTTP URL.
+ *
+ * Every regen overwrites the same digest.wav, so the bare URL never changes
+ * and a long-lived <audio> element (the Layout-level shared one) never
+ * reloads -- it keeps the old file's metadata against new bytes and fails
+ * to decode. The ?v=generated_at suffix gives each regen a distinct src.
+ * Tauri's asset protocol resolves the file from the URI path only, so the
+ * query is ignored on that side.
  */
 export async function resolveDigestAudioSrc(digest: Digest, prefix = '/api/digest'): Promise<string | null> {
+  const version = `?v=${encodeURIComponent(digest.generated_at)}`;
   if (isTauri() && digest.audio_path) {
     const { convertFileSrc } = await import('@tauri-apps/api/core');
-    return convertFileSrc(digest.audio_path);
+    return convertFileSrc(digest.audio_path) + version;
   }
-  return digest.audio_available ? fetchDigestAudioUrl(prefix) : null;
+  return digest.audio_available ? fetchDigestAudioUrl(prefix) + version : null;
 }
 
 export async function regenerateDigest(prefix = '/api/digest'): Promise<{ status: string; text: string }> {

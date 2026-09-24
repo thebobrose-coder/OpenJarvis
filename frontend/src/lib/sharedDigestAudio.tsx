@@ -80,7 +80,13 @@ export function createSharedDigestAudio(prefix: string) {
         el.pause();
         setPlaying(false);
       } else {
-        el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+        el.play()
+          .then(() => setPlaying(true))
+          .catch((e) => {
+            console.error(`[digest audio ${prefix}] playback failed:`, e, el.error);
+            setPlaying(false);
+            setError(`Audio playback failed: ${el.error?.message || e?.message || 'unknown error'}`);
+          });
       }
     }, [playing]);
 
