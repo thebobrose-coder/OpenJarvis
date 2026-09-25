@@ -5,7 +5,7 @@ import type { BreakingNewsAlert } from '../lib/api';
 const POLL_MS = 60 * 1000;
 
 /**
- * Latest breaking_news_monitor alert, if any. Distinct from the digest
+ * Latest breaking-news alert (Hermes's alert feed), if any. Distinct from the digest
  * hooks -- there's no "today's alert" to fall back to, so `alert` is
  * genuinely null (not loading, not error) whenever the operator hasn't
  * fired since it was last checked. Polls rather than fetching once since

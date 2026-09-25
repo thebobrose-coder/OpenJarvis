@@ -19,9 +19,9 @@ async function openExternal(url: string) {
 /**
  * "Latest News" dock -- sits at the bottom of the sidebar's content well,
  * just above the nav menu, always visible regardless of which page is
- * open. Breaking news up top (from the breaking_news_monitor operator --
- * NOT the Culture & Sports digest, a separate 15-minute-interval operator
- * with a deliberately high alert bar; most cycles produce nothing, so this
+ * open. Breaking news up top (Hermes's alert feed since 2026-09-25, proxied
+ * by /api/breaking-news -- NOT the Culture & Sports digest; alerts have a
+ * deliberately high bar and most cycles produce nothing, so this
  * renders "No current breaking news" rather than substituting something
  * else), the flagship Daily Brief player beneath it as a persistent
  * anchor, connector status underneath.
@@ -90,7 +90,21 @@ export function LatestNewsPanel() {
             >
               {breaking.alert.headline}
             </button>
-          ) : (
+          ) : null}
+          {breaking.alert?.tickers && breaking.alert.tickers.length > 0 ? (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {breaking.alert.tickers.map((t) => (
+                <span
+                  key={t}
+                  className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {breaking.alert ? null : (
             <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
               No current breaking news
             </span>

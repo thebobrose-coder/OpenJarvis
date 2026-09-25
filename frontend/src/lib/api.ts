@@ -743,6 +743,11 @@ export interface BreakingNewsAlert {
   alerted_at: string;
   audio_available: boolean;
   audio_path: string | null;
+  // Hermes alert feed extras (2026-09-25 proxy).
+  severity?: number | null;
+  tickers?: string[];
+  why?: string;
+  stale?: boolean;
 }
 
 export async function fetchBreakingNews(): Promise<BreakingNewsAlert | null> {
@@ -759,7 +764,10 @@ export async function resolveBreakingNewsAudioSrc(
     const { convertFileSrc } = await import('@tauri-apps/api/core');
     return convertFileSrc(alert.audio_path);
   }
-  return alert.audio_available ? `${getBase()}/api/breaking-news/audio` : null;
+  // Versioned per alert so a new alert's audio reloads the <audio> element.
+  return alert.audio_available
+    ? `${getBase()}/api/breaking-news/audio?v=${encodeURIComponent(alert.alerted_at)}`
+    : null;
 }
 
 export async function fetchManagedAgents(): Promise<ManagedAgent[]> {
