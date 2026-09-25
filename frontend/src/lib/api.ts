@@ -700,6 +700,10 @@ export interface StorePerformanceEntry {
 
 export interface StorePerformancePayload {
   stores: StorePerformanceEntry[];
+  // Freshness of the Hermes panel feed this route proxies.
+  generated_at?: string;
+  age_seconds?: number;
+  stale?: boolean;
 }
 
 export async function fetchStorePerformance(): Promise<StorePerformancePayload | null> {

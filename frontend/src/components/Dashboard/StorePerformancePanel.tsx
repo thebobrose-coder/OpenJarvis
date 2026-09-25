@@ -6,6 +6,13 @@ import { DashboardPanel } from './DashboardPanel';
 
 const REFRESH_MS = 30 * 60 * 1000;
 
+function formatAge(seconds: number): string {
+  const min = Math.floor(seconds / 60);
+  if (min < 1) return 'just now';
+  if (min < 120) return `${min} min ago`;
+  return `${Math.floor(min / 60)} h ago`;
+}
+
 function StoreSection({ store }: { store: StorePerformanceEntry }) {
   const { shopify, search_console: gsc } = store;
 
@@ -126,7 +133,9 @@ function StoreSection({ store }: { store: StorePerformanceEntry }) {
  * BUSINESS_ROADMAP.md). Multi-store (2026-09-22): one section per store
  * added via Data Sources' "Add Store" flow; each store's two sources are
  * still independent (a store can have Shopify connected without Search
- * Console configured, or vice versa).
+ * Console configured, or vice versa). Since 2026-09-25 the data comes from
+ * the Hermes panel feed (proxied by /api/store-performance), so the panel
+ * also shows its age and a stale marker when Hermes has fallen behind.
  */
 export function StorePerformancePanel() {
   const [data, setData] = useState<StorePerformancePayload | null>(null);
@@ -153,6 +162,22 @@ export function StorePerformancePanel() {
 
   const stores = data?.stores ?? [];
 
+  const freshness =
+    data?.age_seconds != null ? (
+      <div className="flex items-center gap-2 text-[11px] mb-3" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span>Updated {formatAge(data.age_seconds)}</span>
+        {data.stale && (
+          <span
+            className="px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide text-[10px]"
+            style={{ color: 'var(--color-error)', border: '1px solid var(--color-error)' }}
+            title="The Hermes feed has missed its last refreshes -- showing the last good copy."
+          >
+            stale
+          </span>
+        )}
+      </div>
+    ) : null;
+
   return (
     <DashboardPanel
       icon={ShoppingBag}
@@ -164,6 +189,7 @@ export function StorePerformancePanel() {
       error={error}
       onRegenerate={load}
     >
+      {freshness}
       {stores.length === 0 ? (
         <p style={{ color: 'var(--color-text-tertiary)' }}>
           No stores configured -- add one in Data Sources.

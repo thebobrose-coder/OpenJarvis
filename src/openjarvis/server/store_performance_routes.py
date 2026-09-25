@@ -1,130 +1,72 @@
-"""FastAPI route for the Store Performance panel -- live Shopify catalog
-diff plus Google Search Console query performance, per configured store.
+"""FastAPI route for the Store Performance panel -- a read-through proxy for
+the Hermes panel feed.
 
-Unlike weather_routes.py's single-source pattern, each store combines two
-independent sources that come online at different times, so nothing here
-is all-or-nothing: each section reports its own `connected` flag and the
-frontend renders whichever is/isn't available, per store.
+Hermes (the ecom-seo role) now owns the Shopify catalog diff + Search
+Console pull and refreshes it every 30 minutes; this route just fetches
+`/panels/store_performance` from the local Hermes bridge and passes its
+`data` through, tagged with freshness. The payload shape is unchanged from
+when OpenJarvis computed it itself (see hq/contracts/openjarvis-hermes.md
+v0.3 §2).
 
-Multi-store (2026-09-22): iterates every store in
-connectors/shopify_stores.py's registry rather than one hardcoded
-connector/site_url -- see that module for how stores get added (the Data
-Sources "Add Store" flow).
+The last good response is kept in memory, so a Hermes restart or a missed
+refresh degrades to a stale-flagged copy rather than an empty panel.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timezone
 
-from fastapi import APIRouter
+import httpx
+from fastapi import APIRouter, HTTPException
 
 store_performance_router = APIRouter(
     prefix="/api/store-performance", tags=["store-performance"]
 )
 
+HERMES_PANELS_URL = os.environ.get(
+    "HERMES_PANELS_URL", "http://127.0.0.1:8643/panels/store_performance"
+)
+_TIMEOUT_S = 10.0
+# 4 missed 30-minute refreshes.
+_STALE_AFTER_S = 7200
 
-def _diff_catalog(today: list, yesterday: list) -> dict:
-    """Compute new listings, price changes, and stockouts between two snapshots."""
-    by_id_yesterday = {p["id"]: p for p in yesterday}
-    yesterday_ids = set(by_id_yesterday.keys())
+_cache: dict | None = None
 
-    new_today = [p for p in today if p["id"] not in yesterday_ids]
-    price_changes = []
-    stockouts = []
-    for p in today:
-        prev = by_id_yesterday.get(p["id"])
-        if prev is None:
-            continue
-        if prev.get("price") != p.get("price"):
-            price_changes.append(
-                {
-                    "title": p["title"],
-                    "old_price": prev.get("price"),
-                    "new_price": p.get("price"),
-                }
-            )
-        prev_inventory = prev.get("inventory") or 0
-        cur_inventory = p.get("inventory") or 0
-        if prev_inventory > 0 and cur_inventory <= 0:
-            stockouts.append({"title": p["title"]})
 
+def _age_from(generated_at: str) -> int:
+    ts = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return max(0, int((datetime.now(timezone.utc) - ts).total_seconds()))
+
+
+def _shape(payload: dict, age_seconds: int, stale: bool) -> dict:
     return {
-        "new_today": [{"title": p["title"], "price": p.get("price")} for p in new_today],
-        "price_changes": price_changes,
-        "stockouts": stockouts,
+        **payload["data"],
+        "generated_at": payload["generated_at"],
+        "age_seconds": age_seconds,
+        "stale": stale,
     }
-
-
-def _get_shopify_section(store_slug: str) -> dict:
-    from openjarvis.agents.shopify_snapshot_store import ShopifySnapshotStore
-    from openjarvis.connectors.shopify import ShopifyConnector
-
-    connector = ShopifyConnector(store_slug=store_slug)
-    if not connector.is_connected():
-        return {"connected": False}
-
-    try:
-        catalog = connector.fetch_catalog_snapshot()
-    except Exception as exc:  # noqa: BLE001 -- surface as a soft error, not a 500
-        return {"connected": True, "error": str(exc)}
-
-    store = ShopifySnapshotStore()
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    yesterday_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-
-    if store.get_snapshot(store_slug, today_str) is None:
-        store.save_snapshot(store_slug, today_str, catalog)
-
-    yesterday_snapshot = store.get_snapshot(store_slug, yesterday_str)
-    store.close()
-
-    diff = (
-        _diff_catalog(catalog, yesterday_snapshot)
-        if yesterday_snapshot is not None
-        else {"new_today": [], "price_changes": [], "stockouts": []}
-    )
-
-    return {
-        "connected": True,
-        "catalog_count": len(catalog),
-        **diff,
-    }
-
-
-def _get_search_console_section(gsc_site_url: str) -> dict:
-    if not gsc_site_url:
-        return {"connected": False}
-
-    from openjarvis.connectors.google_search_console import GoogleSearchConsoleConnector
-
-    connector = GoogleSearchConsoleConnector()
-    if not connector.is_connected():
-        return {"connected": False}
-
-    try:
-        data = connector.fetch_search_analytics(gsc_site_url)
-    except Exception as exc:  # noqa: BLE001 -- surface as a soft error, not a 500
-        return {"connected": True, "error": str(exc)}
-
-    return {"connected": True, **data}
 
 
 @store_performance_router.get("")
 async def get_store_performance() -> dict:
-    """Return the latest Shopify catalog diff and Search Console query data
-    for every configured store."""
-    from openjarvis.connectors.shopify_stores import load_stores
+    """Return Hermes's latest per-store Shopify + Search Console data."""
+    global _cache
 
-    stores = []
-    for slug, meta in load_stores().items():
-        stores.append(
-            {
-                "slug": slug,
-                "display_name": meta.get("display_name", slug),
-                "shopify": _get_shopify_section(slug),
-                "search_console": _get_search_console_section(
-                    meta.get("gsc_site_url", "")
-                ),
-            }
-        )
-    return {"stores": stores}
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+            resp = await client.get(HERMES_PANELS_URL)
+        if resp.status_code == 200:
+            payload = resp.json()
+            age = int(payload.get("age_seconds") or 0)
+            shaped = _shape(payload, age, age > _STALE_AFTER_S)
+            _cache = payload
+            return shaped
+    except (httpx.HTTPError, ValueError, KeyError):
+        pass
+
+    if _cache is None:
+        raise HTTPException(status_code=503, detail="Hermes panel feed unavailable")
+    return _shape(_cache, _age_from(_cache["generated_at"]), True)
