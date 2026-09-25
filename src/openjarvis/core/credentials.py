@@ -64,6 +64,8 @@ TOOL_CREDENTIALS: dict[str, list[str]] = {
     "xmpp": ["XMPP_JID", "XMPP_PASSWORD"],
     "feishu": ["FEISHU_APP_ID", "FEISHU_APP_SECRET"],
     "nostr": ["NOSTR_PRIVATE_KEY"],
+    # Bearer for the local Hermes agent API (chat router pass-through).
+    "hermes": ["HERMES_API_KEY"],
 }
 
 

@@ -27,6 +27,31 @@ from openjarvis.intelligence.model_catalog import resolve_model_id_for_engine
 logger = logging.getLogger(__name__)
 
 
+def _completion_chunk(event: str | None, data_str: str) -> Dict[str, Any] | None:
+    """Parse one SSE ``data:`` payload into a chat-completion chunk, or None.
+
+    Some OpenAI-compatible servers interleave their own named SSE events with
+    the completion stream (Hermes sends e.g. ``event: hermes.tool.progress``).
+    Those, and any payload that is not a dict with a non-empty ``choices``
+    list, are skipped rather than crashing the stream.
+    """
+    if event and event != "message":
+        return None
+    try:
+        chunk = json.loads(data_str)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(chunk, dict):
+        return None
+    choices = chunk.get("choices")
+    if not isinstance(choices, list) or not choices:
+        # A usage-only final chunk (``choices: []``) is still meaningful.
+        return chunk if chunk.get("usage") else None
+    if not isinstance(choices[0], dict):
+        return None
+    return chunk
+
+
 class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
     """Base for engines that serve the OpenAI ``/v1/chat/completions`` API."""
 
@@ -210,17 +235,23 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
                     # a streaming response is otherwise unread.
                     await resp.aread()
                     self._raise_stream_http_error(resp.status_code, resp.text)
+                event: str | None = None
                 async for line in resp.aiter_lines():
+                    if line.startswith("event:"):
+                        event = line[len("event:") :].strip()
+                        continue
+                    if not line.strip():
+                        event = None
+                        continue
                     if not line.startswith("data:"):
                         continue
                     data_str = line[len("data:") :].strip()
                     if data_str == "[DONE]":
                         break
-                    try:
-                        chunk = json.loads(data_str)
-                    except json.JSONDecodeError:
+                    chunk = _completion_chunk(event, data_str)
+                    if chunk is None:
                         continue
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    delta = (chunk.get("choices") or [{}])[0].get("delta") or {}
                     content = delta.get("content")
                     if content:
                         yield content
@@ -267,18 +298,24 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
                 if not resp.is_success:
                     await resp.aread()
                     self._raise_stream_http_error(resp.status_code, resp.text)
+                event: str | None = None
                 async for line in resp.aiter_lines():
+                    if line.startswith("event:"):
+                        event = line[len("event:") :].strip()
+                        continue
+                    if not line.strip():
+                        event = None
+                        continue
                     if not line.startswith("data:"):
                         continue
                     data_str = line[len("data:") :].strip()
                     if data_str == "[DONE]":
                         break
-                    try:
-                        chunk = json.loads(data_str)
-                    except json.JSONDecodeError:
+                    chunk = _completion_chunk(event, data_str)
+                    if chunk is None:
                         continue
-                    choice = chunk.get("choices", [{}])[0]
-                    delta = choice.get("delta", {})
+                    choice = (chunk.get("choices") or [{}])[0]
+                    delta = choice.get("delta") or {}
                     finish = choice.get("finish_reason")
                     content = delta.get("content")
                     tool_calls = delta.get("tool_calls")

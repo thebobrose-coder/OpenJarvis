@@ -19,6 +19,11 @@ from openjarvis.server.app import create_app  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
+def _engine_models(data):
+    """/v1/models entries minus the chat router's auto/hermes-agent pair."""
+    return [m for m in data["data"] if m["owned_by"] not in ("router", "hermes")]
+
+
 def _make_engine(content="Hello from server", models=None):
     engine = MagicMock()
     engine.engine_id = "mock"
@@ -1531,8 +1536,9 @@ class TestModelsEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["object"] == "list"
-        assert len(data["data"]) == 1
-        assert data["data"][0]["id"] == "test-model"
+        models = _engine_models(data)
+        assert len(models) == 1
+        assert models[0]["id"] == "test-model"
 
     def test_model_object_format(self, client):
         resp = client.get("/v1/models")
@@ -1547,7 +1553,7 @@ class TestModelsEndpoint:
         client = TestClient(app)
         resp = client.get("/v1/models")
         data = resp.json()
-        assert len(data["data"]) == 3
+        assert len(_engine_models(data)) == 3
 
     def test_configured_litellm_model_is_listed(self):
         """Regression for #713: LiteLLM models must reach the Web UI."""
@@ -1570,8 +1576,9 @@ class TestModelsEndpoint:
             resp = client.get("/v1/models")
 
         assert resp.status_code == 200
-        assert [item["id"] for item in resp.json()["data"]] == [model]
-        assert resp.json()["data"][0]["owned_by"] == "litellm"
+        models = _engine_models(resp.json())
+        assert [item["id"] for item in models] == [model]
+        assert models[0]["owned_by"] == "litellm"
 
     def test_litellm_provider_model_streams_through_active_engine(self):
         """A LiteLLM ``provider/model`` ID must not bypass its engine."""

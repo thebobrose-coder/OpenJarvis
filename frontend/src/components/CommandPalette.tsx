@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { isRouterModel, modelDisplayName } from '../lib/chat-routing';
 import { Search, Cpu, X, Download, Loader2, Trash2, Check, Cloud, Key, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../lib/store';
 import {
@@ -377,7 +378,7 @@ export function CommandPalette() {
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="text-sm truncate" style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-text)', fontWeight: isActive ? 500 : 400 }}>
-                          {model.id}
+                          {modelDisplayName(model.id)}
                         </div>
                       </div>
                       {isActive && (
@@ -386,7 +387,7 @@ export function CommandPalette() {
                         </span>
                       )}
                     </button>
-                    {model.owned_by !== 'litellm' && (
+                    {model.owned_by !== 'litellm' && !isRouterModel(model.id) && (
                       <button
                         onClick={() => handleDelete(model.id)}
                         disabled={isDeleting}

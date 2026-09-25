@@ -28,6 +28,10 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: int = 1024
     stream: bool = False
     tools: Optional[List[Dict[str, Any]]] = None
+    # Chat router (model "auto"): which backend answered the previous
+    # assistant turn in this conversation ("hermes"/"local"), for sticky
+    # routing. Ignored for every other model.
+    last_route: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +76,8 @@ class ChatCompletionResponse(BaseModel):
     choices: List[Choice] = Field(default_factory=list)
     usage: UsageInfo = Field(default_factory=UsageInfo)
     complexity: Optional[ComplexityInfo] = None
+    # Chat router decision (model "auto"/"hermes-agent" only).
+    route: Optional[Dict[str, Any]] = None
 
 
 # ---------------------------------------------------------------------------

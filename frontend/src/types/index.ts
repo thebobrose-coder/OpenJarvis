@@ -59,6 +59,11 @@ export interface MessageTelemetry {
   complexity_score?: number;
   complexity_tier?: string;
   suggested_max_tokens?: number;
+  // Chat router (Auto / Hermes models): which backend answered, plus any
+  // quiet hint or one-off notice to show under the message.
+  route?: 'local' | 'hermes';
+  route_hint?: string;
+  route_notice?: string;
 }
 
 export interface TimeRange {

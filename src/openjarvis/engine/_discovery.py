@@ -26,11 +26,26 @@ _HOST_MAP: Dict[str, str | None] = {
     "apple_fm": "apple_fm_host",
     "lemonade": "lemonade_host",
     "cloud": None,
+    # Pass-through only; never constructed here (see _is_passthrough_only).
+    "hermes": None,
     "litellm": None,
     "gemma_cpp": None,
     # In-process: drives the Apple FM SDK directly, so there is no host.
     "afm": None,
 }
+
+
+def _is_passthrough_only(key: str) -> bool:
+    """Engines reachable only via an explicit pass-through (e.g. Hermes).
+
+    They are never probed, merged into MultiEngine, chosen as the default, or
+    substituted as a fallback: any of those would put a remote agent behind
+    OpenJarvis's own tool-bearing agent.
+    """
+    try:
+        return bool(getattr(EngineRegistry.get(key), "passthrough_only", False))
+    except Exception:
+        return False
 
 
 def _make_engine(key: str, config: JarvisConfig) -> InferenceEngine:
@@ -132,7 +147,7 @@ def discover_engines(config: JarvisConfig) -> List[Tuple[str, InferenceEngine]]:
     # threads collapses that to roughly the slowest single probe. The
     # healthy.sort() below normalizes order, so completion order is
     # irrelevant and the result is identical to the serial version (#263).
-    keys = list(EngineRegistry.keys())
+    keys = [k for k in EngineRegistry.keys() if not _is_passthrough_only(k)]
 
     def _probe(key: str) -> Tuple[str, InferenceEngine] | None:
         try:
@@ -198,6 +213,12 @@ def get_engine(
     def _usable(engine: InferenceEngine) -> bool:
         return engine.health() and (model is None or engine.can_serve(model))
 
+    if engine_key and _is_passthrough_only(engine_key):
+        logger.warning(
+            "Engine %r is pass-through only and cannot serve as an engine here",
+            engine_key,
+        )
+        return None
     if engine_key:
         if not EngineRegistry.contains(engine_key):
             logger.warning("Requested engine %r is not registered", engine_key)
@@ -217,7 +238,11 @@ def get_engine(
 
     default_key = config.engine.default
     default_is_cloud: bool | None = None
-    if default_key and EngineRegistry.contains(default_key):
+    if (
+        default_key
+        and EngineRegistry.contains(default_key)
+        and not _is_passthrough_only(default_key)
+    ):
         default_cls = EngineRegistry.get(default_key)
         default_is_cloud = bool(getattr(default_cls, "is_cloud", False))
         try:

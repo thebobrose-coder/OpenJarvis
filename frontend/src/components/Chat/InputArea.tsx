@@ -10,6 +10,13 @@ import {
   engineFromCompletionChunk,
   resolveChatEngine,
 } from '../../lib/chat-telemetry';
+import {
+  AUTO_MODEL_ID,
+  HERMES_MODEL_ID,
+  isRouterModel,
+  parseRouteEvent,
+  type RouteInfo,
+} from '../../lib/chat-routing';
 import { MicButton } from './MicButton';
 import { useSpeech } from '../../hooks/useSpeech';
 import type {
@@ -212,6 +219,12 @@ export function InputArea() {
       role: m.role,
       content: m.content,
     }));
+    // Sticky routing: which backend answered the previous assistant turn.
+    const lastRoute = [...currentMessages]
+      .reverse()
+      .find((m) => m.role === 'assistant' && m.telemetry?.route)?.telemetry?.route;
+    // Deep research runs on the local model; the router ids aren't models.
+    const localModel = useAppStore.getState().serverInfo?.model || selectedModel;
 
     const assistantMsg: ChatMessage = {
       id: generateId(),
@@ -236,6 +249,7 @@ export function InputArea() {
     let usage: TokenUsage | undefined;
     let complexity: { score: number; tier: string; suggested_max_tokens: number } | undefined;
     let routedEngine: string | undefined;
+    let routeInfo: RouteInfo | undefined;
     const toolCalls: ToolCallInfo[] = [];
     const researchTraces: ResearchSearchTrace[] = [];
     const researchSourcesByRef = new Map<number, ResearchSource>();
@@ -265,7 +279,7 @@ export function InputArea() {
       if (deepResearch) {
         for await (const ev of streamResearch(
           content,
-          selectedModel,
+          isRouterModel(selectedModel) ? localModel : selectedModel,
           controller.signal,
         )) {
           if (ev.type === 'search_call') {
@@ -388,12 +402,24 @@ export function InputArea() {
         }
       } else {
       for await (const sseEvent of streamChat(
-        { model: selectedModel, messages: apiMessages, stream: true, temperature, max_tokens: maxTokens },
+        {
+          model: selectedModel,
+          messages: apiMessages,
+          stream: true,
+          temperature,
+          max_tokens: maxTokens,
+          ...(selectedModel === AUTO_MODEL_ID && lastRoute ? { last_route: lastRoute } : {}),
+        },
         controller.signal,
       )) {
         const eventName = sseEvent.event;
 
-        if (eventName === 'agent_turn_start') {
+        if (eventName === 'route') {
+          routeInfo = parseRouteEvent(sseEvent.data) ?? routeInfo;
+          if (routeInfo?.target === 'hermes') {
+            setStreamState({ phase: 'Asking Hermes...' });
+          }
+        } else if (eventName === 'agent_turn_start') {
           setStreamState({ phase: 'Agent thinking...' });
         } else if (eventName === 'inference_start') {
           setStreamState({ phase: 'Generating...' });
@@ -494,9 +520,24 @@ export function InputArea() {
         selectedModel,
         selectedOwner,
       });
+      // Route badge: Hermes, or local for anything answered on this machine.
+      // Cloud-model answers get no badge.
+      const route: MessageTelemetry['route'] =
+        routeInfo?.target ??
+        (routedEngine === 'hermes' || selectedModel === HERMES_MODEL_ID
+          ? 'hermes'
+          : engineLabel === 'cloud' || engineLabel === 'litellm' || deepResearch
+            ? undefined
+            : 'local');
       const telemetry: MessageTelemetry = {
         engine: engineLabel,
-        model_id: selectedModel,
+        model_id:
+          route === 'hermes' ? HERMES_MODEL_ID
+          : isRouterModel(selectedModel) ? localModel
+          : selectedModel,
+        route,
+        route_hint: routeInfo?.hint,
+        route_notice: routeInfo?.notice,
         total_ms: totalMs,
         ttft_ms: ttftMs,
         tokens_per_sec: usage?.completion_tokens

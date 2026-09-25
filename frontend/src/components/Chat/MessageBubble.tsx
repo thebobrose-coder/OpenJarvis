@@ -100,6 +100,22 @@ function CopyMessageButton({ content }: { content: string }) {
   );
 }
 
+function RouteBadge({ route }: { route: 'local' | 'hermes' }) {
+  const hermes = route === 'hermes';
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded-full"
+      style={{
+        color: hermes ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
+        border: `1px solid ${hermes ? 'var(--color-accent)' : 'var(--color-border)'}`,
+      }}
+      title={hermes ? 'Answered by Hermes' : 'Answered locally'}
+    >
+      {hermes ? 'Hermes' : 'local'}
+    </span>
+  );
+}
+
 export function MessageBubble({ message, isLive = false }: Props) {
   const isUser = message.role === 'user';
 
@@ -178,9 +194,17 @@ export function MessageBubble({ message, isLive = false }: Props) {
         </div>
       )}
 
-      {/* Footer: copy + x-ray */}
+      {/* Route hint / one-off notice from the chat router */}
+      {(message.telemetry?.route_notice || message.telemetry?.route_hint) && (
+        <div className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+          {message.telemetry.route_notice || message.telemetry.route_hint}
+        </div>
+      )}
+
+      {/* Footer: copy + route badge + x-ray */}
       <div className="flex items-center gap-2 mt-1.5">
         <CopyMessageButton content={cleanContent} />
+        {message.telemetry?.route && <RouteBadge route={message.telemetry.route} />}
       </div>
       <XRayFooter
         usage={message.usage}

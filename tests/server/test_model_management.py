@@ -275,7 +275,11 @@ class TestModelsEndpointExtended:
         resp = client.get("/v1/models")
 
         assert resp.status_code == 200
-        assert [m["id"] for m in resp.json()["data"]] == ["qwen3.5:4b"]
+        assert [m["id"] for m in resp.json()["data"]] == [
+            "auto",
+            "hermes-agent",
+            "qwen3.5:4b",
+        ]
 
     def test_models_list_returns_empty_when_only_embedders_are_installed(self):
         engine = _make_engine(
@@ -311,5 +315,9 @@ class TestModelsEndpointExtended:
             resp = client.get("/v1/models")
 
         assert resp.status_code == 200
-        assert [m["id"] for m in resp.json()["data"]] == ["qwen3.5:4b"]
+        assert [m["id"] for m in resp.json()["data"]] == [
+            "auto",
+            "hermes-agent",
+            "qwen3.5:4b",
+        ]
         mock_to_thread.assert_awaited_once_with(engine.list_models)

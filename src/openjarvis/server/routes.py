@@ -157,7 +157,27 @@ def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message
 
 @router.post("/v1/chat/completions")
 async def chat_completions(request_body: ChatCompletionRequest, request: Request):
-    """Handle chat completion requests (streaming and non-streaming)."""
+    """Handle chat completion requests (streaming and non-streaming).
+
+    Models ``auto`` and ``hermes-agent`` go through the local-first chat
+    router first (``hermes_router``). A Hermes turn is answered there as a
+    pass-through, before any memory, identity, agent, or tool handling below;
+    a local turn continues down the normal path with the local model.
+    """
+    from openjarvis.server import hermes_router
+
+    if request_body.model in hermes_router.ROUTED_MODEL_IDS:
+        response, decision = await hermes_router.route_chat(request_body, request)
+        if response is not None:
+            return response
+        return hermes_router.attach_route(
+            await _chat_completions_local(request_body, request), decision
+        )
+    return await _chat_completions_local(request_body, request)
+
+
+async def _chat_completions_local(request_body: ChatCompletionRequest, request: Request):
+    """The normal (non-Hermes) chat path."""
     engine = request.app.state.engine
     agent = getattr(request.app.state, "agent", None)
     model = request_body.model
@@ -1132,8 +1152,23 @@ async def list_models(request: Request) -> ModelListResponse:
     # the UI auto-select nomic-embed-text and fail every generation with 400.
     model_ids = [m for m in model_ids if not is_embed_only_model(m)]
 
+    # Chat router entries first: "Auto (local first)" is the default pick.
+    # Only offered alongside a real chat model: Auto answers and classifies
+    # with it, and an empty list must keep meaning "no models installed".
+    from openjarvis.server.hermes_router import AUTO_MODEL_ID, HERMES_MODEL_ID
+
+    router_models = (
+        [
+            ModelObject(id=AUTO_MODEL_ID, owned_by="router"),
+            ModelObject(id=HERMES_MODEL_ID, owned_by="hermes"),
+        ]
+        if model_ids
+        else []
+    )
+
     return ModelListResponse(
-        data=[
+        data=router_models
+        + [
             ModelObject(
                 id=mid,
                 owned_by=(

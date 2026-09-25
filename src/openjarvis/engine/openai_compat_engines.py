@@ -16,13 +16,27 @@ _ENGINES = {
     "uzu": ("UzuEngine", "http://localhost:8000", ""),
     "apple_fm": ("AppleFmEngine", "http://localhost:8079", "/v1"),
     "lemonade": ("LemonadeEngine", "http://localhost:13305", "/v1"),
+    "hermes": ("HermesEngine", "http://127.0.0.1:8642", "/v1"),
 }
+
+# Engines that may only be reached through an explicit pass-through path,
+# never through discovery, MultiEngine, or default-engine fallback. Hermes is
+# a remote agent with its own tools: if it became the server engine, its
+# replies would drive OpenJarvis's agent tools (shell_exec, file_read, ...),
+# handing it system access sideways (hq decision 0002). The chat router in
+# ``server/hermes_router.py`` is the only caller.
+PASSTHROUGH_ONLY_ENGINES = frozenset({"hermes"})
 
 for _key, (_cls_name, _default_host, _api_prefix) in _ENGINES.items():
     _cls = type(
         _cls_name,
         (_OpenAICompatibleEngine,),
-        {"engine_id": _key, "_default_host": _default_host, "_api_prefix": _api_prefix},
+        {
+            "engine_id": _key,
+            "_default_host": _default_host,
+            "_api_prefix": _api_prefix,
+            "passthrough_only": _key in PASSTHROUGH_ONLY_ENGINES,
+        },
     )
     EngineRegistry.register(_key)(_cls)
     globals()[_cls_name] = _cls
@@ -57,5 +71,6 @@ class OpenAICompatEngine(_OpenAICompatibleEngine):
 
 __all__ = [name for name, _, _ in _ENGINES.values()] + [
     "OpenAICompatEngine",
+    "PASSTHROUGH_ONLY_ENGINES",
     "normalize_openai_base_url",
 ]

@@ -30,7 +30,9 @@ import {
   fetchToolCredentialStatus,
   saveToolCredentials,
   deleteToolCredential,
+  fetchHermesUsage,
   isTauri,
+  type HermesUsage,
   type InferenceSource,
 } from '../lib/api';
 import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Desktop/UpdateChecker';
@@ -63,16 +65,20 @@ function ApiKeyInput({
   keyName,
   placeholder,
   toolName,
+  serverOnly,
 }: {
   keyName: string;
   placeholder: string;
   toolName?: string;
+  // Always store in the server's credentials.toml, even in the desktop app
+  // (keys the backend itself must read, e.g. the Hermes bearer).
+  serverOnly?: boolean;
 }) {
   const [value, setValue] = useState('');
   const [saved, setSaved] = useState(false);
   const [hasKey, setHasKey] = useState(false);
   const [error, setError] = useState('');
-  const desktopKeyStorage = isTauri();
+  const desktopKeyStorage = isTauri() && !serverOnly;
   const serverToolStorage = !desktopKeyStorage && !!toolName;
   const canManage = desktopKeyStorage || serverToolStorage;
 
@@ -162,6 +168,34 @@ function ApiKeyInput({
       {saved && <span className="text-[10px]" style={{ color: 'var(--color-success)' }}>Saved</span>}
       {error && <span className="text-[10px]" style={{ color: 'var(--color-error)' }}>{error}</span>}
     </div>
+  );
+}
+
+function HermesUsageLine() {
+  const [usage, setUsage] = useState<HermesUsage | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setUsage(await fetchHermesUsage());
+    } catch {
+      setUsage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    window.addEventListener(CLOUD_KEY_STATUS_CHANGED, refresh);
+    return () => window.removeEventListener(CLOUD_KEY_STATUS_CHANGED, refresh);
+  }, [refresh]);
+
+  if (!usage) {
+    return <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Unavailable</span>;
+  }
+  const atCap = usage.count >= usage.cap;
+  return (
+    <span className="text-xs tabular-nums" style={{ color: atCap ? 'var(--color-error)' : 'var(--color-text-secondary)' }}>
+      {usage.count} / {usage.cap} turns
+    </span>
   );
 }
 
@@ -563,6 +597,16 @@ export function SettingsPage() {
             </SettingRow>
             <SettingRow label="OpenRouter" description="Multi-provider routing">
               <ApiKeyInput keyName="OPENROUTER_API_KEY" placeholder="sk-or-..." />
+            </SettingRow>
+          </Section>
+
+          {/* Hermes */}
+          <Section title="Hermes">
+            <SettingRow label="Hermes API key" description="Bearer for the local Hermes agent (stored in credentials.toml)">
+              <ApiKeyInput keyName="HERMES_API_KEY" placeholder="API_SERVER_KEY" toolName="hermes" serverOnly />
+            </SettingRow>
+            <SettingRow label="Hermes turns today" description="Auto (local first) stops routing to Hermes at the daily cap; 'Hermes,' still works">
+              <HermesUsageLine />
             </SettingRow>
           </Section>
 

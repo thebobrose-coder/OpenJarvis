@@ -474,6 +474,20 @@ class LemonadeEngineConfig:
     host: str = "http://localhost:13305"
 
 
+@dataclass(slots=True)
+class HermesEngineConfig:
+    """Per-engine config for the Hermes agent (pass-through chat backend).
+
+    The bearer key is not configured here: it lives in credentials.toml as
+    ``HERMES_API_KEY`` (tool ``hermes``). ``HERMES_HOST`` overrides ``host``.
+    """
+
+    host: str = "http://127.0.0.1:8642"
+    # Max Hermes turns per day that "Auto (local first)" may route to Hermes.
+    # Explicit "Hermes," requests are counted but never blocked.
+    daily_turn_cap: int = 100
+
+
 @dataclass
 class EngineConfig:
     """Inference engine settings with nested per-engine configs."""
@@ -492,6 +506,7 @@ class EngineConfig:
     afm: AfmEngineConfig = field(default_factory=AfmEngineConfig)
     gemma_cpp: GemmaCppEngineConfig = field(default_factory=GemmaCppEngineConfig)
     lemonade: LemonadeEngineConfig = field(default_factory=LemonadeEngineConfig)
+    hermes: HermesEngineConfig = field(default_factory=HermesEngineConfig)
 
     # Backward-compat properties for old flat attribute names
     @property
@@ -2456,6 +2471,7 @@ __all__ = [
     "GoogleChatChannelConfig",
     "GpuInfo",
     "HardwareInfo",
+    "HermesEngineConfig",
     "IRCChannelConfig",
     "IntelligenceConfig",
     "IntelligenceLearningConfig",

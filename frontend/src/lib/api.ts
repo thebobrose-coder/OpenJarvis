@@ -243,8 +243,12 @@ export async function deleteModel(modelName: string): Promise<void> {
 const _CLOUD_PREFIXES = ['gpt-', 'o1-', 'o3-', 'o4-', 'claude-', 'gemini-', 'openrouter/'];
 
 export async function preloadModel(modelName: string, owner?: string): Promise<void> {
-  // Cloud models don't need Ollama preloading
-  if (owner === 'litellm' || _CLOUD_PREFIXES.some(p => modelName.startsWith(p))) {
+  // Cloud models and the chat router entries (auto / hermes-agent) don't need
+  // Ollama preloading.
+  if (
+    owner === 'litellm' || owner === 'router' || owner === 'hermes' ||
+    _CLOUD_PREFIXES.some(p => modelName.startsWith(p))
+  ) {
     return;
   }
   // Trigger Ollama to load the model into memory (empty prompt, no generation).
@@ -261,6 +265,19 @@ export async function preloadModel(modelName: string, owner?: string): Promise<v
     if (e.name === 'TimeoutError') throw new Error('Model load timed out (120s)');
     throw e;
   }
+}
+
+export interface HermesUsage {
+  date: string;
+  count: number;
+  cap: number;
+  key_configured: boolean;
+}
+
+export async function fetchHermesUsage(): Promise<HermesUsage> {
+  const res = await apiFetch('/v1/hermes/usage');
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
 }
 
 export async function fetchSavings(): Promise<SavingsData> {

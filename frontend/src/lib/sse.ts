@@ -7,6 +7,8 @@ export interface ChatRequest {
   stream: true;
   temperature?: number;
   max_tokens?: number;
+  // Chat router sticky routing: backend of the previous assistant turn.
+  last_route?: 'local' | 'hermes';
 }
 
 export async function* streamChat(

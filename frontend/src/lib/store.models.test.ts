@@ -33,6 +33,18 @@ afterEach(() => {
 });
 
 describe('setModels', () => {
+  it('defaults to Auto (local first) when the server offers it', async () => {
+    const { useAppStore } = await import('./store');
+
+    useAppStore.getState().setModels([
+      model('auto'),
+      model('hermes-agent'),
+      model('qwen3.5:9b'),
+    ]);
+
+    expect(useAppStore.getState().selectedModel).toBe('auto');
+  });
+
   it('does not select an embedding-only model', async () => {
     const { useAppStore } = await import('./store');
 

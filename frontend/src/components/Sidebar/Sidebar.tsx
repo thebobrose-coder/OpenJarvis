@@ -22,6 +22,7 @@ import {
 import { ConversationList } from './ConversationList';
 import { LatestNewsPanel } from './LatestNewsPanel';
 import { useAppStore } from '../../lib/store';
+import { modelDisplayName } from '../../lib/chat-routing';
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -153,7 +154,7 @@ export function Sidebar() {
               >
                 {deepResearch
                   ? 'Deep Research'
-                  : selectedModel || serverInfo?.model || 'Select model'}
+                  : (selectedModel && modelDisplayName(selectedModel)) || serverInfo?.model || 'Select model'}
               </span>
               {modelLoading && (
                 <span className="text-[10px] block text-left" style={{ color: 'var(--color-accent)' }}>
