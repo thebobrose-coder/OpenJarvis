@@ -39,6 +39,7 @@ from fastapi.responses import StreamingResponse
 
 from openjarvis.core.paths import get_config_dir
 from openjarvis.core.types import Message, Role
+from openjarvis.server.store_performance_routes import HERMES_PANELS_URL
 
 logger = logging.getLogger("openjarvis.server.hermes_router")
 
@@ -56,7 +57,7 @@ _HERMES_PREFIX = re.compile(r"^\s*(?:hermes\s*[,:]|@hermes\b[,:]?)\s*", re.IGNOR
 _LOCAL_PREFIX = re.compile(r"^\s*(?:local\s*[,:]|@local\b[,:]?)\s*", re.IGNORECASE)
 
 # Store names are filled in at runtime by build_classifier_rubric(), from the
-# operator's own store registry. This repo is public: never write them here.
+# Hermes store_performance feed. This repo is public: never write them here.
 _STORES_MARKER = "__SHOPIFY_STORES__"
 _CLASSIFIER_RUBRIC_TEMPLATE = """You route one chat message for a business owner. \
 Decide whether it needs HERMES (their business agent, which has their private data \
@@ -79,21 +80,32 @@ HERMES. If unsure, lower your confidence.
 Reply with JSON only: {"route": "hermes" or "local", "confidence": 0.0 to 1.0}"""
 
 
-def _configured_store_names() -> list[str]:
-    """Display names (slug if unnamed) from ``~/.openjarvis/shopify_stores.json``."""
-    try:
-        from openjarvis.connectors.shopify_stores import load_stores
+# Read while the classifier prompt is built, so keep it short.
+_STORE_FEED_TIMEOUT_S = 2.0
+_last_store_names: list[str] | None = None
 
-        stores = load_stores()
-    except Exception:  # noqa: BLE001 -- a bad registry must not break routing
-        logger.warning("Could not read the Shopify store registry", exc_info=True)
-        return []
+
+def _fetch_feed_store_names() -> list[str]:
+    """Display names (slug if unnamed) from the Hermes store_performance feed."""
+    resp = httpx.get(HERMES_PANELS_URL, timeout=_STORE_FEED_TIMEOUT_S)
+    resp.raise_for_status()
     names: list[str] = []
-    for slug, meta in stores.items():
-        name = str((meta.get("display_name") if isinstance(meta, dict) else "") or slug)
-        name = name.strip()
+    for store in resp.json()["data"]["stores"]:
+        name = str(store.get("display_name") or store.get("slug") or "").strip()
         if name and name not in names:
             names.append(name)
+    return names
+
+
+def _configured_store_names() -> list[str]:
+    """Store names from Hermes; the last good list when the feed is down."""
+    global _last_store_names
+    try:
+        names = _fetch_feed_store_names()
+    except Exception:  # noqa: BLE001 -- a feed outage must not break routing
+        logger.warning("Could not read store names from the Hermes feed", exc_info=True)
+        return list(_last_store_names or [])
+    _last_store_names = names
     return names
 
 
@@ -213,10 +225,12 @@ def make_classifier(
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> ClassifyFn:
     async def classify(text: str) -> tuple[str, float]:
+        # The rubric reads the Hermes feed (blocking, <= 2 s); keep it off the loop.
+        rubric = await asyncio.to_thread(build_classifier_rubric)
         payload = {
             "model": model,
             "messages": [
-                {"role": "system", "content": build_classifier_rubric()},
+                {"role": "system", "content": rubric},
                 {"role": "user", "content": text},
             ],
             "format": "json",

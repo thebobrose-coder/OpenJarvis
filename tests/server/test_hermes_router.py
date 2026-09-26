@@ -24,9 +24,8 @@ from openjarvis.server.app import create_app
 
 @pytest.fixture(autouse=True)
 def _isolated_state(tmp_path, monkeypatch):
-    """Per-test usage file, credential store, and (empty) Shopify store
-    registry; no ambient Hermes env."""
-    from openjarvis.connectors import shopify_stores
+    """Per-test usage file, credential store, and no store feed (and no
+    cached store names); no ambient Hermes env."""
     from openjarvis.core import credentials
 
     monkeypatch.delenv("HERMES_API_KEY", raising=False)
@@ -34,11 +33,19 @@ def _isolated_state(tmp_path, monkeypatch):
     monkeypatch.setattr(
         credentials, "_default_path", lambda: tmp_path / "credentials.toml"
     )
-    monkeypatch.setattr(shopify_stores, "load_stores", lambda: {})
+    monkeypatch.setattr(hr, "_fetch_feed_store_names", _feed_down)
+    monkeypatch.setattr(hr, "_last_store_names", None)
     monkeypatch.setattr(hr, "_usage", hr.HermesUsage(tmp_path / "usage.json"))
     yield
     # save_credential() also sets os.environ; don't leak it to other tests.
     monkeypatch.delenv("HERMES_API_KEY", raising=False)
+
+
+_REAL_FETCH_FEED_STORE_NAMES = hr._fetch_feed_store_names
+
+
+def _feed_down() -> list[str]:
+    raise httpx.ConnectError("feed down")
 
 
 def _store_key(value: str = "sk-hermes-test") -> None:
@@ -292,20 +299,45 @@ def test_classifier_request_shape():
     assert body["messages"][0]["content"] == hr.build_classifier_rubric()
 
 
-_EXAMPLE_STORES = {
-    "example-outdoor-co": {"display_name": "Example Outdoor Co", "gsc_site_url": ""},
-    "sample-parts": {"display_name": "", "gsc_site_url": ""},
+_EXAMPLE_FEED = {
+    "feed": "store_performance",
+    "data": {
+        "stores": [
+            {"slug": "example-outdoor-co", "display_name": "Example Outdoor Co"},
+            {"slug": "sample-parts", "display_name": ""},
+        ]
+    },
 }
 
 
-def test_rubric_names_configured_stores(monkeypatch):
-    from openjarvis.connectors import shopify_stores
+def _serve_feed(monkeypatch, payload: dict) -> list[str]:
+    """Route the real feed fetch to ``payload``; returns the URLs requested."""
+    urls: list[str] = []
 
-    monkeypatch.setattr(shopify_stores, "load_stores", lambda: _EXAMPLE_STORES)
+    def fake_get(url, **kwargs):
+        urls.append(url)
+        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(hr, "_fetch_feed_store_names", _REAL_FETCH_FEED_STORE_NAMES)
+    monkeypatch.setattr(hr.httpx, "get", fake_get)
+    return urls
+
+
+def test_rubric_names_stores_from_feed(monkeypatch):
+    urls = _serve_feed(monkeypatch, _EXAMPLE_FEED)
     rubric = hr.build_classifier_rubric()
     expected = "their Shopify stores (Example Outdoor Co, sample-parts), their products"
     assert expected in rubric
     assert hr._STORES_MARKER not in rubric
+    assert urls == [hr.HERMES_PANELS_URL]
+
+
+def test_feed_store_without_name_uses_slug(monkeypatch):
+    _serve_feed(
+        monkeypatch,
+        {"data": {"stores": [{"slug": "sample-parts", "display_name": None}]}},
+    )
+    assert hr._configured_store_names() == ["sample-parts"]
 
 
 def test_rubric_without_stores_names_none():
@@ -314,18 +346,26 @@ def test_rubric_without_stores_names_none():
     assert hr._STORES_MARKER not in rubric
 
 
-def test_rubric_survives_unreadable_registry(monkeypatch):
-    from openjarvis.connectors import shopify_stores
+def test_feed_down_reuses_last_good_names(monkeypatch):
+    _serve_feed(monkeypatch, _EXAMPLE_FEED)
+    assert hr._configured_store_names() == ["Example Outdoor Co", "sample-parts"]
 
-    def broken():
-        raise OSError("unreadable")
+    monkeypatch.setattr(hr, "_fetch_feed_store_names", _feed_down)
+    rubric = hr.build_classifier_rubric()
+    assert "their Shopify stores (Example Outdoor Co, sample-parts)" in rubric
 
-    monkeypatch.setattr(shopify_stores, "load_stores", broken)
+
+def test_feed_down_without_cache_names_none(monkeypatch):
+    def unreachable(url, **kwargs):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(hr, "_fetch_feed_store_names", _REAL_FETCH_FEED_STORE_NAMES)
+    monkeypatch.setattr(hr.httpx, "get", unreachable)
     assert "their Shopify stores, their products" in hr.build_classifier_rubric()
 
 
 def test_no_store_names_hardcoded_in_router():
-    """This repo is public: store names come only from the runtime registry."""
+    """This repo is public: store names come only from the Hermes feed."""
     from pathlib import Path
 
     source = Path(hr.__file__).read_text(encoding="utf-8")
