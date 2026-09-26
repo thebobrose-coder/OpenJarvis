@@ -24,54 +24,6 @@ export async function getConnector(id: string): Promise<ConnectorInfo> {
   return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Shopify multi-store -- "Add Store" management, separate from the generic
-// connect flow above (each store still connects/disconnects through the
-// normal /v1/connectors/shopify_{slug}/... endpoints once it exists; these
-// three calls are just for creating/listing/removing the stores themselves).
-// ---------------------------------------------------------------------------
-
-export interface ShopifyStore {
-  slug: string;
-  display_name: string;
-  gsc_site_url: string;
-}
-
-export interface AddShopifyStoreResponse {
-  slug: string;
-  connector_id: string;
-  oauth_start: string;
-}
-
-export async function listShopifyStores(): Promise<ShopifyStore[]> {
-  const res = await apiFetch('/v1/shopify-stores');
-  if (!res.ok) throw new Error(`Failed to list Shopify stores: ${res.status}`);
-  return res.json();
-}
-
-export async function addShopifyStore(
-  displayName: string,
-  gscSiteUrl?: string,
-): Promise<AddShopifyStoreResponse> {
-  const res = await apiFetch('/v1/shopify-stores', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ display_name: displayName, gsc_site_url: gscSiteUrl || '' }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || `Failed to add store: ${res.status}`);
-  }
-  return res.json();
-}
-
-export async function removeShopifyStore(slug: string): Promise<void> {
-  const res = await apiFetch(`/v1/shopify-stores/${encodeURIComponent(slug)}`, {
-    method: 'DELETE',
-  });
-  if (!res.ok) throw new Error(`Failed to remove store: ${res.status}`);
-}
-
 export async function connectSource(id: string, req: ConnectRequest): Promise<ConnectResponse> {
   const res = await apiFetch(`/v1/connectors/${encodeURIComponent(id)}/connect`, {
     method: 'POST',

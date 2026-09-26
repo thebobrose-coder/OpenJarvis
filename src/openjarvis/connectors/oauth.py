@@ -69,7 +69,6 @@ GOOGLE_ALL_SCOPES: List[str] = [
     "https://www.googleapis.com/auth/contacts.readonly",
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/tasks.readonly",
-    "https://www.googleapis.com/auth/webmasters.readonly",
 ]
 
 OAUTH_PROVIDERS: Dict[str, OAuthProvider] = {
@@ -88,7 +87,6 @@ OAUTH_PROVIDERS: Dict[str, OAuthProvider] = {
             "gcontacts",
             "gmail",
             "google_tasks",
-            "google_search_console",
         ),
         credential_files=(
             "google.json",
@@ -97,7 +95,6 @@ OAUTH_PROVIDERS: Dict[str, OAuthProvider] = {
             "gcontacts.json",
             "gmail.json",
             "google_tasks.json",
-            "google_search_console.json",
         ),
     ),
     "strava": OAuthProvider(
