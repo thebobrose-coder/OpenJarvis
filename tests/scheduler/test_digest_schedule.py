@@ -141,81 +141,25 @@ class TestDigestScheduleEndpoints:
         app.include_router(create_digest_router())
         return TestClient(app)
 
-    def test_schedule_endpoint_returns_config(self, client):
-        """GET /api/digest/schedule returns enabled and cron from config."""
-        mock_cfg = MagicMock()
-        mock_cfg.digest.enabled = True
-        mock_cfg.digest.schedule = "0 6 * * *"
-
-        with patch(
-            "openjarvis.server.digest_routes.load_config",
-            return_value=mock_cfg,
-        ):
-            resp = client.get("/api/digest/schedule")
+    def test_schedule_endpoint_reports_hermes_schedule(self, client):
+        """GET /api/digest/schedule reports Hermes's schedule, read-only."""
+        resp = client.get("/api/digest/schedule")
 
         assert resp.status_code == 200
         data = resp.json()
         assert data["enabled"] is True
         assert data["cron"] == "0 6 * * *"
+        assert data["timezone"] == "America/Chicago"
+        assert data["managed_by"] == "hermes"
 
-    def test_schedule_endpoint_update(self, client):
-        """POST /api/digest/schedule updates the config."""
-        mock_cfg = MagicMock()
-        mock_cfg.digest.enabled = False
-        mock_cfg.digest.schedule = "0 6 * * *"
-        mock_cfg.digest.timezone = "America/Los_Angeles"
-
-        with (
-            patch(
-                "openjarvis.server.digest_routes.load_config",
-                return_value=mock_cfg,
-            ),
-            patch("openjarvis.server.digest_routes._save_digest_schedule") as mock_save,
-            patch(
-                "openjarvis.server.digest_routes._create_scheduler_task",
-                return_value="task123",
-            ) as mock_create,
-        ):
+    def test_schedule_endpoint_update_is_refused(self, client):
+        """POST /api/digest/schedule is 409: Hermes owns the schedule."""
+        with patch("openjarvis.cli.digest_cmd._save_digest_schedule") as mock_save:
             resp = client.post(
                 "/api/digest/schedule",
                 json={"enabled": True, "cron": "30 7 * * 1-5"},
             )
 
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["enabled"] is True
-        assert data["cron"] == "30 7 * * 1-5"
-        mock_save.assert_called_once_with(enabled=True, cron="30 7 * * 1-5")
-        mock_create.assert_called_once_with(
-            "30 7 * * 1-5",
-            "America/Los_Angeles",
-        )
-
-    def test_schedule_endpoint_disable(self, client):
-        """POST /api/digest/schedule with enabled=false cancels tasks."""
-        mock_cfg = MagicMock()
-        mock_cfg.digest.enabled = True
-        mock_cfg.digest.schedule = "0 6 * * *"
-
-        with (
-            patch(
-                "openjarvis.server.digest_routes.load_config",
-                return_value=mock_cfg,
-            ),
-            patch("openjarvis.server.digest_routes._save_digest_schedule") as mock_save,
-            patch(
-                "openjarvis.server.digest_routes._cancel_scheduler_tasks",
-                return_value=1,
-            ) as mock_cancel,
-        ):
-            resp = client.post(
-                "/api/digest/schedule",
-                json={"enabled": False},
-            )
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["enabled"] is False
-        assert data["cron"] == "0 6 * * *"
-        mock_save.assert_called_once_with(enabled=False, cron="0 6 * * *")
-        mock_cancel.assert_called_once()
+        assert resp.status_code == 409
+        assert "Hermes" in resp.json()["detail"]
+        mock_save.assert_not_called()

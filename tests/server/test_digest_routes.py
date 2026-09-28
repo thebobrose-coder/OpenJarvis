@@ -1,4 +1,8 @@
-"""Tests for /api/digest endpoints."""
+"""Tests for the locally generated /api/digest/<category> endpoints.
+
+General and culture proxy Hermes (see test_digest_hermes_routes.py); these
+tests cover the categories still generated here, via weather.
+"""
 
 from __future__ import annotations
 
@@ -30,6 +34,7 @@ def store(tmp_path):
             generated_at=datetime.now(),
             model_used="test",
             voice_used="jarvis",
+            category="weather",
         )
     )
     # Write fake audio file
@@ -87,13 +92,15 @@ def test_category_router_schedule_endpoints_only_on_general(tmp_path):
 
 
 def _make_app(db_path: str):
-    """Create a FastAPI app with the digest router."""
+    """Create a FastAPI app with a locally generated digest router."""
     from fastapi import FastAPI
 
     from openjarvis.server.digest_routes import create_digest_router
 
     app = FastAPI()
-    app.include_router(create_digest_router(db_path=db_path))
+    app.include_router(
+        create_digest_router(db_path=db_path, category="weather", prefix="/api/digest")
+    )
     return app
 
 
@@ -126,7 +133,9 @@ def test_get_digest_404(tmp_path):
     from openjarvis.server.digest_routes import create_digest_router
 
     app = FastAPI()
-    app.include_router(create_digest_router(db_path=str(tmp_path / "empty.db")))
+    app.include_router(
+        create_digest_router(db_path=str(tmp_path / "empty.db"), category="weather")
+    )
 
     client = TestClient(app)
     resp = client.get("/api/digest")
@@ -161,16 +170,18 @@ def test_generate_runs_entire_jarvis_lifecycle_on_one_worker(tmp_path, monkeypat
 
         def ask(self, prompt, *, agent, digest_category="general"):
             calls.append(("ask", threading.get_ident()))
-            assert prompt == "Generate my morning digest"
+            assert prompt == "Generate the weather briefing"
             assert agent == "morning_digest"
-            assert digest_category == "general"
+            assert digest_category == "weather"
             return "digest"
 
         def __exit__(self, exc_type, exc, tb):
             calls.append(("exit", threading.get_ident()))
 
     monkeypatch.setattr("openjarvis.sdk.Jarvis", FakeJarvis)
-    router = digest_routes.create_digest_router(db_path=str(tmp_path / "digest.db"))
+    router = digest_routes.create_digest_router(
+        db_path=str(tmp_path / "digest.db"), category="weather"
+    )
     endpoint = next(
         route.endpoint for route in router.routes if route.path.endswith("/generate")
     )
