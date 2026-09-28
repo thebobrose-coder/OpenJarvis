@@ -3,7 +3,7 @@ import { Send, Square, Paperclip, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore, generateId } from '../../lib/store';
 import { streamChat, streamResearch } from '../../lib/sse';
-import { fetchSavings, getBase } from '../../lib/api';
+import { fetchSavings } from '../../lib/api';
 import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
 import { serializeToolCallArguments } from '../../lib/tool-call';
 import {
@@ -19,6 +19,7 @@ import {
 } from '../../lib/chat-routing';
 import { MicButton } from './MicButton';
 import { useSpeech } from '../../hooks/useSpeech';
+import { useDailyBriefAudio } from '../../lib/DailyBriefAudioContext';
 import type {
   ChatMessage,
   MessageTelemetry,
@@ -87,6 +88,7 @@ function useResearchCorpusSync(enabled: boolean): {
 }
 
 export function InputArea() {
+  const { playLatest: playLatestBrief } = useDailyBriefAudio();
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -547,19 +549,11 @@ export function InputArea() {
         complexity_tier: complexity?.tier,
         suggested_max_tokens: complexity?.suggested_max_tokens,
       };
-      // Check if the response has digest audio available
-      let audioMeta: { url: string } | undefined;
-      try {
-        const digestRes = await fetch(`${getBase()}/api/digest`);
-        if (digestRes.ok) {
-          const digest = await digestRes.json();
-          if (digest.audio_available) {
-            audioMeta = { url: `${getBase()}/api/digest/audio` };
-          }
-        }
-      } catch {
-        // Not a digest response or server unavailable — skip
-      }
+      // A morning-briefing turn (the router answered with today's Hermes
+      // digest) plays the digest's cached audio through the shared Daily
+      // Brief player. Other replies get no digest audio.
+      const audioMeta: { url: string } | undefined = undefined;
+      if (routeInfo?.reason === 'briefing') void playLatestBrief();
 
       updateLastAssistant(
         convId,
@@ -604,6 +598,7 @@ export function InputArea() {
     resetStream,
     deepResearch,
     temperature,
+    playLatestBrief,
     maxTokens,
   ]);
 

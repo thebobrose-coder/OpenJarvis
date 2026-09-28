@@ -561,3 +561,188 @@ def test_hermes_is_never_discovered_or_used_as_engine():
     cfg = JarvisConfig()
     assert _discovery.get_engine(cfg, engine_key="hermes") is None
     assert all(key != "hermes" for key, _ in _discovery.discover_engines(cfg))
+
+
+# ---------------------------------------------------------------------------
+# Morning briefing rule: a bare greeting returns today's Hermes digest
+# ---------------------------------------------------------------------------
+
+
+def _briefing_app(monkeypatch, load_today):
+    """App whose classifier and Hermes engine must never be used."""
+    from openjarvis.server import digest_routes
+
+    async def classify(text):
+        raise AssertionError(f"classifier called for {text!r}")
+
+    fake = _FakeHermesEngine()
+    monkeypatch.setattr(digest_routes, "_load_today", load_today)
+    client, server_engine, agent, _, _ = _app(monkeypatch, fake, classify=classify)
+    return client, fake, server_engine, agent
+
+
+def _today_payload(age_s: int = 60) -> dict:
+    from datetime import datetime, timedelta, timezone
+
+    stamp = datetime.now(timezone.utc) - timedelta(seconds=age_s)
+    return {
+        "feed": "digest_general",
+        "generated_at": stamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "data": {"text": "Good morning, sir. Markets were calm."},
+    }
+
+
+def _chat(client, text: str, *, stream: bool = False, model=hr.AUTO_MODEL_ID):
+    return client.post(
+        "/v1/chat/completions",
+        json={
+            "model": model,
+            "stream": stream,
+            "messages": [{"role": "user", "content": text}],
+        },
+    )
+
+
+@pytest.mark.parametrize("text", ["Good morning", "morning briefing, Jarvis!"])
+def test_briefing_returns_hermes_digest_without_any_model(monkeypatch, text):
+    async def load_today(category):
+        assert category == "general"
+        return _today_payload(), False
+
+    client, fake, server_engine, agent = _briefing_app(monkeypatch, load_today)
+    body = _chat(client, text).json()
+
+    assert body["choices"][0]["message"]["content"] == (
+        "Good morning, sir. Markets were calm."
+    )
+    assert body["route"] == {
+        "target": "hermes",
+        "reason": "briefing",
+        "hint": hr.BRIEFING_HINT,
+    }
+    assert fake.calls == []
+    agent.run.assert_not_called()
+    server_engine.generate.assert_not_called()
+    assert hr.get_usage().count_today() == 0  # not a Hermes turn
+
+
+def test_briefing_stream(monkeypatch):
+    async def load_today(category):
+        return _today_payload(), False
+
+    client, fake, _, _ = _briefing_app(monkeypatch, load_today)
+    events = _sse_events(_chat(client, "good morning", stream=True).text)
+
+    assert events[0][0] == "route"
+    assert json.loads(events[0][1])["reason"] == "briefing"
+    content = "".join(
+        json.loads(data)["choices"][0]["delta"].get("content", "")
+        for event, data in events
+        if event is None and data != "[DONE]"
+    )
+    assert content == "Good morning, sir. Markets were calm."
+    assert events[-1] == (None, "[DONE]")
+    assert fake.calls == []
+
+
+def test_briefing_not_out_yet(monkeypatch):
+    from fastapi import HTTPException
+
+    from openjarvis.agents.hermes_digest import NOT_OUT_YET
+
+    async def load_today(category):
+        raise HTTPException(status_code=404, detail="No digest for today")
+
+    client, _, _, _ = _briefing_app(monkeypatch, load_today)
+    body = _chat(client, "morning").json()
+
+    assert body["choices"][0]["message"]["content"] == NOT_OUT_YET
+
+
+def test_briefing_bridge_down_serves_last_known_with_age(monkeypatch):
+    async def load_today(category):
+        return _today_payload(age_s=3 * 3600 + 30), True
+
+    client, _, _, _ = _briefing_app(monkeypatch, load_today)
+    body = _chat(client, "daily briefing").json()
+
+    assert body["choices"][0]["message"]["content"].startswith("Good morning, sir.")
+    assert body["route"]["notice"] == (
+        "Hermes is unreachable; this is the last copy, from 3 h ago."
+    )
+
+
+def test_briefing_bridge_down_without_copy(monkeypatch):
+    from fastapi import HTTPException
+
+    async def load_today(category):
+        raise HTTPException(status_code=503, detail="Hermes digest feed unavailable")
+
+    client, _, _, _ = _briefing_app(monkeypatch, load_today)
+    body = _chat(client, "good morning").json()
+
+    assert "unavailable" in body["choices"][0]["message"]["content"]
+
+
+@pytest.mark.parametrize(
+    ("text", "target"),
+    [("Hermes, good morning", "hermes"), ("local, good morning", "local")],
+)
+def test_prefix_beats_briefing_rule(monkeypatch, text, target):
+    _store_key()
+
+    async def load_today(category):
+        raise AssertionError("briefing rule fired despite a prefix")
+
+    from openjarvis.agents._stubs import AgentResult
+    from openjarvis.server import digest_routes
+
+    monkeypatch.setattr(digest_routes, "_load_today", load_today)
+    fake = _FakeHermesEngine()
+    client, _, agent, _, _ = _app(
+        monkeypatch, fake, classify=_classifier("local", 0.9)
+    )
+    agent.run.return_value = AgentResult(content="Morning!", turns=1)
+
+    body = _chat(client, text).json()
+
+    assert body["route"]["target"] == target
+    assert body["route"]["reason"] == "prefix"
+
+
+def test_explicit_hermes_model_skips_briefing_rule(monkeypatch):
+    _store_key()
+
+    async def load_today(category):
+        raise AssertionError("briefing rule fired for the explicit Hermes model")
+
+    from openjarvis.server import digest_routes
+
+    monkeypatch.setattr(digest_routes, "_load_today", load_today)
+    fake = _FakeHermesEngine()
+    client, _, _, _, _ = _app(monkeypatch, fake)
+
+    body = _chat(client, "good morning", model=hr.HERMES_MODEL_ID).json()
+
+    assert body["route"]["reason"] == "explicit_model"
+    assert len(fake.calls) == 1
+
+
+def test_mid_sentence_greeting_is_a_normal_turn(monkeypatch):
+    _store_key()
+
+    async def load_today(category):
+        raise AssertionError("briefing rule fired mid-sentence")
+
+    from openjarvis.agents._stubs import AgentResult
+    from openjarvis.server import digest_routes
+
+    monkeypatch.setattr(digest_routes, "_load_today", load_today)
+    classify = _classifier("local", 0.9)
+    client, _, agent, _, _ = _app(monkeypatch, _FakeHermesEngine(), classify=classify)
+    agent.run.return_value = AgentResult(content="Nice!", turns=1)
+
+    body = _chat(client, "I had a good morning run").json()
+
+    assert body["choices"][0]["message"]["content"] == "Nice!"
+    assert body["route"]["reason"] == "classifier"

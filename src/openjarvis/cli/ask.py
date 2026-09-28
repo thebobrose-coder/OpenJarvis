@@ -795,6 +795,28 @@ def ask(
     console = Console(stderr=True)
     query_text = " ".join(query)
 
+    # A bare morning greeting gets today's Hermes briefing, with no model call
+    # (same rule as the dashboard chat's router).
+    from openjarvis.agents.hermes_digest import (
+        NOT_OUT_YET,
+        fetch_today_text,
+        is_briefing_request,
+    )
+
+    plain = not (agent_name or tool_names or research_mode)
+    if plain and not (image_paths or capture_screen):
+        if is_briefing_request(query_text):
+            try:
+                text = fetch_today_text("general") or NOT_OUT_YET
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Hermes digest feed unavailable: %s", exc)
+                text = "Today's briefing is unavailable: Hermes can't be reached."
+            if output_json:
+                click.echo(json_mod.dumps({"content": text, "engine": "hermes"}))
+            else:
+                click.echo(text)
+            return
+
     # Vision: collect base64 images from --image files and/or --screen.
     image_b64: list[str] = []
     for _img_path in image_paths:

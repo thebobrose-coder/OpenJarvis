@@ -19,6 +19,10 @@ export interface SharedDigestAudioValue {
   playing: boolean;
   regenerate: () => Promise<void>;
   toggleAudio: () => void;
+  /** Reload the digest (it may be newer than the copy loaded at startup),
+   * then play its cached audio if it has any. Used by the chat's morning
+   * briefing turn. */
+  playLatest: () => Promise<void>;
 }
 
 /**
@@ -42,6 +46,7 @@ export function createSharedDigestAudio(prefix: string) {
     const [error, setError] = useState<string | null>(null);
     const [regenerating, setRegenerating] = useState(false);
     const [playing, setPlaying] = useState(false);
+    const [playRequested, setPlayRequested] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
     const load = useCallback(async () => {
@@ -73,6 +78,29 @@ export function createSharedDigestAudio(prefix: string) {
       }
     }, [load]);
 
+    const startPlayback = useCallback((el: HTMLAudioElement) => {
+      el.play()
+        .then(() => setPlaying(true))
+        .catch((e) => {
+          console.error(`[digest audio ${prefix}] playback failed:`, e, el.error);
+          setPlaying(false);
+          setError(`Audio playback failed: ${el.error?.message || e?.message || 'unknown error'}`);
+        });
+    }, []);
+
+    const playLatest = useCallback(async () => {
+      await load();
+      setPlayRequested(true);
+    }, [load]);
+
+    // Runs after load() has re-rendered <audio> with the latest src.
+    useEffect(() => {
+      if (!playRequested) return;
+      setPlayRequested(false);
+      const el = audioRef.current;
+      if (el && audioUrl && el.paused) startPlayback(el);
+    }, [playRequested, audioUrl, startPlayback]);
+
     const toggleAudio = useCallback(() => {
       const el = audioRef.current;
       if (!el) return;
@@ -80,19 +108,23 @@ export function createSharedDigestAudio(prefix: string) {
         el.pause();
         setPlaying(false);
       } else {
-        el.play()
-          .then(() => setPlaying(true))
-          .catch((e) => {
-            console.error(`[digest audio ${prefix}] playback failed:`, e, el.error);
-            setPlaying(false);
-            setError(`Audio playback failed: ${el.error?.message || e?.message || 'unknown error'}`);
-          });
+        startPlayback(el);
       }
-    }, [playing]);
+    }, [playing, startPlayback]);
 
     return (
       <Ctx.Provider
-        value={{ digest, audioUrl, loading, error, regenerating, playing, regenerate, toggleAudio }}
+        value={{
+          digest,
+          audioUrl,
+          loading,
+          error,
+          regenerating,
+          playing,
+          regenerate,
+          toggleAudio,
+          playLatest,
+        }}
       >
         {children}
         {audioUrl && (

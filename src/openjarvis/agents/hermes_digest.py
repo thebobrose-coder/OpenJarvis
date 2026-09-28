@@ -10,6 +10,7 @@ synchronously through `fetch_today_text`.
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -27,6 +28,29 @@ HERMES_DIGEST_URLS = {
 HERMES_TZ = ZoneInfo("America/Chicago")
 HERMES_SCHEDULE = {"cron": "0 6 * * *", "timezone": "America/Chicago"}
 _TIMEOUT_S = 10.0
+
+NOT_OUT_YET = "Today's briefing isn't out yet; it's generated at 6:00."
+
+# A whole message that is only a morning greeting or a briefing request,
+# optionally followed by an address word and punctuation. Anchored at both
+# ends, so a mention inside a longer sentence ("I had a good morning run")
+# never matches. The address word is a fixed set, not any word, so
+# "morning run" doesn't match either.
+_BRIEFING_REQUEST = re.compile(
+    r"(?:"
+    r"(?:good\s+)?morning"
+    r"|(?:(?:my|the)\s+)?(?:morning|daily)\s+brief(?:ing)?"
+    r"|what(?:'|’)?s\s+(?:in\s+)?my\s+(?:(?:morning|daily)\s+)?brief(?:ing)?"
+    r")"
+    r"(?:[\s,]+(?:jarvis|sir|please))*"  # optional address words
+    r"[\s.!?]*"  # trailing punctuation
+)
+
+
+def is_briefing_request(text: str) -> bool:
+    """True when the whole message asks for the morning briefing."""
+    folded = " ".join(text.strip().casefold().split())
+    return _BRIEFING_REQUEST.fullmatch(folded) is not None
 
 
 def feed_time(payload: dict) -> datetime:

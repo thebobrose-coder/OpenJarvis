@@ -29,7 +29,7 @@ import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -37,6 +37,7 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
+from openjarvis.agents.hermes_digest import NOT_OUT_YET, feed_time, is_briefing_request
 from openjarvis.core.paths import get_config_dir
 from openjarvis.core.types import Message, Role
 from openjarvis.server.store_performance_routes import HERMES_PANELS_URL
@@ -127,7 +128,7 @@ def build_classifier_rubric(store_names: list[str] | None = None) -> str:
 class RouteDecision:
     target: str  # "hermes" | "local"
     reason: str  # prefix | explicit_model | sticky | classifier | low_confidence
-    #              | cap | no_key | classifier_error
+    #              | cap | no_key | classifier_error | briefing
     confidence: float | None = None
     hint: str | None = None
     notice: str | None = None
@@ -213,9 +214,9 @@ def _ollama_host(app_config: Any) -> str:
     host = ""
     if app_config is not None:
         host = getattr(getattr(app_config.engine, "ollama", None), "host", "") or ""
-    return (
-        host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434"
-    ).rstrip("/")
+    return (host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434").rstrip(
+        "/"
+    )
 
 
 def make_classifier(
@@ -494,6 +495,81 @@ async def _hermes_nonstream(
 
 
 # ---------------------------------------------------------------------------
+# Morning briefing: a greeting returns today's Hermes digest, no model call
+# ---------------------------------------------------------------------------
+
+BRIEFING_HINT = "Today's Hermes briefing."
+
+
+async def _briefing_text() -> tuple[str, str | None]:
+    """Today's general digest text, plus a notice when it is a stale copy.
+
+    Uses the dashboard proxy's own logic (today rule, last-known copy when
+    the bridge is down) and never synthesizes audio: the chat plays the
+    panel's cached file when there is one.
+    """
+    from fastapi import HTTPException
+
+    from openjarvis.server import digest_routes
+
+    try:
+        payload, stale = await digest_routes._load_today("general")
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return NOT_OUT_YET, None
+        return "Today's briefing is unavailable: Hermes can't be reached.", None
+    notice = None
+    if stale:
+        age = datetime.now(timezone.utc) - feed_time(payload)
+        minutes = max(1, int(age.total_seconds() // 60))
+        ago = f"{minutes} min" if minutes < 120 else f"{minutes // 60} h"
+        notice = f"Hermes is unreachable; this is the last copy, from {ago} ago."
+    return payload["data"]["text"], notice
+
+
+async def briefing_response(request_body: Any) -> Any:
+    """Answer a morning greeting with today's Hermes digest."""
+    content, notice = await _briefing_text()
+    route = RouteDecision("hermes", "briefing", hint=BRIEFING_HINT, notice=notice)
+    route = route.as_dict()
+    chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+
+    if request_body.stream:
+
+        async def generate():
+            yield _sse(route, event="route")
+            yield _sse(_chunk(chunk_id, content))
+            finish = _chunk(chunk_id, None, "stop")
+            finish["telemetry"] = {"engine": "hermes"}
+            finish["route"] = route
+            yield _sse(finish)
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
+    return {
+        "id": chunk_id,
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": HERMES_MODEL_ID,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "telemetry": {"engine": "hermes"},
+        "route": route,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Entry point from /v1/chat/completions
 # ---------------------------------------------------------------------------
 
@@ -543,6 +619,11 @@ async def route_chat(
         return await hermes_response(
             request_body, app_config, decision, stripped, engine_factory=engine_factory
         ), None
+
+    # A bare morning greeting gets today's briefing, before the classifier.
+    # An explicit "Hermes," / "local," prefix is the user's override and wins.
+    if parse_prefix(text)[0] is None and is_briefing_request(text):
+        return await briefing_response(request_body), None
 
     model = local_model(request)
     decision, forwarded = await decide_route(

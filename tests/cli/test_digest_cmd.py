@@ -87,3 +87,35 @@ def test_digest_fresh_without_today(tmp_path):
 
     assert result.exit_code == 0
     assert "no digest for today" in result.output
+
+
+def test_ask_good_morning_prints_hermes_digest_without_a_model():
+    from unittest.mock import patch
+
+    from openjarvis.cli import cli
+
+    with (
+        patch(
+            "openjarvis.agents.hermes_digest.fetch_today_text",
+            return_value="Hermes digest text.",
+        ),
+        patch("openjarvis.cli.ask.load_config") as load_config,
+    ):
+        result = CliRunner().invoke(cli, ["ask", "Good", "morning!"])
+
+    assert result.exit_code == 0
+    assert "Hermes digest text." in result.output
+    load_config.assert_not_called()  # returned before any engine setup
+
+
+def test_ask_good_morning_before_the_digest_is_out():
+    from unittest.mock import patch
+
+    from openjarvis.agents.hermes_digest import NOT_OUT_YET
+    from openjarvis.cli import cli
+
+    with patch("openjarvis.agents.hermes_digest.fetch_today_text", return_value=None):
+        result = CliRunner().invoke(cli, ["ask", "--json", "good morning"])
+
+    assert result.exit_code == 0
+    assert NOT_OUT_YET in result.output
