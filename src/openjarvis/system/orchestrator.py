@@ -68,6 +68,9 @@ class QueryOrchestrator:
         use_agent = agent or s.agent_name
         if not agent and use_agent != "none":
             detected = self._detect_agent_intent(query)
+            if detected == "morning_digest":
+                # Hermes owns the general digest: answer with its copy.
+                return self._hermes_digest_result()
             if detected:
                 use_agent = detected
         if use_agent and use_agent != "none":
@@ -96,6 +99,19 @@ class QueryOrchestrator:
             "model": s.model,
             "engine": s.engine_key,
         }
+
+    def _hermes_digest_result(self) -> Dict[str, Any]:
+        """Today's general digest from Hermes, as a chat result."""
+        from openjarvis.agents.hermes_digest import fetch_today_text
+
+        try:
+            text = fetch_today_text("general")
+        except Exception as exc:  # noqa: BLE001 -- report, never raise to chat
+            logger.warning("Hermes digest feed unavailable: %s", exc)
+            text = "The Hermes digest feed is unavailable right now."
+        if text is None:
+            text = "Hermes has no digest for today yet."
+        return {"content": text, "usage": {}, "model": "hermes", "engine": "hermes"}
 
     def _detect_agent_intent(self, query: str) -> Optional[str]:
         """Detect if a query should be routed to a specific agent."""

@@ -177,7 +177,7 @@ def test_audio_endpoint_serves_current_alert_audio():
 
 
 def test_synthesize_uses_digest_voice_and_per_alert_file(tmp_path, monkeypatch):
-    """The real _synthesize: same TextToSpeechTool call as breaking_alert_record."""
+    """The real _synthesize: TextToSpeechTool with the digest voice settings."""
     from openjarvis.core import config as config_mod
     from openjarvis.tools import text_to_speech
 

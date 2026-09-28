@@ -142,8 +142,3 @@ try:
     import openjarvis.connectors.news_rss  # noqa: F401
 except ImportError:
     pass
-
-try:
-    import openjarvis.connectors.fmp_news  # noqa: F401
-except ImportError:
-    pass

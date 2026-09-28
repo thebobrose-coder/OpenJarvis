@@ -27,18 +27,6 @@ _SECTION_PROMPTS = {
         "WEATHER — Summarize only the provided current conditions and forecast. "
         "Keep it brief and practical, not a full narrative."
     ),
-    "soccer": (
-        "SOCCER — General coverage of the provided soccer/football headlines. "
-        "Not scored or ranked by relevance to anything -- just report what's there."
-    ),
-    "motorsport": (
-        "MOTORSPORT — General coverage of the provided F1/F2/F3/MotoGP/WEC/IMSA/"
-        "WRC/IndyCar/sportscar headlines across whichever series have news."
-    ),
-    "entertainment": (
-        "ENTERTAINMENT — General coverage of the provided entertainment-industry "
-        "headlines."
-    ),
 }
 
 # Config overrides for a MorningDigestAgent run outside the original
@@ -54,21 +42,6 @@ DIGEST_CATEGORY_PRESETS = {
         "persona": "weather",
         "sections": ["weather"],
         "section_sources": {"weather": ["weather"]},
-    },
-    "soccer": {
-        "persona": "soccer",
-        "sections": ["soccer"],
-        "section_sources": {"soccer": ["news_rss_soccer"]},
-    },
-    "motorsport": {
-        "persona": "motorsport",
-        "sections": ["motorsport"],
-        "section_sources": {"motorsport": ["news_rss_motorsport"]},
-    },
-    "entertainment": {
-        "persona": "entertainment",
-        "sections": ["entertainment"],
-        "section_sources": {"entertainment": ["news_rss_entertainment"]},
     },
 }
 
@@ -128,12 +101,11 @@ class MorningDigestAgent(ToolUsingAgent):
         )
 
         # The honorific opening is the original single daily-briefing's
-        # style. Category panels (weather, soccer, motorsport,
-        # entertainment...) run their own persona, which explicitly forbids
-        # it (a short utility read, not an address to the listener) -- so
-        # only inject the honorific instruction for "general", instead of
-        # letting this base instruction silently override every persona's
-        # own rule.
+        # style. Category panels (weather) run their own persona, which
+        # explicitly forbids it (a short utility read, not an address to the
+        # listener) -- so only inject the honorific instruction for
+        # "general", instead of letting this base instruction silently
+        # override every persona's own rule.
         honorific_line = (
             f"The user's preferred honorific is: {honorific}\n\n"
             if self._category == "general"
@@ -187,7 +159,7 @@ class MorningDigestAgent(ToolUsingAgent):
             ],
             "calendar": ["gcalendar"],
             "health": ["oura", "apple_health"],
-            "world": ["weather", "hackernews", "news_rss", "fmp_news"],
+            "world": ["weather", "hackernews", "news_rss"],
             "music": ["spotify", "apple_music"],
         }
         sources = set()

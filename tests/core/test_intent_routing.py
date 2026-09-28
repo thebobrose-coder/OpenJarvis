@@ -64,3 +64,60 @@ class TestDetectAgentIntent:
         with patch("openjarvis.core.registry.AgentRegistry") as reg:
             reg.contains.return_value = False
             assert system._detect_agent_intent("Good morning!") is None
+
+
+class TestGeneralDigestFromHermes:
+    """The general-digest intent answers from Hermes, never generates locally."""
+
+    @pytest.fixture()
+    def orchestrator(self):
+        from openjarvis.system.orchestrator import QueryOrchestrator
+
+        system = MagicMock()
+        system.agent_name = "simple"
+        system.config.agent.context_from_memory = False
+        return QueryOrchestrator(system)
+
+    def test_good_morning_returns_hermes_text(self, orchestrator):
+        with (
+            patch("openjarvis.core.registry.AgentRegistry") as reg,
+            patch(
+                "openjarvis.agents.hermes_digest.fetch_today_text",
+                return_value="Good morning, sir.",
+            ) as fetch,
+            patch.object(orchestrator, "_run_agent") as run_agent,
+        ):
+            reg.contains.return_value = True
+            result = orchestrator.ask("Good morning!")
+
+        assert result["content"] == "Good morning, sir."
+        assert result["engine"] == "hermes"
+        fetch.assert_called_once_with("general")
+        run_agent.assert_not_called()
+
+    def test_no_digest_today(self, orchestrator):
+        with (
+            patch("openjarvis.core.registry.AgentRegistry") as reg,
+            patch(
+                "openjarvis.agents.hermes_digest.fetch_today_text", return_value=None
+            ),
+        ):
+            reg.contains.return_value = True
+            result = orchestrator.ask("morning digest please")
+
+        assert result["content"] == "Hermes has no digest for today yet."
+
+    def test_bridge_down(self, orchestrator):
+        import httpx
+
+        with (
+            patch("openjarvis.core.registry.AgentRegistry") as reg,
+            patch(
+                "openjarvis.agents.hermes_digest.fetch_today_text",
+                side_effect=httpx.ConnectError("refused"),
+            ),
+        ):
+            reg.contains.return_value = True
+            result = orchestrator.ask("daily briefing")
+
+        assert "unavailable" in result["content"]

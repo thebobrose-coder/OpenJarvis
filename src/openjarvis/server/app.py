@@ -495,17 +495,6 @@ def create_app(
         create_digest_router(category="weather", prefix="/api/digest/weather")
     )
     app.include_router(
-        create_digest_router(category="soccer", prefix="/api/digest/soccer")
-    )
-    app.include_router(
-        create_digest_router(category="motorsport", prefix="/api/digest/motorsport")
-    )
-    app.include_router(
-        create_digest_router(
-            category="entertainment", prefix="/api/digest/entertainment"
-        )
-    )
-    app.include_router(
         create_digest_router(category="culture", prefix="/api/digest/culture")
     )
     app.include_router(create_breaking_news_router())

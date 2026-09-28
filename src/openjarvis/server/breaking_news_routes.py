@@ -6,7 +6,7 @@ the latest alert at `/panels/breaking_alerts` on the local bridge (contract
 hq/contracts/openjarvis-hermes.md v0.3 §2). This route passes it through in
 the shape the sidebar already reads, and OpenJarvis keeps speaking alerts
 with its own TTS: each new alert (new `generated_at`) is synthesized once,
-with the same voice settings `tools/breaking_alert_record.py` uses.
+with the digest voice settings (`[digest]` in config.toml).
 
 Alerts are sparse by design -- the bridge 404s until the first one fires,
 which maps to the same "no alerts yet" 404 as before. The last good alert is

@@ -1757,10 +1757,6 @@ class DigestConfig:
     voice_id: str = ""
     voice_speed: float = 1.0
     tts_backend: str = "cartesia"
-    # Empty string = digest_scoring falls back to its own default path
-    # (~/.openjarvis/watchlist.json). Override only if the watchlist should
-    # live somewhere else.
-    watchlist_path: str = ""
     messages: DigestSectionConfig = field(
         default_factory=lambda: DigestSectionConfig(
             sources=["gmail", "slack", "google_tasks"]

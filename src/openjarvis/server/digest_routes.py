@@ -4,26 +4,30 @@ The general and culture digests are read-through proxies for Hermes's
 `digest_general` / `digest_culture` panel feeds (contract
 hq/contracts/openjarvis-hermes.md v0.4 §2): Hermes generates them, and
 OpenJarvis keeps the response shape the panels already read and speaks each
-new document once with its own TTS. Every other category (weather, soccer,
-motorsport, entertainment) is still generated and stored locally.
+new document once with its own TTS. Weather is still generated and stored
+locally until wave 4.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from openjarvis.agents.digest_store import DigestStore
+from openjarvis.agents.hermes_digest import (
+    HERMES_DIGEST_URLS,
+    HERMES_SCHEDULE,
+    feed_time,
+    is_today,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +42,7 @@ _AUDIO_MEDIA_TYPES = {
 
 
 _GENERATE_PROMPTS = {
-    "general": "Generate my morning digest",
     "weather": "Generate the weather briefing",
-    "soccer": "Generate the soccer briefing",
-    "motorsport": "Generate the motorsport briefing",
-    "entertainment": "Generate the entertainment briefing",
 }
 
 
@@ -50,7 +50,7 @@ def _generate_digest_sync(category: str) -> str:
     """Generate a digest with the whole Jarvis lifecycle on one worker."""
     from openjarvis.sdk import Jarvis
 
-    prompt = _GENERATE_PROMPTS.get(category, _GENERATE_PROMPTS["general"])
+    prompt = _GENERATE_PROMPTS[category]
     with Jarvis() as jarvis:
         return jarvis.ask(prompt, agent="morning_digest", digest_category=category)
 
@@ -59,22 +59,11 @@ def _generate_digest_sync(category: str) -> str:
 # Hermes-owned categories
 # ---------------------------------------------------------------------------
 
-HERMES_DIGEST_URLS = {
-    "general": os.environ.get(
-        "HERMES_DIGEST_GENERAL_URL", "http://127.0.0.1:8643/panels/digest_general"
-    ),
-    "culture": os.environ.get(
-        "HERMES_DIGEST_CULTURE_URL", "http://127.0.0.1:8643/panels/digest_culture"
-    ),
-}
 _TIMEOUT_S = 10.0
 # Hermes's digest-requests job runs every 2 minutes, then generation takes
 # seconds; 5 minutes covers a full job interval plus a slow model.
 _POLL_INTERVAL_S = 10.0
 _POLL_TIMEOUT_S = 300.0
-# Hermes generates at 06:00 Central, so "today" is a Central calendar day.
-_HERMES_TZ = ZoneInfo("America/Chicago")
-_HERMES_SCHEDULE = {"cron": "0 6 * * *", "timezone": "America/Chicago"}
 
 # Last good bridge payload per category, served stale-flagged when the bridge
 # is down. Audio lives on disk keyed by category + generated_at; the attempted
@@ -164,17 +153,6 @@ async def _ensure_audio(category: str, payload: dict) -> Path | None:
     return path
 
 
-def _feed_time(payload: dict) -> datetime:
-    return datetime.fromisoformat(payload["generated_at"].replace("Z", "+00:00"))
-
-
-def _is_today(payload: dict) -> bool:
-    return (
-        _feed_time(payload).astimezone(_HERMES_TZ).date()
-        == datetime.now(_HERMES_TZ).date()
-    )
-
-
 async def _fetch_feed(category: str) -> dict | None:
     """Latest feed document, None if Hermes has none yet (bridge 404).
 
@@ -188,7 +166,7 @@ async def _fetch_feed(category: str) -> dict | None:
     resp.raise_for_status()
     payload = resp.json()
     payload["data"]["text"]  # validate before caching
-    _feed_time(payload)
+    feed_time(payload)
     _cache[category] = payload
     return payload
 
@@ -205,7 +183,7 @@ async def _load_today(category: str) -> tuple[dict, bool]:
             )
         # Bridge down: last-known document, whatever its date, with its age.
         return payload, True
-    if payload is None or not _is_today(payload):
+    if payload is None or not is_today(payload):
         raise HTTPException(status_code=404, detail="No digest for today")
     return payload, False
 
@@ -214,7 +192,7 @@ def _shape(category: str, payload: dict, audio_path: Path | None, stale: bool) -
     from openjarvis.core.config import load_config
 
     data = payload["data"]
-    age = (datetime.now(timezone.utc) - _feed_time(payload)).total_seconds()
+    age = (datetime.now(timezone.utc) - feed_time(payload)).total_seconds()
     return {
         "text": data["text"],
         "sections": {},
@@ -307,7 +285,7 @@ def _create_hermes_digest_router(
         @router.get("/schedule")
         async def get_schedule():
             """Hermes's digest schedule (read-only)."""
-            return {"enabled": True, **_HERMES_SCHEDULE, "managed_by": "hermes"}
+            return {"enabled": True, **HERMES_SCHEDULE, "managed_by": "hermes"}
 
         @router.post("/schedule")
         async def update_schedule():
@@ -323,8 +301,8 @@ def create_digest_router(
 
     `category` scopes every query to that category's rows in the shared
     DigestStore table (see digest_store.py). "general" (the world/market
-    digest) and "culture" proxy Hermes's feeds; the other categories are
-    independent local pipelines on their own schedule.
+    digest) and "culture" proxy Hermes's feeds; weather is a local pipeline
+    until wave 4.
     """
     store = DigestStore(db_path=db_path) if db_path else DigestStore()
     if category in HERMES_DIGEST_URLS:
@@ -344,7 +322,7 @@ def create_digest_router(
         return {
             "text": artifact.text,
             "sections": artifact.sections,
-            "articles": artifact.articles,
+            "articles": [],
             "sources_used": artifact.sources_used,
             "generated_at": artifact.generated_at.isoformat(),
             "model_used": artifact.model_used,

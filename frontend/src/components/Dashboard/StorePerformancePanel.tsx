@@ -27,7 +27,7 @@ function StoreSection({ store }: { store: StorePerformanceEntry }) {
         </div>
         {!shopify?.connected ? (
           <p style={{ color: 'var(--color-text-tertiary)' }}>
-            Connect this store in Data Sources to populate this.
+            Hermes has no Shopify data for this store yet.
           </p>
         ) : shopify.error ? (
           <p style={{ color: 'var(--color-error)' }}>{shopify.error}</p>
@@ -96,7 +96,7 @@ function StoreSection({ store }: { store: StorePerformanceEntry }) {
         </div>
         {!gsc?.connected ? (
           <p style={{ color: 'var(--color-text-tertiary)' }}>
-            Connect Google Search Console in Data Sources to populate this.
+            Hermes has no Search Console data for this store yet.
           </p>
         ) : gsc.error ? (
           <p style={{ color: 'var(--color-error)' }}>{gsc.error}</p>
@@ -130,9 +130,8 @@ function StoreSection({ store }: { store: StorePerformanceEntry }) {
  * Store Performance -- live Shopify catalog diff (new listings, price
  * changes, stockouts) + Search Console query totals, per configured store.
  * First genuinely operational dashboard panel (Phase A of
- * BUSINESS_ROADMAP.md). Multi-store (2026-09-22): one section per store
- * added via Data Sources' "Add Store" flow; each store's two sources are
- * still independent (a store can have Shopify connected without Search
+ * BUSINESS_ROADMAP.md). Multi-store: one section per store in the Hermes
+ * feed; each store's two sources are still independent (a store can have Shopify connected without Search
  * Console configured, or vice versa). Since 2026-09-25 the data comes from
  * the Hermes panel feed (proxied by /api/store-performance), so the panel
  * also shows its age and a stale marker when Hermes has fallen behind.
@@ -192,7 +191,7 @@ export function StorePerformancePanel() {
       {freshness}
       {stores.length === 0 ? (
         <p style={{ color: 'var(--color-text-tertiary)' }}>
-          No stores configured -- add one in Data Sources.
+          No stores in the Hermes feed yet.
         </p>
       ) : (
         <div className="flex flex-col gap-4">

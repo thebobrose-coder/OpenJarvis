@@ -38,7 +38,7 @@ async function openExternal(url: string) {
 /**
  * Consolidated cultural news panel -- replaces the three separate
  * soccer/motorsport/entertainment narration panels with one dense, linkable
- * list: the top 12 ranked articles (see agents/culture_scoring.py) plus a
+ * list: the top 12 ranked articles (ranked by Hermes, digest_culture feed) plus a
  * short spoken summary of the list, not per-category narration.
  */
 export function CultureNewsPanel() {
