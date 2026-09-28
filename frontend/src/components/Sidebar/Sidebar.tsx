@@ -4,6 +4,7 @@ import {
   MessageSquare,
   Plus,
   BarChart3,
+  ShoppingBag,
   Settings,
   Search,
   PanelLeftClose,
@@ -58,6 +59,7 @@ export function Sidebar() {
   const navItems = [
     { path: '/', icon: MessageSquare, label: 'Chat' },
     { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
+    { path: '/commerce', icon: ShoppingBag, label: 'Commerce' },
     { path: '/data-sources', icon: Database, label: 'Data Sources' },
     { path: '/agents', icon: Bot, label: 'Agents' },
     { path: '/briefing', icon: Newspaper, label: 'Briefing' },

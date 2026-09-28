@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router';
 import { Clapperboard, Flag, Goal, MessageSquare, Newspaper, Pause, Play } from 'lucide-react';
-import { isTauri } from '../../lib/api';
+import { openExternal } from '../../lib/open-external';
 import type { DigestArticle } from '../../lib/api';
 import { useAppStore } from '../../lib/store';
 import { useCultureAudio } from '../../lib/CultureAudioContext';
@@ -24,16 +24,6 @@ function formatRelativeTime(iso: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   return `${days}d ago`;
-}
-
-async function openExternal(url: string) {
-  if (!url) return;
-  if (isTauri()) {
-    const { open } = await import('@tauri-apps/plugin-shell');
-    await open(url);
-  } else {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
 }
 
 /**
