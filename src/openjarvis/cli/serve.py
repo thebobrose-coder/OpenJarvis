@@ -755,6 +755,7 @@ def serve(
         api_key=api_key,
         webhook_config=webhook_config,
         cors_origins=config.server.cors_origins,
+        digest_audio_warmup=True,
     )
 
     console.print(

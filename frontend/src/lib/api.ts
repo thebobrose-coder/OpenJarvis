@@ -525,6 +525,10 @@ export interface Digest {
   /** Absolute filesystem path, only meaningful to the Tauri build (see
    * resolveDigestAudioSrc). Null when audio_available is false. */
   audio_path: string | null;
+  /** Hermes-backed digests (general, culture) only: the document's age, and
+   * whether it is the last good copy served while the bridge is down. */
+  age_seconds?: number;
+  stale?: boolean;
 }
 
 export interface DigestSchedule {

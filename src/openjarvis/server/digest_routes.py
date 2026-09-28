@@ -14,7 +14,8 @@ import asyncio
 import logging
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from datetime import time as dtime
 from pathlib import Path
 
 import httpx
@@ -25,6 +26,7 @@ from openjarvis.agents.digest_store import DigestStore
 from openjarvis.agents.hermes_digest import (
     HERMES_DIGEST_URLS,
     HERMES_SCHEDULE,
+    HERMES_TZ,
     feed_time,
     is_today,
 )
@@ -64,6 +66,9 @@ _TIMEOUT_S = 10.0
 # seconds; 5 minutes covers a full job interval plus a slow model.
 _POLL_INTERVAL_S = 10.0
 _POLL_TIMEOUT_S = 300.0
+# Central times to pre-synthesize the day's audio: after the 06:00/06:05
+# Hermes runs, with retries in case a run finishes late.
+_WARMUP_TIMES = (dtime(6, 10), dtime(6, 30), dtime(7, 0))
 
 # Last good bridge payload per category, served stale-flagged when the bridge
 # is down. Audio lives on disk keyed by category + generated_at; the attempted
@@ -186,6 +191,42 @@ async def _load_today(category: str) -> tuple[dict, bool]:
     if payload is None or not is_today(payload):
         raise HTTPException(status_code=404, detail="No digest for today")
     return payload, False
+
+
+async def warm_digest_audio() -> None:
+    """Synthesize audio for today's Hermes digests that have none yet.
+
+    Takes the Kokoro wait off the first panel load of the day. A no-op for
+    documents whose audio is already cached (or already attempted).
+    """
+    for category in HERMES_DIGEST_URLS:
+        try:
+            payload, stale = await _load_today(category)
+        except HTTPException:
+            continue
+        if not stale:
+            await _ensure_audio(category, payload)
+
+
+def _seconds_until_next_warmup(now: datetime) -> float:
+    """Seconds from `now` (aware, Central) to the next _WARMUP_TIMES slot."""
+    for day in (0, 1):
+        date = now.date() + timedelta(days=day)
+        for slot in _WARMUP_TIMES:
+            at = datetime.combine(date, slot, tzinfo=HERMES_TZ)
+            if at > now:
+                return (at - now).total_seconds()
+    raise AssertionError("unreachable: tomorrow always has a slot")
+
+
+async def digest_audio_warmup_loop() -> None:
+    """Warm up once at startup, then at each _WARMUP_TIMES slot, forever."""
+    while True:
+        try:
+            await warm_digest_audio()
+        except Exception:  # noqa: BLE001 -- the loop must outlive any one failure
+            logger.warning("Digest audio warm-up failed", exc_info=True)
+        await asyncio.sleep(_seconds_until_next_warmup(datetime.now(HERMES_TZ)))
 
 
 def _shape(category: str, payload: dict, audio_path: Path | None, stale: bool) -> dict:

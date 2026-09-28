@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import pathlib
 import threading
@@ -178,6 +179,7 @@ def create_app(
     api_key: str = "",
     webhook_config: dict | None = None,
     cors_origins: list[str] | None = None,
+    digest_audio_warmup: bool = False,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -498,6 +500,24 @@ def create_app(
         create_digest_router(category="culture", prefix="/api/digest/culture")
     )
     app.include_router(create_breaking_news_router())
+
+    if digest_audio_warmup:
+        # Pre-synthesize the Hermes digests' audio in the background, so the
+        # first panel load of the day doesn't wait on TTS. Off by default:
+        # only `jarvis serve` turns it on, never tests that build the app.
+        from openjarvis.server.digest_routes import digest_audio_warmup_loop
+
+        @app.on_event("startup")
+        async def _start_digest_audio_warmup() -> None:
+            app.state.digest_audio_warmup = asyncio.create_task(
+                digest_audio_warmup_loop()
+            )
+
+        @app.on_event("shutdown")
+        async def _stop_digest_audio_warmup() -> None:
+            task = getattr(app.state, "digest_audio_warmup", None)
+            if task is not None:
+                task.cancel()
     app.include_router(day_ahead_router)
     app.include_router(weather_router)
     app.include_router(store_performance_router)

@@ -304,3 +304,55 @@ def test_culture_has_no_schedule_route(tmp_path):
         prefix="/api/digest/culture",
     )
     assert "/api/digest/culture/schedule" not in {route.path for route in router.routes}
+
+
+def _run_warmup(handler):
+    import asyncio
+
+    real_client = httpx.AsyncClient
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client(*args, **kwargs)
+
+    with patch.object(dr.httpx, "AsyncClient", side_effect=fake_client):
+        asyncio.run(dr.warm_digest_audio())
+
+
+def test_warmup_synthesizes_today_once_per_document(tts_calls):
+    payloads = {
+        "digest_general": _payload("general"),
+        "digest_culture": _payload("culture"),
+    }
+
+    def handler(req):
+        return httpx.Response(200, json=payloads[req.url.path.rsplit("/", 1)[-1]])
+
+    _run_warmup(handler)
+    _run_warmup(handler)
+
+    assert sorted(call[0] for call in tts_calls) == ["culture", "general"]
+
+
+def test_warmup_skips_missing_old_and_stale_documents(tts_calls):
+    old = _payload(generated_at=_stamp(timedelta(days=2)))
+    _run_warmup(lambda r: httpx.Response(200, json=old))
+    _run_warmup(lambda r: httpx.Response(404))
+    dr._cache["general"] = _payload()
+    _run_warmup(_down)
+
+    assert tts_calls == []
+
+
+@pytest.mark.parametrize(
+    ("now", "expected_s"),
+    [
+        ((5, 0), 70 * 60),  # before the first slot -> 06:10
+        ((6, 10), 20 * 60),  # exactly on a slot -> the next one, 06:30
+        ((6, 45), 15 * 60),  # between slots -> 07:00
+        ((23, 0), (7 * 60 + 10) * 60),  # after the last slot -> 06:10 tomorrow
+    ],
+)
+def test_seconds_until_next_warmup(now, expected_s):
+    at = datetime(2026, 9, 28, *now, tzinfo=dr.HERMES_TZ)
+    assert dr._seconds_until_next_warmup(at) == expected_s
