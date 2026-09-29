@@ -143,7 +143,11 @@ pipeline board for a Hermes prospect-research role
 - a line switcher, research coverage, and month cost by engine;
 - follow-ups due;
 - seven stage columns with drag-and-drop and filters;
-- a prospect drawer with fit, signals, official-directory contacts, and a
+- a rank chip on every card (Hermes sends each stage sorted by rank; the
+  tooltip spells out base fit × division factor × platform factor), an
+  affiliation chip, and Rank ≥ / Affiliation filters; columns keep
+  Hermes's order, with any unranked cards last;
+- a prospect drawer with fit, rank, signals, official-directory contacts, and a
   draft that is editable locally only (never saved or forwarded);
 - `mailto:` hand-off to the operator's own mail client, falling back to
   copy past 2,000 characters, then a "Mark as sent?" prompt;
@@ -154,6 +158,30 @@ pipeline board for a Hermes prospect-research role
 - a conversion funnel and the week's research log.
 Actions are validated like the bridge (integer ids, the stage list, 2 KB
 bodies). Neither OpenJarvis nor Hermes sends email.
+
+**Content page** (`/content`), generic by property. The operator's seat in
+a content loop where Hermes proposes seed topics and measures what was
+posted, and only approved proposals reach the content pipeline's intake
+(`GET /api/content/{content_seedbank|content_proposals|content_performance|content_health}`):
+- a property switcher, snapshot and bundle ages, month cost by engine, and
+  "Research more" (one extra ideation run a day; the button locks for
+  24 hours after use);
+- health alerts, warnings first;
+- the seedbank: one card per lane with cadence, queued, in flight,
+  pending, runway days and a status (including operator-only lanes,
+  automatic feed lanes, and "unknown" before the pipeline's snapshot);
+- a proposals queue, newest first, with evidence: Approve, Edit & approve
+  (topic, pillar, product and a note; only changed fields are sent), and
+  Reject behind a "final" confirmation; decisions are optimistic and
+  reconciled with the next feed; a Recently decided tab shows intake
+  outcomes and their reasons;
+- thesis prompts, only when there are any, marked Used or Dismissed
+  (Hermes offers prompts; it never writes theses);
+- performance: approval rate per property, rollups by pillar, origin and
+  content type, and recent posts with engagement, clicks and sessions.
+The proxy forwards only uuid-addressed approve/reject and used/dismissed
+actions and the ideation refresh, with the bridge's 2 KB body cap and
+per-field limits.
 
 ### Changed
 
@@ -176,7 +204,8 @@ webview.
 **`openExternal` and the dashboard UI primitives are shared.**
 `lib/open-external.ts` and `components/shared/` (chips, tiles, selects,
 segmented controls, number and date formatting) are used by the Commerce
-and Business Development pages.
+Business Development and Content pages, including the cost-by-engine
+label (`engineLabel`).
 
 ### Removed
 
