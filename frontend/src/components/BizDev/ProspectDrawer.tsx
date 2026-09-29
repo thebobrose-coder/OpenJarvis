@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import { RotateCw, X } from 'lucide-react';
 import {
   SUPPRESSION_STAGES,
+  recheckReason,
   type PipelineProspect,
+  type RecheckResult,
   type StageAction,
   type SuppressionStage,
 } from '../../lib/bizdev-api';
@@ -23,6 +25,29 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </h3>
       {children}
     </section>
+  );
+}
+
+/**
+ * What the last re-check found. When the new result was worse, Hermes kept
+ * the earlier research, so the drawer says so and summarises what was
+ * discarded -- a muted note for a manual look, not an error.
+ */
+export function RecheckNote({ recheck }: { recheck: RecheckResult }) {
+  const reason = recheck.kept_previous ? recheckReason(recheck) : null;
+  return (
+    <div className="flex flex-col gap-0.5 text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span>Re-checked {shortDateTime(recheck.at)}</span>
+      {recheck.kept_previous && (
+        <>
+          <span>New result was worse, so the earlier research was kept.</span>
+          <span>
+            New result: fit {recheck.fit_score ?? '—'}, {recheck.contacts ?? 0} contact{recheck.contacts === 1 ? '' : 's'}
+            {reason ? ` -- ${reason}` : ''}
+          </span>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -260,6 +285,7 @@ export function ProspectDrawer({
               {recheckDisabled ? 'Daily re-check cap reached' : `${rechecksToday} of ${recheckCap} re-checks used today`}
             </span>
           </div>
+          {prospect.recheck && <RecheckNote recheck={prospect.recheck} />}
         </Section>
 
         {(prospect.history?.length ?? 0) > 0 && (

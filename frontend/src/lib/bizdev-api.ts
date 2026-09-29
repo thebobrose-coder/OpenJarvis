@@ -63,6 +63,28 @@ export interface Prospect {
   draft?: Draft | null;
   draft_problems?: string[];
   sources?: string[];
+  /** The latest re-check (v0.9 addendum); absent until the first one. When
+   * `kept_previous`, the new result was worse and the card still shows the
+   * earlier research; these fields describe the discarded new result. */
+  recheck?: RecheckResult;
+}
+
+export interface RecheckResult {
+  at: string;
+  kept_previous: boolean;
+  fit_score?: number | null;
+  /** A count, not the contacts themselves. */
+  contacts?: number;
+  has_draft?: boolean;
+  triage?: { engine?: string; score?: number | null; reason?: string | null; disqualify?: string | null } | null;
+  disqualify_reason?: string | null;
+  draft_problems?: string[];
+}
+
+/** The most useful one-line reason from a re-check: the first non-empty of
+ * disqualify_reason, triage.disqualify, triage.reason. */
+export function recheckReason(r: RecheckResult): string | null {
+  return [r.disqualify_reason, r.triage?.disqualify, r.triage?.reason].find((s) => s && s.trim())?.trim() ?? null;
 }
 
 export interface PipelineProspect extends Prospect {

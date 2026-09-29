@@ -72,6 +72,11 @@ function ProspectCard({ p, onOpen }: { p: PipelineProspect; onOpen: () => void }
         )}
         {p.signals?.platform && <Chip tone="muted">{p.signals.platform}</Chip>}
         {noContacts && <Chip tone="warning">no contacts</Chip>}
+        {p.recheck?.kept_previous && (
+          <Chip tone="muted" title="A re-check came back worse; the earlier research was kept">
+            re-checked
+          </Chip>
+        )}
         {p.days_in_stage != null && (
           <span className="text-[10.5px] ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
             {num(p.days_in_stage)} d

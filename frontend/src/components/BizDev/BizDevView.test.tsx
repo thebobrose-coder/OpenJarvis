@@ -225,3 +225,58 @@ describe('move reconciliation', () => {
     expect(fresh.pending).toEqual({ 2: { stage: 'replied', at: 0 } });
   });
 });
+
+describe('re-check note', () => {
+  const kept = {
+    at: '2026-09-29T09:15:00',
+    kept_previous: true,
+    fit_score: 1,
+    contacts: 0,
+    has_draft: false,
+    triage: { engine: 'local', score: 1, reason: 'Sample triage reason', disqualify: null },
+    disqualify_reason: 'No staff directory found',
+    draft_problems: [],
+  };
+
+  function withRecheck(recheck?: PipelineProspect['recheck']): BizDevFeedStates {
+    const line = PIPELINE.lines[0];
+    return feeds({
+      bd_pipeline: {
+        data: { ...PIPELINE, lines: [{ ...line, stages: { ...line.stages, drafted: [prospect(2, 'drafted', { recheck })] } }] },
+        loading: false,
+        error: null,
+      },
+    });
+  }
+
+  it('shows nothing before the first re-check', () => {
+    const html = render({ feeds: withRecheck(undefined), openProspectId: 2 });
+    expect(html).not.toContain('Re-checked');
+    expect(html).not.toContain('>re-checked<');
+  });
+
+  it('explains a kept-previous re-check, with the new fit, contacts and reason', () => {
+    const html = render({ feeds: withRecheck(kept), openProspectId: 2 });
+    expect(html).toContain('Re-checked ');
+    expect(html).toContain('New result was worse, so the earlier research was kept.');
+    expect(html).toContain('New result: fit 1, 0 contacts -- No staff directory found');
+    // A muted note, not an error; and the board card is marked.
+    expect(html).not.toContain('var(--color-error)');
+    expect(html).toContain('>re-checked<');
+  });
+
+  it('falls back to the triage reasons in order', () => {
+    const noDisq = { ...kept, disqualify_reason: null, triage: { ...kept.triage, disqualify: 'Sample disqualify' } };
+    expect(render({ feeds: withRecheck(noDisq), openProspectId: 2 })).toContain('-- Sample disqualify');
+    const onlyReason = { ...kept, disqualify_reason: '  ', triage: { ...kept.triage, disqualify: null } };
+    expect(render({ feeds: withRecheck(onlyReason), openProspectId: 2 })).toContain('-- Sample triage reason');
+  });
+
+  it('shows only the date when the new research replaced the old', () => {
+    const html = render({ feeds: withRecheck({ ...kept, kept_previous: false, fit_score: 4, contacts: 2 }), openProspectId: 2 });
+    expect(html).toContain('Re-checked ');
+    expect(html).not.toContain('earlier research was kept');
+    expect(html).not.toContain('New result:');
+    expect(html).not.toContain('>re-checked<');
+  });
+});
