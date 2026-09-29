@@ -11,3 +11,9 @@ export function shortDateTime(iso?: string | null): string {
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
+
+/** Engine ids -> cost labels; the local model costs nothing. */
+export function engineLabel(engine: string, usd: number): string {
+  if (engine.includes('qwen') || engine.endsWith('_local')) return `${engine.replace(/_local$/, '')}: free / local`;
+  return `${engine}: $${usd.toFixed(2)}`;
+}

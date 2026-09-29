@@ -1,16 +1,10 @@
 import { Telescope } from 'lucide-react';
 import type { BdPipeline, BdProspects, StatsLine } from '../../lib/bizdev-api';
 import { FeedFreshness } from '../Dashboard/FeedFreshness';
-import { num } from '../shared/format';
+import { engineLabel, num } from '../shared/format';
 import { Chip, Segmented, SmallButton } from '../shared/ui';
 
 const WEEK = 7 * 24 * 3600;
-
-/** Engine ids -> labels; the local model costs nothing. */
-function engineLabel(engine: string, usd: number): string {
-  if (engine.includes('qwen') || engine.endsWith('_local')) return `${engine.replace(/_local$/, '')}: free / local`;
-  return `${engine}: $${usd.toFixed(2)}`;
-}
 
 export function BizDevHeader({
   lines,
