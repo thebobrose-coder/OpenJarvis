@@ -63,10 +63,41 @@ export interface Prospect {
   draft?: Draft | null;
   draft_problems?: string[];
   sources?: string[];
+  /** v0.9.1: "NCAA D1", "NAIA", "NJCAA"...; null when unknown. */
+  affiliation?: string | null;
+  /** v0.9.1: how good a target this is. Hermes sorts each stage by it; absent on older cards. */
+  rank?: Rank | null;
   /** The latest re-check (v0.9 addendum); absent until the first one. When
    * `kept_previous`, the new result was worse and the card still shows the
    * earlier research; these fields describe the discarded new result. */
   recheck?: RecheckResult;
+}
+
+export interface Rank {
+  /** base × division_factor × platform_factor. */
+  score: number;
+  /** The Sonnet fit, else the triage score. */
+  base: number;
+  division_factor: number;
+  platform_factor: number;
+  affiliation?: string | null;
+  platform?: string | null;
+  excluded?: boolean;
+}
+
+/** 4 -> "4.0", 0.25 -> "0.25": factors and scores read as decimals. */
+export function rankNumber(n: number): string {
+  return Number.isInteger(n) ? n.toFixed(1) : String(n);
+}
+
+/** "base 4 (fit) × division 1.0 × platform 0.25 (SIDEARM Sports)". */
+export function rankBreakdown(p: Pick<Prospect, 'rank' | 'fit_score'>): string | null {
+  const r = p.rank;
+  if (!r) return null;
+  const source = p.fit_score != null && p.fit_score === r.base ? 'fit' : 'triage';
+  const division = `division ${rankNumber(r.division_factor)}${r.affiliation ? ` (${r.affiliation})` : ''}`;
+  const platform = `platform ${rankNumber(r.platform_factor)}${r.platform ? ` (${r.platform})` : ''}`;
+  return `base ${r.base} (${source}) × ${division} × ${platform}`;
 }
 
 export interface RecheckResult {

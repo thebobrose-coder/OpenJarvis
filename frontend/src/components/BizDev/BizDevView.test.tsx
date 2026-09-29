@@ -4,6 +4,7 @@ import type { BdPipeline, BdProspects, BdStats, BoardStage, PipelineProspect } f
 import { applyMoves, reconcileMoves, type BizDevFeedStates } from '../../hooks/useBizDevData';
 import { BizDevView, type BizDevViewProps } from './BizDevView';
 import { MAILTO_MAX, buildMailto } from './mail';
+import { NO_FILTERS, boardOrder, matches } from './PipelineBoard';
 import { SuppressionConfirm } from './ProspectDrawer';
 
 // Neutral fixtures only: this repo is public, and real prospect data
@@ -278,5 +279,71 @@ describe('re-check note', () => {
     expect(html).not.toContain('earlier research was kept');
     expect(html).not.toContain('New result:');
     expect(html).not.toContain('>re-checked<');
+  });
+});
+
+describe('rank', () => {
+  const penalized = prospect(21, 'drafted', {
+    name: 'Example College Penalized',
+    affiliation: 'NJCAA',
+    fit_score: 4,
+    signals: { platform: 'SamplePlatform', directory_found: true },
+    rank: { score: 1, base: 4, division_factor: 1, platform_factor: 0.25, affiliation: 'NJCAA', platform: 'SamplePlatform', excluded: false },
+  });
+  const neutral = prospect(22, 'drafted', {
+    name: 'Example College Neutral',
+    affiliation: 'NAIA',
+    fit_score: 3,
+    rank: { score: 4, base: 4, division_factor: 1, platform_factor: 1, affiliation: 'NAIA', platform: null, excluded: false },
+  });
+  const unranked = prospect(23, 'drafted', { name: 'Example College Unranked', fit_score: 5 });
+
+  function withDrafted(drafted: PipelineProspect[]): BizDevFeedStates {
+    const line = PIPELINE.lines[0];
+    return feeds({
+      bd_pipeline: { data: { ...PIPELINE, lines: [{ ...line, stages: { ...line.stages, drafted } }] }, loading: false, error: null },
+    });
+  }
+
+  it('shows the rank chip with its factors, and the affiliation', () => {
+    const html = render({ feeds: withDrafted([neutral, penalized]) });
+    // Penalized: fit 4 is the base, so "fit"; the platform factor names the platform.
+    expect(html).toContain(
+      'title="base 4 (fit) × division 1.0 (NJCAA) × platform 0.25 (SamplePlatform)">rank 1.0</span>',
+    );
+    // Neutral: the base differs from the fit score, so it came from triage; accent at rank >= 3.
+    expect(html).toMatch(/color:var\(--color-accent\)[^>]*title="base 4 \(triage\) × division 1\.0 \(NAIA\) × platform 1\.0">rank 4\.0</);
+    expect(html).toContain('>NJCAA<');
+    expect(html).toContain('>NAIA<');
+    expect(html).toContain('Affiliation');
+    expect(html).toContain('Rank ≥');
+  });
+
+  it('shows no rank chip on a card without rank', () => {
+    const html = render({ feeds: withDrafted([unranked]) });
+    expect(html).toContain('Example College Unranked');
+    expect(html).not.toContain('>rank ');
+  });
+
+  it('keeps the order Hermes sent, with unranked cards last', () => {
+    // Deliberately not score-sorted: the board must not re-sort.
+    const html = render({ feeds: withDrafted([unranked, penalized, neutral]) });
+    const drafted = html.slice(html.indexOf('aria-label="Drafted"'), html.indexOf('aria-label="Sent"'));
+    const at = (name: string) => drafted.indexOf(name);
+    expect(at('Example College Penalized')).toBeLessThan(at('Example College Neutral'));
+    expect(at('Example College Neutral')).toBeLessThan(at('Example College Unranked'));
+    expect(boardOrder([unranked, penalized, neutral]).map((p) => p.id)).toEqual([21, 22, 23]);
+  });
+
+  it('filters by minimum rank (hiding unranked) and by affiliation', () => {
+    const f = { ...NO_FILTERS, minRank: 3 };
+    expect([penalized, neutral, unranked].filter((p) => matches(p, f)).map((p) => p.id)).toEqual([22]);
+    expect([penalized, neutral, unranked].filter((p) => matches(p, NO_FILTERS)).length).toBe(3);
+    expect([penalized, neutral].filter((p) => matches(p, { ...NO_FILTERS, affiliation: 'NJCAA' })).map((p) => p.id)).toEqual([21]);
+  });
+
+  it('shows the breakdown in the drawer', () => {
+    const html = render({ feeds: withDrafted([penalized]), openProspectId: 21 });
+    expect(html).toContain('Rank 1.0: base 4 (fit) × division 1.0 (NJCAA) × platform 0.25 (SamplePlatform)');
   });
 });

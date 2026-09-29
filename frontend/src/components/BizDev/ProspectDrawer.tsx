@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { RotateCw, X } from 'lucide-react';
 import {
   SUPPRESSION_STAGES,
+  rankBreakdown,
+  rankNumber,
   recheckReason,
   type PipelineProspect,
   type RecheckResult,
@@ -12,7 +14,7 @@ import {
 import { shortDateTime } from '../shared/format';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
 import { MailActions } from './MailActions';
-import { STAGE_LABELS } from './PipelineBoard';
+import { RankChip, STAGE_LABELS } from './PipelineBoard';
 
 const OUTCOMES: StageAction[] = ['replied', 'meeting', 'won', 'lost', 'not_interested', 'do_not_contact', 'bounced'];
 const isSuppression = (s: string): s is SuppressionStage => (SUPPRESSION_STAGES as readonly string[]).includes(s);
@@ -146,7 +148,9 @@ export function ProspectDrawer({
             <span>{[prospect.association, prospect.division, prospect.conference, prospect.state].filter(Boolean).join(' · ')}</span>
             <div className="flex flex-wrap items-center gap-1.5">
               <Chip tone="accent">{STAGE_LABELS[prospect.stage] ?? prospect.stage}</Chip>
+              <RankChip p={prospect} />
               {prospect.fit_score != null && <Chip>fit {prospect.fit_score} / 5</Chip>}
+              {prospect.affiliation && <Chip tone="muted">{prospect.affiliation}</Chip>}
               {prospect.days_in_stage != null && <Chip tone="muted">{prospect.days_in_stage} d in stage</Chip>}
             </div>
             <div className="flex flex-wrap gap-3 text-[11.5px]" style={{ color: 'var(--color-accent)' }}>
@@ -160,9 +164,14 @@ export function ProspectDrawer({
           </button>
         </header>
 
-        {prospect.fit_rationale && (
+        {(prospect.fit_rationale || prospect.rank) && (
           <Section title="Why it fits">
-            <p style={{ color: 'var(--color-text)' }}>{prospect.fit_rationale}</p>
+            {prospect.fit_rationale && <p style={{ color: 'var(--color-text)' }}>{prospect.fit_rationale}</p>}
+            {prospect.rank && (
+              <p className="text-[11.5px] tabular-nums">
+                Rank {rankNumber(prospect.rank.score)}: {rankBreakdown(prospect)}
+              </p>
+            )}
           </Section>
         )}
 

@@ -1,6 +1,6 @@
 import { useMemo, useState, type DragEvent } from 'react';
 import { KanbanSquare } from 'lucide-react';
-import { BOARD_STAGES, type BoardStage, type PipelineProspect } from '../../lib/bizdev-api';
+import { BOARD_STAGES, rankBreakdown, rankNumber, type BoardStage, type PipelineProspect } from '../../lib/bizdev-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num } from '../shared/format';
 import { Chip, Quiet, Select } from '../shared/ui';
@@ -25,10 +25,24 @@ export interface BoardFilters {
   division: string;
   state: string;
   platform: string;
+  affiliation: string;
   minFit: number;
+  /** 0 = any; above 0, unranked cards are hidden. */
+  minRank: number;
 }
 
-export const NO_FILTERS: BoardFilters = { association: '', division: '', state: '', platform: '', minFit: 0 };
+export const NO_FILTERS: BoardFilters = {
+  association: '',
+  division: '',
+  state: '',
+  platform: '',
+  affiliation: '',
+  minFit: 0,
+  minRank: 0,
+};
+
+export const MIN_RANK_OPTIONS = [0, 0.5, 1, 2, 3, 4, 5];
+const RANK_ACCENT = 3;
 
 export function matches(p: PipelineProspect, f: BoardFilters): boolean {
   return (
@@ -36,7 +50,24 @@ export function matches(p: PipelineProspect, f: BoardFilters): boolean {
     (!f.division || p.division === f.division) &&
     (!f.state || p.state === f.state) &&
     (!f.platform || (p.signals?.platform ?? '') === f.platform) &&
-    (p.fit_score ?? 0) >= f.minFit
+    (!f.affiliation || p.affiliation === f.affiliation) &&
+    (p.fit_score ?? 0) >= f.minFit &&
+    (!f.minRank || (p.rank?.score ?? -1) >= f.minRank)
+  );
+}
+
+/** Hermes sends each stage sorted by rank; keep that order, with any
+ * unranked (older) cards after the ranked ones. Never re-sorts by score. */
+export function boardOrder(items: PipelineProspect[]): PipelineProspect[] {
+  return [...items.filter((p) => p.rank), ...items.filter((p) => !p.rank)];
+}
+
+export function RankChip({ p }: { p: PipelineProspect }) {
+  if (!p.rank) return null;
+  return (
+    <Chip tone={p.rank.score >= RANK_ACCENT ? 'accent' : 'neutral'} title={rankBreakdown(p) ?? undefined}>
+      rank {rankNumber(p.rank.score)}
+    </Chip>
   );
 }
 
@@ -65,11 +96,13 @@ function ProspectCard({ p, onOpen }: { p: PipelineProspect; onOpen: () => void }
         {[p.association, p.division, p.state].filter(Boolean).join(' · ')}
       </span>
       <div className="flex flex-wrap items-center gap-1">
+        <RankChip p={p} />
         {p.fit_score != null && (
           <Chip tone={p.fit_score >= 4 ? 'accent' : 'neutral'} title="Fit, 1-5">
             fit {p.fit_score}
           </Chip>
         )}
+        {p.affiliation && <Chip tone="muted">{p.affiliation}</Chip>}
         {p.signals?.platform && <Chip tone="muted">{p.signals.platform}</Chip>}
         {noContacts && <Chip tone="warning">no contacts</Chip>}
         {p.recheck?.kept_previous && (
@@ -133,7 +166,7 @@ function Column({
         </span>
       </header>
       <div className="flex flex-col gap-1.5 max-h-[60vh] overflow-y-auto">
-        {items.map((p) => (
+        {boardOrder(items).map((p) => (
           <ProspectCard key={p.id} p={p} onOpen={() => onOpen(p)} />
         ))}
       </div>
@@ -183,11 +216,18 @@ export function PipelineBoard({
             <Select label="Division" value={filters.division} onChange={set('division')} options={opts(values(all, (p) => p.division))} />
             <Select label="State" value={filters.state} onChange={set('state')} options={opts(values(all, (p) => p.state))} />
             <Select label="Platform" value={filters.platform} onChange={set('platform')} options={opts(values(all, (p) => p.signals?.platform))} />
+            <Select label="Affiliation" value={filters.affiliation} onChange={set('affiliation')} options={opts(values(all, (p) => p.affiliation))} />
             <Select
               label="Fit ≥"
               value={String(filters.minFit)}
               onChange={(v) => set('minFit')(Number(v))}
               options={[0, 1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n ? String(n) : 'Any' }))}
+            />
+            <Select
+              label="Rank ≥"
+              value={String(filters.minRank)}
+              onChange={(v) => set('minRank')(Number(v))}
+              options={MIN_RANK_OPTIONS.map((n) => ({ value: String(n), label: n ? String(n) : 'Any' }))}
             />
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1">
