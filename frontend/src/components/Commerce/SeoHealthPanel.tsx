@@ -2,7 +2,7 @@ import { SearchCheck } from 'lucide-react';
 import type { EcomSeoHealth, SeoPage, SeoStore } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num, shortDateTime, storesFor } from './format';
-import { Chip, ExtLink, Quiet, type Tone } from './ui';
+import { Chip, ExtLink, Quiet, type Tone } from '../shared/ui';
 
 const SEVERITY_RANK = { error: 0, warn: 1, info: 2 } as const;
 const SEVERITY_TONE: Record<string, Tone> = { error: 'warning', warn: 'neutral', info: 'muted' };

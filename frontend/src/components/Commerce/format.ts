@@ -1,12 +1,10 @@
 /** Number formatting and store aggregation shared by the Commerce sections. */
 import type { DailyStore, SalesWindow } from '../../lib/commerce-api';
+import { num } from '../shared/format';
+
+export { num, shortDateTime } from '../shared/format';
 
 export const ALL_STORES = '__all__';
-
-export function num(n: number | null | undefined, digits = 0): string {
-  if (n == null || Number.isNaN(n)) return '—';
-  return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
-}
 
 /** Money in the store's currency. `currency` is null for a store with no
  * sales yet; the amount is then 0 anyway, so plain digits are shown. */
@@ -111,11 +109,4 @@ export function kpiTotals(stores: DailyStore[]): KpiTotals {
     }
   }
   return t;
-}
-
-export function shortDateTime(iso?: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }

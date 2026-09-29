@@ -3,7 +3,7 @@ import type { FeedName, RefreshTarget, StoreRef } from '../../lib/commerce-api';
 import type { FeedStates, RefreshStatus } from '../../hooks/useCommerceData';
 import { FeedFreshness } from '../Dashboard/FeedFreshness';
 import { ALL_STORES } from './format';
-import { Segmented, SmallButton } from './ui';
+import { Segmented, SmallButton } from '../shared/ui';
 
 const DAY = 24 * 3600;
 

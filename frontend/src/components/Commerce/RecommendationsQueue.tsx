@@ -5,7 +5,7 @@ import type { PendingDecision } from '../../hooks/useCommerceData';
 import { applyDecisions } from '../../hooks/useCommerceData';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { ALL_STORES, num, shortDateTime } from './format';
-import { Chip, ExtLink, Quiet, Select, SmallButton, Tile, type Tone } from './ui';
+import { Chip, ExtLink, Quiet, Select, SmallButton, Tile, type Tone } from '../shared/ui';
 
 export const CATEGORY_LABELS: Record<RecCategory, string> = {
   spend: 'Spend',

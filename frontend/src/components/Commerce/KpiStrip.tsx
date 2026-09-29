@@ -2,7 +2,7 @@ import { Gauge } from 'lucide-react';
 import type { DailyStore } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { delta, kpiTotals, money, num, ratio } from './format';
-import { Chip, ExtLink, Quiet, Tile } from './ui';
+import { Chip, ExtLink, Quiet, Tile } from '../shared/ui';
 
 /**
  * Sales, traffic, ads and catalog at a glance, for one store or summed for

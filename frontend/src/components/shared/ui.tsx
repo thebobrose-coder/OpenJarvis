@@ -1,7 +1,7 @@
 /**
- * Small building blocks shared by every Commerce section, so chips, tiles,
- * links and filters look the same everywhere on the page (and match the
- * Dashboard, whose DashboardPanel chrome every section uses).
+ * Small building blocks shared by the Commerce and Business Development
+ * pages, so chips, tiles, links and filters look the same everywhere (and
+ * match the Dashboard, whose DashboardPanel chrome every section uses).
  */
 import type { ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';

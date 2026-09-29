@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Package, Search } from 'lucide-react';
 import type { EcomProducts, Product, ProductFlag } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { ALL_STORES, money, num, storesFor } from './format';
-import { Chip, ExtIcon, ExtLink, Quiet, Select, SmallButton, type Tone } from './ui';
+import { Chip, ExtIcon, ExtLink, Quiet, Select, SmallButton, type Tone } from '../shared/ui';
 
 const PAGE = 50;
 

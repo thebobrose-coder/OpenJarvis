@@ -2,7 +2,7 @@ import { ShieldCheck } from 'lucide-react';
 import type { ComplianceFindings } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num } from './format';
-import { Chip, Quiet } from './ui';
+import { Chip, Quiet } from '../shared/ui';
 
 /**
  * Open compliance findings per property. The compliance sentinel names its

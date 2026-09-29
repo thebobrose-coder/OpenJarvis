@@ -5,7 +5,7 @@ import type { RefreshStatus } from '../../hooks/useCommerceData';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { REFRESH_NOTES } from './CommerceHeader';
 import { ALL_STORES, shortDateTime } from './format';
-import { Chip, Quiet, Segmented, SmallButton } from './ui';
+import { Chip, Quiet, Segmented, SmallButton } from '../shared/ui';
 
 const TABS: { value: BriefingFocus; label: string }[] = [
   { value: 'products', label: 'Products & research' },

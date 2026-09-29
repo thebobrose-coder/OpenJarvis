@@ -2,7 +2,7 @@ import { Megaphone } from 'lucide-react';
 import type { DailyStore } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { money, num, ratio } from './format';
-import { Quiet } from './ui';
+import { Quiet } from '../shared/ui';
 
 /**
  * Google Ads, as GA4 reports it (ecom_daily.ga4.ads). Per-day history isn't
