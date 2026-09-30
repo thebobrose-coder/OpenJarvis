@@ -299,6 +299,21 @@ def make_handler(worker: Worker):
 
 def setup_logging() -> None:
     paths.logs_dir().mkdir(parents=True, exist_ok=True)
+    if sys.stderr is None or sys.stdout is None:
+        # Under pythonw (the scheduled task) there are no standard streams, and
+        # kokoro adds a loguru sink on sys.stderr at import time, which raises.
+        # Give the libraries a real file instead.
+        stream = open(
+            paths.logs_dir() / "voice-worker.stdio.log",
+            "a",
+            encoding="utf-8",
+            buffering=1,
+        )  # noqa: SIM115
+        sys.stdout = sys.stdout or stream
+        sys.stderr = sys.stderr or stream
+        stdio_is_file = True
+    else:
+        stdio_is_file = False
     handler = RotatingFileHandler(
         paths.logs_dir() / "voice-worker.log",
         maxBytes=2_000_000,
@@ -309,7 +324,7 @@ def setup_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(handler)
-    if sys.stderr is not None:
+    if not stdio_is_file:
         root.addHandler(logging.StreamHandler())
 
 
