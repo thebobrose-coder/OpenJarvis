@@ -17,7 +17,7 @@ VOICE = "bm_george"
 SAMPLE_RATE = 24000
 CFG_WEIGHT = 0.5
 
-# The Erebus reference: a neutral, non-live passage in Kokoro bm_george
+# The expressive voice's reference: a neutral, non-live passage in Kokoro bm_george
 # (the same one the 2026-09-29 listening test used for render C4).
 REFERENCE_TEXT = (
     "Good evening, sir. I have taken the liberty of reviewing the day's "
@@ -66,7 +66,7 @@ class KokoroFast:
 
 
 def ensure_reference(fast: KokoroFast, path: Path) -> bool:
-    """Render the Erebus reference clip if it's missing. True if rendered."""
+    """Render the reference clip if it's missing. True if rendered."""
     if path.exists():
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,20 +78,20 @@ def ensure_reference(fast: KokoroFast, path: Path) -> bool:
         w.setframerate(sr)
         w.writeframes(pcm)
     tmp.replace(path)
-    logger.info("Rendered the Erebus reference clip (%.1f s)", len(pcm) / 2 / sr)
+    logger.info("Rendered the reference clip (%.1f s)", len(pcm) / 2 / sr)
     return True
 
 
-class ChatterboxErebus:
-    """Expressive lane: Chatterbox conditioned on the Erebus reference clip.
+class ChatterboxExpressive:
+    """Expressive lane: Chatterbox conditioned on the reference clip.
 
-    Loaded per render batch and released afterwards. The Erebus conditionals
+    Loaded per render batch and released afterwards. The reference conditionals
     are prepared once per load and restored before every chunk: Chatterbox's
     generate() mutates ``model.conds`` (and ``audio_prompt_path`` would
     overwrite it), so one render's settings never leak into the next.
     GPU memory is freed on unload and after a failed load."""
 
-    name = "chatterbox:erebus"
+    name = "chatterbox:expressive"
 
     def __init__(self, reference: Path, device: str = "cuda") -> None:
         self.reference = reference

@@ -154,12 +154,12 @@ class Worker:
     def __init__(self, fallback_minutes: float, device: str) -> None:
         from datetime import timedelta
 
-        from .engines import ChatterboxErebus, KokoroFast, ensure_reference
+        from .engines import ChatterboxExpressive, KokoroFast, ensure_reference
 
         self.fast = KokoroFast()
         self.reference_rendered = ensure_reference(self.fast, paths.reference_path())
         self.expressive = Instrumented(
-            ChatterboxErebus(paths.reference_path(), device=device)
+            ChatterboxExpressive(paths.reference_path(), device=device)
         )
         self.lease = GpuLease(
             paths.lease_path(), ollama_loaded, gpu_free_mib, fake_busy=fake_busy
@@ -187,9 +187,9 @@ class Worker:
                 logger.exception("Tick failed")
             # Once the traceback is gone, return any GPU memory a failed render
             # left in torch's allocator.
-            from .engines import ChatterboxErebus
+            from .engines import ChatterboxExpressive
 
-            ChatterboxErebus._free()
+            ChatterboxExpressive._free()
             time.sleep(interval)
 
     def status(self) -> dict[str, Any]:

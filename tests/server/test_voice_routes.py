@@ -146,6 +146,7 @@ def test_queue_merges_audio_status_in_order_without_text(voice_dir):
     assert body["items"][2]["audio_path"] is None
     assert all("text" not in i for i in body["items"])
     assert body["worker"] is True
+    assert body["voice_name"] == "Expressive"  # no machine-local config here
 
 
 def test_queue_empty_before_hermes_publishes_and_503_when_bridge_down():
@@ -282,7 +283,7 @@ def test_digest_audio_is_the_workers_render_of_speech0(voice_dir):
     payload = _digest_payload([_block(ID_A, 1)])
     path = asyncio.run(dr._ensure_audio("general", payload))
     assert path is not None and path.name == f"{ID_A}.wav"
-    assert dr._voice_used(payload, path) == "erebus"
+    assert dr._voice_used(payload, path) == "expressive"
     assert dr._audio_version(path)
 
 

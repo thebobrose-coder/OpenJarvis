@@ -31,6 +31,7 @@ const QUEUE: VoiceQueue = {
   run_at: '2026-09-30T06:05:00Z',
   generated_at: '2026-09-30T06:05:00Z',
   worker: true,
+  voice_name: 'Sample Voice',
   items: [
     item('00000000000000aa', 1, 'expressive', 'Sample briefing'),
     item('00000000000000bb', 2, 'fast', 'Sample proposals'),
@@ -46,7 +47,7 @@ describe('Listen panel', () => {
     expect(at('Sample proposals')).toBeLessThan(at('Sample queued'));
     expect(html).toContain('Commerce · neutral · 29 s');
     expect(html).toContain('Content · neutral');
-    expect(html).toContain('>Erebus<');
+    expect(html).toContain('>Sample Voice<');
     expect(html).toContain('>fast<');
     expect(html).toContain('>queued<');
     expect(html).toContain('Play all');
@@ -96,7 +97,8 @@ describe('speaker button', () => {
   });
 
   it('badges the lanes', () => {
-    expect(laneBadge('expressive')).toBe('Erebus');
+    expect(laneBadge('expressive', 'Sample Voice')).toBe('Sample Voice');
+    expect(laneBadge('expressive')).toBe('Expressive');
     expect(laneBadge('fast')).toBe('fast');
     expect(laneBadge('missing')).toBeNull();
   });

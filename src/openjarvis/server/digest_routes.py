@@ -152,7 +152,7 @@ def _speech_block(payload: dict) -> dict | None:
 
 async def _ensure_audio(category: str, payload: dict) -> Path | None:
     """The digest's audio. With a `speech` block, it's the voice worker's
-    cached render (Erebus, or the fast lane until the expressive render
+    cached render (the expressive voice, or the fast lane until the expressive render
     lands), rendered on the fast lane on demand if missing. Without one (or
     with the worker down), the digest text is spoken once per document on
     the local fast lane, as before."""
@@ -277,7 +277,7 @@ def _shape(category: str, payload: dict, audio_path: Path | None, stale: bool) -
         "voice_used": _voice_used(payload, audio_path) or load_config().digest.voice_id,
         "audio_available": audio_path is not None,
         "audio_path": str(audio_path) if audio_path is not None else None,
-        # Changes when the worker upgrades fast audio to the Erebus render
+        # Changes when the worker upgrades fast audio to the expressive render
         # (same file path), so a long-lived <audio> element reloads.
         "audio_version": _audio_version(audio_path),
         "stale": stale,
@@ -286,14 +286,14 @@ def _shape(category: str, payload: dict, audio_path: Path | None, stale: bool) -
 
 
 def _voice_used(payload: dict, audio_path: Path | None) -> str | None:
-    """"erebus" or "bm_george" when the audio is the voice worker's render."""
+    """"expressive" or "bm_george" when the audio is the voice worker's render."""
     from openjarvis.voice_worker import paths as voice_paths
 
     block = _speech_block(payload)
     hit = voice_paths.cached_audio(block["id"]) if block else None
     if hit is None or audio_path is None or hit[0] != audio_path:
         return None
-    return "erebus" if hit[1].get("lane") == "expressive" else "bm_george"
+    return "expressive" if hit[1].get("lane") == "expressive" else "bm_george"
 
 
 def _audio_version(audio_path: Path | None) -> str | None:

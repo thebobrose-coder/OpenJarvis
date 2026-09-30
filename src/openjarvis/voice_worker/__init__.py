@@ -1,4 +1,4 @@
-"""Erebus voice worker (hq decision 0009, contract v1.1).
+"""Voice worker (hq decision 0009, contract v1.1).
 
 A separate local process, in its own environment, that speaks Hermes's
 ``speech`` blocks: an expressive lane (Chatterbox conditioned on a Kokoro

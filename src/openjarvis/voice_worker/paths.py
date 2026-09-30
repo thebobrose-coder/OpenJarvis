@@ -33,7 +33,7 @@ def logs_dir() -> Path:
 
 
 def reference_path() -> Path:
-    return data_dir() / "erebus_ref.wav"
+    return data_dir() / "voice_ref.wav"
 
 
 def config() -> dict[str, Any]:
@@ -44,6 +44,13 @@ def config() -> dict[str, Any]:
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def voice_name() -> str:
+    """The expressive voice's display name (config.json ``voice_name``); the
+    UI shows it on the Listen panel. Machine-local, like the lease path."""
+    name = config().get("voice_name")
+    return name.strip() if isinstance(name, str) and name.strip() else "Expressive"
 
 
 def lease_path() -> Path:

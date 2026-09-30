@@ -7,13 +7,14 @@
   independent of the desktop app. A second trigger repeats every 5 minutes
   with MultipleInstances=IgnoreNew, so a worker that died is started again
   and a running one is left alone. Writes the machine-local config.json
-  (the GPU lease path) into the worker's data folder.
+  (the GPU lease path and the voice's display name) into the worker's data folder.
 
 .EXAMPLE
-  .\install_task.ps1 -LeasePath 'X:\path\to\gpu\lease.json'
+  .\install_task.ps1 -LeasePath 'X:\path\to\gpu\lease.json' -VoiceName 'Expressive'
 #>
 param(
   [Parameter(Mandatory = $true)][string]$LeasePath,
+  [string]$VoiceName = 'Expressive',
   [string]$DataDir = (Join-Path $env:LOCALAPPDATA 'openjarvis\voice'),
   [string]$TaskName = 'OpenJarvis Voice Worker'
 )
@@ -24,7 +25,7 @@ $pythonw = Join-Path $DataDir '.venv\Scripts\pythonw.exe'
 if (-not (Test-Path $pythonw)) { throw "Worker venv not found: $pythonw (see requirements.txt)" }
 
 New-Item -ItemType Directory -Force $DataDir | Out-Null
-@{ lease_path = $LeasePath } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $DataDir 'config.json')
+@{ lease_path = $LeasePath; voice_name = $VoiceName } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $DataDir 'config.json')
 
 $action = New-ScheduledTaskAction -Execute $pythonw -Argument '-m openjarvis.voice_worker' -WorkingDirectory $src
 $logon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME

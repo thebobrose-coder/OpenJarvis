@@ -525,7 +525,7 @@ export interface Digest {
   /** Absolute filesystem path, only meaningful to the Tauri build (see
    * resolveDigestAudioSrc). Null when audio_available is false. */
   audio_path: string | null;
-  /** Changes when the voice worker upgrades the audio (e.g. fast to Erebus). */
+  /** Changes when the voice worker upgrades the audio (e.g. fast to expressive). */
   audio_version?: string | null;
   /** Hermes-backed digests (general, culture) only: the document's age, and
    * whether it is the last good copy served while the bridge is down. */
@@ -578,7 +578,7 @@ export function fetchDigestAudioUrl(prefix = '/api/digest'): string {
  */
 export async function resolveDigestAudioSrc(digest: Digest, prefix = '/api/digest'): Promise<string | null> {
   // audio_version changes when the voice worker upgrades the digest's audio
-  // to the Erebus render (same file), so the shared <audio> reloads.
+  // to the expressive render (same file), so the shared <audio> reloads.
   const version = `?v=${encodeURIComponent(digest.audio_version ?? digest.generated_at)}`;
   if (isTauri() && digest.audio_path) {
     const { convertFileSrc } = await import('@tauri-apps/api/core');

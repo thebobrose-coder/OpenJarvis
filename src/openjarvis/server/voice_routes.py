@@ -1,4 +1,4 @@
-"""FastAPI routes for Erebus's voice (contract v1.1, hq decision 0009).
+"""FastAPI routes for the assistant's voice (contract v1.1, hq decision 0009).
 
 Hermes writes `speech` blocks and the `voice_queue` feed; the separate voice
 worker (openjarvis.voice_worker, its own venv, 127.0.0.1:8650) renders them
@@ -151,6 +151,7 @@ async def get_queue():
         "run_at": (data or {}).get("run_at"),
         "generated_at": (data or {}).get("_generated_at"),
         "worker": await worker_ok(),
+        "voice_name": voice_paths.voice_name(),
         "items": [
             {**{k: b.get(k) for k in _ITEM_FIELDS}, **audio_info(b["id"])}
             for b in items

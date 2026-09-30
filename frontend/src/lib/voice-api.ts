@@ -1,5 +1,5 @@
 /**
- * Erebus's voice (hq/contracts/openjarvis-hermes.md v1.1, hq decision 0009).
+ * The assistant's voice (hq/contracts/openjarvis-hermes.md v1.1, hq decision 0009).
  * Hermes writes `speech` blocks; the local voice worker renders them; the
  * backend's /api/voice routes read the worker's cache.
  */
@@ -23,7 +23,7 @@ export interface VoiceAudio {
   /** Absolute path of the cached WAV (the desktop app plays it via the asset protocol). */
   audio_path: string | null;
   audio_url: string | null;
-  /** Changes when fast audio is upgraded to the Erebus render. */
+  /** Changes when fast audio is upgraded to the expressive render. */
   audio_version: string | null;
   duration?: number | null;
 }
@@ -37,6 +37,8 @@ export interface VoiceQueue {
   run_at: string | null;
   generated_at: string | null;
   worker: boolean;
+  /** The expressive voice's display name (machine-local worker config). */
+  voice_name?: string;
   items: VoiceQueueItem[];
 }
 
@@ -61,9 +63,9 @@ export const SOURCE_LABELS: Record<string, string> = {
   content_proposals: 'Content',
 };
 
-/** "Erebus" for the expressive render, "fast" for Kokoro, null if not rendered. */
-export function laneBadge(audio: AudioStatus): string | null {
-  if (audio === 'expressive') return 'Erebus';
+/** The expressive voice's name for its render, "fast" for Kokoro, null if not rendered. */
+export function laneBadge(audio: AudioStatus, voiceName = 'Expressive'): string | null {
+  if (audio === 'expressive') return voiceName;
   if (audio === 'fast') return 'fast';
   return null;
 }

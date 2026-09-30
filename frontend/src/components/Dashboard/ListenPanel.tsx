@@ -9,11 +9,11 @@ const REFRESH_MS = 60_000;
 
 const asRequest = (i: VoiceQueueItem): PlayRequest => ({ feed: 'voice_queue', id: i.id, title: i.title });
 
-export function ListenRow({ item }: { item: VoiceQueueItem }) {
+export function ListenRow({ item, voiceName }: { item: VoiceQueueItem; voiceName?: string }) {
   const { current, playing, preparing, played, toggle } = useVoicePlayer();
   const active = current === item.id && playing;
   const busy = preparing === item.id;
-  const badge = laneBadge(item.audio);
+  const badge = laneBadge(item.audio, voiceName);
   const done = played.has(item.id);
   return (
     <li
@@ -42,7 +42,7 @@ export function ListenRow({ item }: { item: VoiceQueueItem }) {
       </div>
       {done && <Check size={12} aria-label="Played" style={{ color: 'var(--color-text-tertiary)' }} />}
       {badge ? (
-        <Chip tone={item.audio === 'expressive' ? 'accent' : 'muted'} title={item.audio === 'expressive' ? 'The Erebus voice' : 'Fast lane (Kokoro); upgrades when the Erebus render lands'}>
+        <Chip tone={item.audio === 'expressive' ? 'accent' : 'muted'} title={item.audio === 'expressive' ? 'The expressive voice' : 'Fast lane (Kokoro); upgrades when the expressive render lands'}>
           {badge}
         </Chip>
       ) : (
@@ -72,7 +72,7 @@ export function ListenList({ queue }: { queue: VoiceQueue }) {
       </div>
       <ul className="flex flex-col">
         {queue.items.map((item) => (
-          <ListenRow key={item.id} item={item} />
+          <ListenRow key={item.id} item={item} voiceName={queue.voice_name} />
         ))}
       </ul>
     </div>
@@ -105,7 +105,7 @@ export function ListenPanel({ initial }: { initial?: VoiceQueue }) {
   }, [initial, load]);
 
   return (
-    <DashboardPanel icon={Headphones} title="Listen" tag="Erebus" size="full" loading={loading} error={error}>
+    <DashboardPanel icon={Headphones} title="Listen" tag={queue?.voice_name} size="full" loading={loading} error={error}>
       {queue && <ListenList queue={queue} />}
       {playError && (
         <p className="mt-2 text-[11px]" style={{ color: 'var(--color-warning)' }}>

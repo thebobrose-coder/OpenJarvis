@@ -3,7 +3,7 @@ import { useVoicePlayer } from '../../lib/VoicePlayer';
 import type { SpeechBlock, SpeechFeed } from '../../lib/voice-api';
 
 /** Speaker icon for a panel header: plays the feed's current speech block
- * (the Erebus render if it's ready, else a fast-lane render made now).
+ * (the expressive render if it's ready, else a fast-lane render made now).
  * Renders nothing when the feed has no block. */
 export function SpeakButton({ feed, block }: { feed: SpeechFeed; block: SpeechBlock | null }) {
   const { current, playing, preparing, toggle } = useVoicePlayer();

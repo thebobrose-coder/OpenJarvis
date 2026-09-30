@@ -1,5 +1,5 @@
 /**
- * One shared player for Erebus's voice: the Listen panel's queue and the
+ * One shared player for the assistant's voice: the Listen panel's queue and the
  * panels' speaker buttons all go through it, so only one thing speaks at a
  * time and "Play all" can walk a playlist. Nothing plays until the operator
  * presses play (hq 0009 default). Played state is kept per browser.
