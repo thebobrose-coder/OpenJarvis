@@ -1,3 +1,4 @@
+import { firstBlock } from '../../lib/voice-api';
 import { X } from 'lucide-react';
 import type { ApprovalEdits, PromptAction } from '../../lib/content-api';
 import { applyDecisions, type ContentFeedStates, type PendingDecision } from '../../hooks/useContentData';
@@ -112,6 +113,7 @@ export function ContentView(props: ContentViewProps) {
           hasFeed={proposals != null}
           size={prompts.length ? 'wide' : 'full'}
           initialTab={props.initialTab}
+          speech={firstBlock(proposals?.speech)}
         />
         <ThesisPrompts prompts={prompts} showProperty={showProperty} onMark={props.onPrompt} />
       </div>

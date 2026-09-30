@@ -3,6 +3,8 @@ import { RefreshCw, Sparkles } from 'lucide-react';
 import type { BriefingFocus, EcomBriefing, RefreshTarget } from '../../lib/commerce-api';
 import type { RefreshStatus } from '../../hooks/useCommerceData';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
+import { SpeakButton } from '../shared/SpeakButton';
+import { firstBlock } from '../../lib/voice-api';
 import { REFRESH_NOTES } from './CommerceHeader';
 import { ALL_STORES, shortDateTime } from './format';
 import { Chip, Quiet, Segmented, SmallButton } from '../shared/ui';
@@ -39,7 +41,16 @@ export function BriefingPanel({
   );
 
   return (
-    <DashboardPanel icon={Sparkles} title="Today’s briefing" tag="Daily" size="full" priority loading={loading} error={error}>
+    <DashboardPanel
+      icon={Sparkles}
+      title="Today’s briefing"
+      tag="Daily"
+      size="full"
+      priority
+      loading={loading}
+      error={error}
+      actions={<SpeakButton feed="ecom_briefing" block={firstBlock(briefing?.speech)} />}
+    >
       {!briefing ? (
         <Quiet>No briefing yet -- Hermes writes it daily from 07:00.</Quiet>
       ) : (

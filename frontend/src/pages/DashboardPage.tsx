@@ -6,6 +6,7 @@ import { WeatherPanel } from '../components/Dashboard/WeatherPanel';
 import { CultureNewsPanel } from '../components/Dashboard/CultureNewsPanel';
 import { DailyBriefPanel } from '../components/Dashboard/DailyBriefPanel';
 import { StorePerformancePanel } from '../components/Dashboard/StorePerformancePanel';
+import { ListenPanel } from '../components/Dashboard/ListenPanel';
 
 export function DashboardPage() {
   const now = new Date();
@@ -31,6 +32,9 @@ export function DashboardPage() {
         <div className="grid grid-cols-12 gap-4 mb-4">
           <DayAheadPanel />
           <WeatherPanel />
+        </div>
+        <div className="grid grid-cols-12 gap-4 mb-4">
+          <ListenPanel />
         </div>
         <div className="grid grid-cols-12 gap-4 mb-10">
           <DailyBriefPanel />

@@ -1,3 +1,5 @@
+import { SpeakButton } from '../shared/SpeakButton';
+import type { SpeechBlock, SpeechFeed } from '../../lib/voice-api';
 import { useMemo, useState, type DragEvent } from 'react';
 import { KanbanSquare } from 'lucide-react';
 import { BOARD_STAGES, rankBreakdown, rankNumber, type BoardStage, type PipelineProspect } from '../../lib/bizdev-api';
@@ -258,6 +260,7 @@ export function PipelineBoard({
   loading,
   error,
   empty,
+  speech,
 }: {
   stages: Record<BoardStage, PipelineProspect[]>;
   suppressed: number;
@@ -266,6 +269,8 @@ export function PipelineBoard({
   loading?: boolean;
   error?: string | null;
   empty: boolean;
+  /** The block the speaker button plays: follow-ups due, else the latest research run. */
+  speech?: { feed: SpeechFeed; block: SpeechBlock | null };
 }) {
   const [filters, setFilters] = useState<BoardFilters>(NO_FILTERS);
   const [view, setView] = useState<BoardView>('board');
@@ -285,6 +290,7 @@ export function PipelineBoard({
       priority
       loading={loading}
       error={error}
+      actions={speech ? <SpeakButton feed={speech.feed} block={speech.block} /> : undefined}
     >
       {empty ? (
         <Quiet>No pipeline yet -- Hermes publishes it after the first research batch.</Quiet>

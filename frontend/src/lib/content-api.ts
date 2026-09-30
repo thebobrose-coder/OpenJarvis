@@ -7,6 +7,7 @@
  * Foundry's intake, and every item still passes Foundry's own compliance
  * scan and Telegram approval (G1).
  */
+import type { SpeechBlock } from './voice-api';
 import { apiFetch } from './api';
 
 export interface FeedMeta {
@@ -100,6 +101,9 @@ export interface ThesisPrompt {
 }
 
 export interface ContentProposals extends FeedMeta {
+  /** Spoken script(s) for the voice worker (contract v1.1). */
+  speech?: SpeechBlock[];
+
   run_at: string;
   pending: Proposal[];
   recent_decided: Proposal[];

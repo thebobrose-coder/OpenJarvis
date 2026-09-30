@@ -28,6 +28,8 @@ interface DashboardPanelProps {
   /** Subtle accent border for the new priority briefing panels. */
   priority?: boolean;
   onTitleClick?: () => void;
+  /** Extra header controls, e.g. a speaker button. */
+  actions?: ReactNode;
   children: ReactNode;
 }
 
@@ -49,6 +51,7 @@ export function DashboardPanel({
   dim,
   priority,
   onTitleClick,
+  actions,
   children,
 }: DashboardPanelProps) {
   return (
@@ -76,6 +79,7 @@ export function DashboardPanel({
           </span>
         </button>
         <div className="flex items-center gap-2 shrink-0">
+          {actions}
           {tag && (
             <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
               {tag}

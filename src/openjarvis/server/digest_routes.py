@@ -33,6 +33,8 @@ from openjarvis.agents.hermes_digest import (
 
 logger = logging.getLogger(__name__)
 
+HERMES_DIGEST_FEEDS = {"general": "digest_general", "culture": "digest_culture"}
+
 
 _AUDIO_MEDIA_TYPES = {
     ".mp3": "audio/mpeg",
@@ -137,9 +139,40 @@ def _synthesize(category: str, text: str, generated_at: str) -> Path | None:
     return dest
 
 
+def _speech_block(payload: dict) -> dict | None:
+    """The digest's spoken script (contract v1.1 `speech[0]`), if Hermes sent one."""
+    from openjarvis.server.voice_routes import valid_id
+
+    speech = payload.get("data", {}).get("speech") or []
+    block = speech[0] if speech and isinstance(speech[0], dict) else None
+    if block and valid_id(str(block.get("id", ""))) and block.get("text"):
+        return block
+    return None
+
+
 async def _ensure_audio(category: str, payload: dict) -> Path | None:
-    """Synthesize audio once per new Hermes document; later calls reuse it."""
+    """The digest's audio. With a `speech` block, it's the voice worker's
+    cached render (Erebus, or the fast lane until the expressive render
+    lands), rendered on the fast lane on demand if missing. Without one (or
+    with the worker down), the digest text is spoken once per document on
+    the local fast lane, as before."""
+    from openjarvis.voice_worker import paths as voice_paths
+
     generated_at = payload["generated_at"]
+    block = _speech_block(payload)
+    if block is not None:
+        hit = voice_paths.cached_audio(block["id"])
+        if hit is not None:
+            return hit[0]
+        block_key = (category, f"block:{block['id']}")
+        if block_key not in _tts_attempted:
+            _tts_attempted.add(block_key)
+            from openjarvis.server.voice_routes import worker_block_fast
+
+            feed = HERMES_DIGEST_FEEDS[category]
+            path = await worker_block_fast({**block, "source_feed": feed})
+            if path is not None:
+                return path
     key = (category, generated_at)
     async with _audio_lock:
         path = _cached_audio(category, generated_at)
@@ -241,12 +274,35 @@ def _shape(category: str, payload: dict, audio_path: Path | None, stale: bool) -
         "sources_used": data.get("sources_used") or [],
         "generated_at": data.get("generated_local") or payload["generated_at"],
         "model_used": data.get("model_used", ""),
-        "voice_used": load_config().digest.voice_id,
+        "voice_used": _voice_used(payload, audio_path) or load_config().digest.voice_id,
         "audio_available": audio_path is not None,
         "audio_path": str(audio_path) if audio_path is not None else None,
+        # Changes when the worker upgrades fast audio to the Erebus render
+        # (same file path), so a long-lived <audio> element reloads.
+        "audio_version": _audio_version(audio_path),
         "stale": stale,
         "age_seconds": max(0, int(age)),
     }
+
+
+def _voice_used(payload: dict, audio_path: Path | None) -> str | None:
+    """"erebus" or "bm_george" when the audio is the voice worker's render."""
+    from openjarvis.voice_worker import paths as voice_paths
+
+    block = _speech_block(payload)
+    hit = voice_paths.cached_audio(block["id"]) if block else None
+    if hit is None or audio_path is None or hit[0] != audio_path:
+        return None
+    return "erebus" if hit[1].get("lane") == "expressive" else "bm_george"
+
+
+def _audio_version(audio_path: Path | None) -> str | None:
+    if audio_path is None:
+        return None
+    try:
+        return str(int(audio_path.stat().st_mtime))
+    except OSError:
+        return None
 
 
 def _create_hermes_digest_router(

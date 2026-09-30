@@ -6,6 +6,7 @@
  * displays them and builds mailto: links from them; it never stores them or
  * sends them anywhere else.
  */
+import type { SpeechBlock } from './voice-api';
 import { apiFetch } from './api';
 
 export interface FeedMeta {
@@ -142,6 +143,9 @@ export interface PipelineLine {
 }
 
 export interface BdPipeline extends FeedMeta {
+  /** Spoken script(s) for the voice worker (contract v1.1). */
+  speech?: SpeechBlock[];
+
   run_at: string;
   lines: PipelineLine[];
 }
@@ -163,6 +167,9 @@ export interface BdStats extends FeedMeta {
 }
 
 export interface BdProspects extends FeedMeta {
+  /** Spoken script(s) for the voice worker (contract v1.1). */
+  speech?: SpeechBlock[];
+
   run_at: string;
   week?: string;
   line?: string;

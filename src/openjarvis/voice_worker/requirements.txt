@@ -1,0 +1,18 @@
+# Voice worker environment (NOT the fork's core dependencies).
+# Install into its own venv, outside the repo:
+#   uv venv --python 3.11 %LOCALAPPDATA%\openjarvis\voice\.venv
+#   uv pip install --python %LOCALAPPDATA%\openjarvis\voice\.venv\Scripts\python.exe ^
+#     -r requirements.txt --index-url https://download.pytorch.org/whl/cu124 ^
+#     --extra-index-url https://pypi.org/simple --index-strategy unsafe-best-match
+# Versions are the ones the 2026-09-29 listening test proved.
+torch==2.6.0
+torchaudio==2.6.0
+chatterbox-tts==0.1.7
+kokoro==0.9.4
+misaki==0.9.4
+soundfile
+numpy==1.26.4
+# resemble-perth (Chatterbox's watermarker) imports pkg_resources, removed in setuptools 81.
+setuptools<81
+# misaki (Kokoro's G2P) needs this spaCy model and would otherwise try to pip-install it at runtime.
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

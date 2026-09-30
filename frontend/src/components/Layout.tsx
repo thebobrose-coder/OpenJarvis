@@ -7,6 +7,7 @@ import { useAppStore } from '../lib/store';
 import { checkHealth } from '../lib/api';
 import { DailyBriefAudioProvider } from '../lib/DailyBriefAudioContext';
 import { CultureAudioProvider } from '../lib/CultureAudioContext';
+import { VoicePlayerProvider } from '../lib/VoicePlayer';
 
 export function Layout() {
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
@@ -29,6 +30,7 @@ export function Layout() {
   return (
     <DailyBriefAudioProvider>
     <CultureAudioProvider>
+    <VoicePlayerProvider>
     <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
       <div className="hud-backdrop" aria-hidden="true" />
       <SystemPulse apiReachable={apiReachable} />
@@ -74,6 +76,7 @@ export function Layout() {
         </main>
       </div>
     </div>
+    </VoicePlayerProvider>
     </CultureAudioProvider>
     </DailyBriefAudioProvider>
   );

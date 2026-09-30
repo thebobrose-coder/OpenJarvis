@@ -3,6 +3,7 @@
  * (hq/contracts/openjarvis-hermes.md v0.6 / v0.6.1 §2). Everything shown on
  * the page comes from these feeds at runtime; no store data lives in code.
  */
+import type { SpeechBlock } from './voice-api';
 import { apiFetch } from './api';
 
 /** Freshness metadata the proxy adds to every feed document. */
@@ -212,6 +213,9 @@ export interface BriefingSection {
 }
 
 export interface EcomBriefing extends FeedMeta {
+  /** Spoken script(s) for the voice worker (contract v1.1). */
+  speech?: SpeechBlock[];
+
   run_at: string;
   doc_version?: number;
   headline?: string;
@@ -221,6 +225,9 @@ export interface EcomBriefing extends FeedMeta {
 // -- compliance_findings ------------------------------------------------------
 
 export interface ComplianceFindings extends FeedMeta {
+  /** Spoken script(s) for the voice worker (contract v1.1). */
+  speech?: SpeechBlock[];
+
   run_at: string;
   counts: { open: number; new?: number; open_by_property?: Record<string, number> };
 }

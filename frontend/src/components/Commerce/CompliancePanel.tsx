@@ -1,6 +1,8 @@
 import { ShieldCheck } from 'lucide-react';
 import type { ComplianceFindings } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
+import { SpeakButton } from '../shared/SpeakButton';
+import { firstBlock } from '../../lib/voice-api';
 import { num } from './format';
 import { Chip, Quiet } from '../shared/ui';
 
@@ -13,7 +15,15 @@ import { Chip, Quiet } from '../shared/ui';
 export function CompliancePanel({ findings, loading, error }: { findings: ComplianceFindings | null; loading?: boolean; error?: string | null }) {
   const byProperty = Object.entries(findings?.counts.open_by_property ?? {}).sort((a, b) => b[1] - a[1]);
   return (
-    <DashboardPanel icon={ShieldCheck} title="Compliance" tag="Daily" size="full" loading={loading} error={error}>
+    <DashboardPanel
+      icon={ShieldCheck}
+      title="Compliance"
+      tag="Daily"
+      size="full"
+      loading={loading}
+      error={error}
+      actions={<SpeakButton feed="compliance_findings" block={firstBlock(findings?.speech)} />}
+    >
       {!findings ? (
         <Quiet>No compliance run yet.</Quiet>
       ) : (

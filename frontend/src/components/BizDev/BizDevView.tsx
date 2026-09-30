@@ -1,3 +1,4 @@
+import { firstBlock, type SpeechBlock, type SpeechFeed } from '../../lib/voice-api';
 import { X } from 'lucide-react';
 import { BOARD_STAGES, type PipelineProspect, type StageAction } from '../../lib/bizdev-api';
 import { applyMoves, type BizDevFeedStates, type PendingMove } from '../../hooks/useBizDevData';
@@ -30,6 +31,16 @@ export interface BizDevViewProps {
  * (with the prospect drawer), insights and the research log. Generic by
  * business line. Pure: everything comes in through props (see BizDevPage).
  */
+/** Follow-ups due (bd_pipeline) first, else the latest research run (bd_prospects). */
+export function bdSpeech(
+  pipeline: { speech?: SpeechBlock[] } | null | undefined,
+  prospects: { speech?: SpeechBlock[] } | null | undefined,
+): { feed: SpeechFeed; block: SpeechBlock | null } {
+  const follow = firstBlock(pipeline?.speech);
+  if (follow) return { feed: 'bd_pipeline', block: follow };
+  return { feed: 'bd_prospects', block: firstBlock(prospects?.speech) };
+}
+
 export function BizDevView(props: BizDevViewProps) {
   const { feeds, pending } = props;
   const pipeline = feeds.bd_pipeline.data;
@@ -90,6 +101,7 @@ export function BizDevView(props: BizDevViewProps) {
           onMove={(id, stage) => stage !== 'new' && props.onMove(id, stage)}
           loading={feeds.bd_pipeline.loading}
           error={feeds.bd_pipeline.error}
+          speech={bdSpeech(pipeline, feeds.bd_prospects.data)}
         />
       </div>
 

@@ -1,3 +1,5 @@
+import { SpeakButton } from '../shared/SpeakButton';
+import type { SpeechBlock } from '../../lib/voice-api';
 import { useState } from 'react';
 import { Check, ClipboardList, Pencil, X } from 'lucide-react';
 import { LIMITS, type ApprovalEdits, type Proposal } from '../../lib/content-api';
@@ -319,6 +321,7 @@ export function ProposalsQueue({
   hasFeed,
   size = 'wide',
   initialTab = 'pending',
+  speech = null,
 }: {
   pending: Proposal[];
   recent: Proposal[];
@@ -331,6 +334,8 @@ export function ProposalsQueue({
   hasFeed: boolean;
   size?: 'wide' | 'full';
   initialTab?: QueueTab;
+  /** The content_proposals feed's spoken summary, if any. */
+  speech?: SpeechBlock | null;
 }) {
   const [tab, setTab] = useState<QueueTab>(initialTab);
   const newest = [...pending].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
@@ -344,6 +349,7 @@ export function ProposalsQueue({
       priority
       loading={loading}
       error={error}
+      actions={<SpeakButton feed="content_proposals" block={speech} />}
     >
       {!hasFeed ? (
         <Quiet>No proposals yet -- Hermes proposes seed topics daily.</Quiet>
