@@ -1,10 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { BdPipeline, BdProspects, BdStats, BoardStage, PipelineProspect } from '../../lib/bizdev-api';
+import { BOARD_STAGES, type BdPipeline, type BdProspects, type BdStats, type BoardStage, type PipelineProspect } from '../../lib/bizdev-api';
 import { applyMoves, reconcileMoves, type BizDevFeedStates } from '../../hooks/useBizDevData';
 import { BizDevView, type BizDevViewProps } from './BizDevView';
 import { MAILTO_MAX, buildMailto } from './mail';
-import { NO_FILTERS, boardOrder, matches } from './PipelineBoard';
+import { DRAG_TYPE, NO_FILTERS, acceptsDrop, boardOrder, columnWidthClass, listOrder, matches } from './PipelineBoard';
 import { SuppressionConfirm } from './ProspectDrawer';
 
 // Neutral fixtures only: this repo is public, and real prospect data
@@ -345,5 +345,70 @@ describe('rank', () => {
   it('shows the breakdown in the drawer', () => {
     const html = render({ feeds: withDrafted([penalized]), openProspectId: 21 });
     expect(html).toContain('Rank 1.0: base 4 (fit) × division 1.0 (NJCAA) × platform 0.25 (SamplePlatform)');
+  });
+});
+
+describe('board layout', () => {
+  const ranked = (id: number, score: number) =>
+    prospect(id, 'drafted', {
+      rank: { score, base: 4, division_factor: 1, platform_factor: 1, affiliation: 'NAIA', platform: null, excluded: false },
+    });
+  const column = (html: string, label: string) => {
+    const start = html.indexOf(`aria-label="${label}"`);
+    return html.slice(html.lastIndexOf('<section', start), html.indexOf('</section>', start));
+  };
+
+  it('collapses an empty column to a rail that still takes a drop', () => {
+    const html = render();
+    const replied = column(html, 'Replied');
+    expect(replied).toContain('data-rail="true"');
+    expect(replied).toContain('w-[6rem]');
+    expect(replied).toContain('>0<');
+    expect(acceptsDrop('replied', [DRAG_TYPE])).toBe(true);
+    expect(acceptsDrop('new', [DRAG_TYPE])).toBe(false);
+    expect(acceptsDrop('replied', ['text/plain'])).toBe(false);
+    // Rails widen while a card is being dragged.
+    expect(columnWidthClass(0, true)).toBe('flex-none w-[12rem]');
+  });
+
+  it('gives a populated column the wide minimum width', () => {
+    const drafted = column(render(), 'Drafted');
+    expect(drafted).not.toContain('data-rail');
+    expect(drafted).toContain('min-w-[16rem]');
+    expect(columnWidthClass(3, true)).toBe(columnWidthClass(3, false));
+  });
+
+  it('puts the rank chip on the name row, with the full name as a tooltip', () => {
+    const line = PIPELINE.lines[0];
+    const html = render({
+      feeds: feeds({
+        bd_pipeline: { data: { ...PIPELINE, lines: [{ ...line, stages: { ...line.stages, drafted: [ranked(31, 4)] } }] }, loading: false, error: null },
+      }),
+    });
+    const card = column(html, 'Drafted');
+    expect(card).toContain('line-clamp-2');
+    expect(card).toContain('title="Example College 31"');
+    const at = (s: string) => card.indexOf(s);
+    expect(at('>Example College 31<')).toBeLessThan(at('>rank 4.0<'));
+    expect(at('>rank 4.0<')).toBeLessThan(at('Example Association'));
+  });
+
+  it('keeps the stage columns in order', () => {
+    const html = render();
+    const at = BOARD_STAGES.map((s) => html.indexOf(`aria-label="${s === 'new' ? 'New' : s[0].toUpperCase() + s.slice(1)}"`));
+    expect(at.every((v) => v >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+
+  it('offers a list view ordered by rank, unranked last, ties in given order', () => {
+    const html = render();
+    expect(html).toContain('aria-label="Pipeline view"');
+    expect(html).toContain('>Board<');
+    expect(html).toContain('>List<');
+    const a = ranked(41, 2);
+    const b = ranked(42, 5);
+    const c = prospect(43, 'sent');
+    const d = ranked(44, 2);
+    expect(listOrder([a, c, b, d]).map((p) => p.id)).toEqual([42, 41, 44, 43]);
   });
 });

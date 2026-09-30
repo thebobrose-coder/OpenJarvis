@@ -44,7 +44,7 @@ export function BizDevView(props: BizDevViewProps) {
   const open = props.openProspectId != null ? byId.get(props.openProspectId) : undefined;
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-[1800px] mx-auto">
       <BizDevHeader
         lines={lines}
         selectedLine={lineId ?? ''}
