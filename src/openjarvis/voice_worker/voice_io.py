@@ -51,6 +51,28 @@ def find_device(name_part: str | None, kind: str) -> int | None:
     return best
 
 
+def native_rate(index: int | None, kind: str) -> int:
+    """The device's own sample rate. WASAPI (shared mode) only opens a stream
+    at this rate, so audio is resampled to and from it."""
+    import sounddevice as sd
+
+    if index is None:
+        index = sd.default.device[0 if kind == "input" else 1]
+    try:
+        return int(sd.query_devices(index)["default_samplerate"])
+    except Exception:  # noqa: BLE001
+        return 48000
+
+
+def resample(x: np.ndarray, n_out: int) -> np.ndarray:
+    """Linear resampling to ``n_out`` samples (fine for speech and chimes)."""
+    if len(x) == n_out or len(x) == 0:
+        return x.astype(np.float32)
+    return np.interp(np.linspace(0, len(x) - 1, n_out), np.arange(len(x)), x).astype(
+        np.float32
+    )
+
+
 def device_name(index: int | None, kind: str) -> str:
     import sounddevice as sd
 
@@ -104,13 +126,14 @@ class MicListener:
         self.frames: "queue.Queue[np.ndarray]" = queue.Queue()
         self.playing = False
         self.play_started = 0.0
+        rate = native_rate(device, "input")
         self.stream = sd.InputStream(
-            samplerate=MIC_RATE,
+            samplerate=rate,
             channels=1,
             dtype="float32",
-            blocksize=FRAME,
+            blocksize=round(FRAME * rate / MIC_RATE),
             device=device,
-            callback=lambda data, *_: self.frames.put(data[:, 0].copy()),
+            callback=lambda data, *_: self.frames.put(resample(data[:, 0], FRAME)),
         )
         self.stream.start()
         self._carry: list[np.ndarray] = []  # speech already heard during playback
@@ -202,6 +225,10 @@ class SpeakerPlayer:
 
         pcm, sr = audio
         samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
+        rate = native_rate(self.device, "output")
+        if rate != sr:
+            samples = resample(samples, round(len(samples) * rate / sr))
+            sr = rate
         block = int(sr * 0.05)
         watch_stop = threading.Event()
         watcher = None
