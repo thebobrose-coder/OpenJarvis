@@ -245,24 +245,71 @@ class MicListener:
 
 
 class SpeakerPlayer:
-    """Plays 16-bit mono PCM in small blocks so an interrupt stops it within
-    ~50 ms. While it plays, the listener watches for a barge-in."""
+    """Plays 16-bit mono PCM through a callback stream with a large device
+    buffer, so a busy interpreter (synthesis or VAD running alongside) can't
+    starve the device and garble the audio. An interrupt stops it within one
+    buffer. While it plays, the listener watches for a barge-in."""
 
     def __init__(self, device: int | None, fallback=None) -> None:
         self.device = device
         self.fallback = fallback  # () -> a replacement device index after a failed open
         self.listener: MicListener | None = None
 
-    def play(self, audio: tuple[bytes, int], interrupt: threading.Event) -> bool:
+    def _stream(
+        self,
+        data: np.ndarray,
+        sr: int,
+        interrupt: threading.Event,
+        done: threading.Event,
+    ):
         import sounddevice as sd
 
+        state = {"pos": 0}
+
+        def callback(outdata, frames, _time, _status):
+            pos = state["pos"]
+            if interrupt.is_set():
+                outdata.fill(0)
+                raise sd.CallbackStop
+            chunk = data[pos : pos + frames]
+            outdata[: len(chunk), 0] = chunk
+            if len(chunk) < frames:
+                outdata[len(chunk) :] = 0
+            state["pos"] = pos + frames
+            if state["pos"] >= len(data):
+                raise sd.CallbackStop
+
+        stream = sd.OutputStream(
+            samplerate=sr,
+            channels=1,
+            dtype="float32",
+            device=self.device,
+            latency="high",
+            callback=callback,
+            finished_callback=done.set,
+        )
+        return stream, state
+
+    def play(self, audio: tuple[bytes, int], interrupt: threading.Event) -> bool:
         pcm, sr = audio
-        samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
-        rate = native_rate(self.device, "output")
-        if rate != sr:
-            samples = resample(samples, round(len(samples) * rate / sr))
-            sr = rate
-        block = int(sr * 0.05)
+        clip = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
+
+        def at_device_rate() -> tuple[np.ndarray, int]:
+            rate = native_rate(self.device, "output")
+            if rate == sr:
+                return clip, sr
+            return resample(clip, round(len(clip) * rate / sr)), rate
+
+        data, rate = at_device_rate()
+        done = threading.Event()
+        try:
+            stream, state = self._stream(data, rate, interrupt, done)
+        except Exception:  # noqa: BLE001 -- e.g. a stale device index
+            if self.fallback is None:
+                raise
+            self.device = self.fallback()
+            data, rate = at_device_rate()
+            stream, state = self._stream(data, rate, interrupt, done)
         watch_stop = threading.Event()
         watcher = None
         if self.listener is not None:
@@ -270,35 +317,16 @@ class SpeakerPlayer:
                 target=self.listener.watch_playback, args=(watch_stop,), daemon=True
             )
             watcher.start()
-        finished = True
         try:
-            try:
-                out = sd.OutputStream(
-                    samplerate=sr, channels=1, dtype="float32", device=self.device
-                )
-            except Exception:  # noqa: BLE001 -- e.g. a stale device index
-                if self.fallback is None:
-                    raise
-                self.device = self.fallback()
-                rate = native_rate(self.device, "output")
-                if rate != sr:
-                    samples = resample(samples, round(len(samples) * rate / sr))
-                    sr = rate
-                block = int(sr * 0.05)
-                out = sd.OutputStream(
-                    samplerate=sr, channels=1, dtype="float32", device=self.device
-                )
-            with out:
-                for i in range(0, len(samples), block):
+            with stream:
+                while not done.wait(0.02):
                     if interrupt.is_set():
-                        finished = False
                         break
-                    out.write(samples[i : i + block].reshape(-1, 1))
         finally:
             watch_stop.set()
             if watcher:
                 watcher.join(timeout=1)
-        return finished
+        return state["pos"] >= len(data) and not interrupt.is_set()
 
 
 class Transcriber:

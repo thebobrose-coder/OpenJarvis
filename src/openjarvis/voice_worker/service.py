@@ -230,6 +230,11 @@ class Worker:
 
         cfg = paths.config()
         try:
+            import torch
+
+            # Leave CPU headroom for audio: synthesis and STT otherwise take
+            # every core and the playback/VAD threads stutter.
+            torch.set_num_threads(max(2, (os.cpu_count() or 4) // 4))
             self.vad = Vad()
             self.stt = Transcriber()
         except Exception:  # noqa: BLE001 -- voice input is optional; the renders keep going
