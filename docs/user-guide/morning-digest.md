@@ -17,8 +17,10 @@ A personalized daily briefing that collects data from your connected services, s
     - `POST /api/digest/generate` queues a Hermes refresh and waits for the new digest (up to 5 minutes).
     - `GET /api/digest/schedule` reports Hermes's schedule read-only, and `POST` returns 409. The
       `[digest]` `schedule` setting and `jarvis digest --schedule` don't affect it.
-    - Local generation, as described on the rest of this page, still applies to the `weather` digest
-      category (`/api/digest/weather`).
+    - No digest category is generated locally any more: weather moved to Hermes's `weather` feed (the
+      Dashboard's Weather panel), and its spoken line is part of the general digest. `/api/digest/weather`
+      is gone. The rest of this page describes upstream's local pipeline, which this fork's dashboard and
+      API no longer use.
 
 ## Quickstart (5 minutes)
 

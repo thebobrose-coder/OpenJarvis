@@ -219,7 +219,40 @@ Play all, played state, nothing auto-plays), and the Commerce briefing,
 Compliance, Business Development and Content panels gain a speaker button
 when their feed has a block.
 
+
+**Voice input: talk to the assistant (phase 1).** A global hotkey (Win32
+`RegisterHotKey`; default Ctrl+Alt+Space, mute Ctrl+Alt+M, both configurable)
+starts a voice conversation from the voice worker, so it works with the app
+closed. The conversation keeps listening turn after turn until a dismissal
+("that's all", "thanks, <name>" with the name from the worker's local config,
+"stop listening", "goodbye"), the hotkey, mute, or 60 s of silence; soft
+synthesized chimes mark start and end (a low tone if the mic can't open), and
+the mic is open only while a conversation is active.
+- Pipeline: Silero VAD endpointing → faster-whisper on the CPU (`small.en` by
+  default, `stt_model` configurable) → a local command grammar (stop, go on,
+  repeat, the morning briefing from the voice queue, next, end) or the agent's
+  voice endpoint, streamed with one session id per conversation → sentences
+  spoken on the fast lane as they arrive (the first sentence clause by clause).
+- Barge-in on a headset: talking over a reply (400 ms), or a short spoken
+  command, stops playback and cancels the stream; "go on" resumes what had
+  arrived. Other output devices fall back to half duplex.
+- Robust on Windows audio: devices by name (WASAPI, else MME) re-resolved per
+  conversation, native-rate capture and playback with resampling, and a
+  callback player with a large buffer.
+- Turns stay in memory; the per-turn latency log has no transcript text. The
+  backend proxies `/api/voice/{state,events,start,stop,mute,unmute}`; the
+  header gains a voice indicator and a conversation drawer with "That's all"
+  and "Open in chat" (text only, on click).
+
 ### Changed
+
+**Day Ahead and Weather read Hermes's feeds (wave 4).** `/api/day-ahead` and
+`/api/weather` proxy the agent's `day_ahead` and `weather` panel feeds in the
+panels' original shape plus `generated_at`, `age_seconds` and `stale` (the
+last good copy when the bridge is down), with `POST /refresh` on both. The
+panels queue a refresh when opened and show the feed's age; Weather labels
+units from the feed (°F/mph or °C/m/s) and its Regenerate became Refresh. No
+live calendar, task or weather calls remain in these routes.
 
 **Digest audio comes from the voice worker.** `/api/digest/audio` keeps its
 shape but serves the worker's render of the digest's `speech[0]` (the
@@ -252,6 +285,15 @@ label (`engineLabel`).
 
 ### Removed
 
+**The local digest pipeline in the dashboard and API.** With weather on the
+agent's feed, no digest category is generated locally: `/api/digest/weather`
+and the spoken weather narration are gone, `create_digest_router` only builds
+the proxied general and culture routers, and the fork's edits that served the
+local pipeline (`morning_digest`'s categories and presets, the SDK's and
+scheduler's `digest_category`, the weather connector's `stored_location`, the
+weather tool's icon field) are reverted to upstream. The upstream modules
+themselves stay; upstream code still uses them.
+
 **Local pipelines now served by Hermes.** Removed from this fork:
 - the Shopify and Search Console connectors, the multi-store registry and
   "Add Store" flow, Shopify OAuth routes and the snapshot store;
@@ -264,6 +306,10 @@ label (`engineLabel`).
 `digest_collect.py` and `news_rss.py` are back to upstream.
 
 ### Fixed
+
+**Unknown `/api/...` paths return 404.** The SPA catch-all answered any
+unmatched GET, API paths included, with `index.html` and a 200; retired or
+mistyped API routes now 404, while app routes still fall back to the SPA.
 
 **Backend console window killed the server when closed** (Windows
 desktop). Every `uv.exe`/`git.exe` child spawned from the GUI-subsystem
