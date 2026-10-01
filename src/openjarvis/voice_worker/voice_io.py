@@ -27,6 +27,9 @@ SHORT_PAUSE_S = 1.2  # ...but allow up to this for a pause in a short utterance
 SHORT_UTTERANCE_S = 1.0  # the 1.2 s pause allowance only applies below this much speech
 BARGE_MIN_S = 0.4  # speech this long during playback is a barge-in
 BARGE_GUARD_S = 0.3  # ignore VAD this long after each clip starts (click/bleed)
+BURST_GAP_S = 0.15  # a dip this short doesn't end a burst of speech
+SHORT_WORD_MIN_S = 0.15  # a short burst at least this long is checked for a command
+SHORT_WORD_END_S = 0.25  # ...once this much silence follows it
 MAX_UTTERANCE_S = 30.0
 
 
@@ -133,6 +136,9 @@ class Vad:
 class Utterance:
     audio: np.ndarray
     ended_at: float
+    text: str | None = (
+        None  # already transcribed (a short command heard during playback)
+    )
 
 
 class MicListener:
@@ -145,12 +151,21 @@ class MicListener:
     duplex the mic is ignored and only the hotkey interrupts."""
 
     def __init__(
-        self, vad: Vad, barge: threading.Event, duplex: str, device: int | None
+        self,
+        vad: Vad,
+        barge: threading.Event,
+        duplex: str,
+        device: int | None,
+        command_check=None,
     ) -> None:
         import sounddevice as sd
 
         self.vad = vad
         self.vad.reset()
+        # (audio) -> its transcript if it's a local command, else None: lets a
+        # short "stop" during playback interrupt, below the 400 ms barge-in.
+        self.command_check = command_check
+        self._carry_text: str | None = None
         self.barge = barge
         self.duplex = duplex
         self.frames: "queue.Queue[np.ndarray]" = queue.Queue()
@@ -178,6 +193,10 @@ class MicListener:
         pre: collections.deque[np.ndarray] = collections.deque(
             maxlen=int(PRE_ROLL_S * MIC_RATE / FRAME)
         )
+        if self._carry_text is not None:  # a complete short command, already heard
+            audio, text = np.concatenate(self._carry), self._carry_text
+            self._carry, self._carry_text = [], None
+            return Utterance(audio, time.monotonic(), text)
         speech: list[np.ndarray] = list(self._carry)
         self._carry = []
         voiced = len(speech) * FRAME / MIC_RATE
@@ -213,9 +232,12 @@ class MicListener:
                     return None
 
     def watch_playback(self, stop: threading.Event) -> None:
-        """Runs while a clip plays (full duplex): detect a barge-in."""
-        heard: list[np.ndarray] = []
-        voiced = 0.0
+        """Runs while a clip plays (full duplex): detect a barge-in. 400 ms of
+        speech (short dips allowed) interrupts; a shorter burst is checked
+        for a local command ("stop", "pause", ...) once it ends."""
+        burst: list[np.ndarray] = []
+        voiced = gap = 0.0
+        step = FRAME / MIC_RATE
         while not stop.is_set():
             try:
                 frame = self.frames.get(timeout=0.05)
@@ -227,14 +249,24 @@ class MicListener:
             ):
                 continue
             if self.vad.prob(frame) >= SPEECH_PROB:
-                heard.append(frame)
-                voiced += FRAME / MIC_RATE
+                burst.append(frame)
+                voiced += step
+                gap = 0.0
                 if voiced >= BARGE_MIN_S:
-                    self._carry = heard  # the start of the next utterance
+                    self._carry = burst  # the start of the next utterance
                     self.barge.set()
                     return
-            else:
-                heard, voiced = [], 0.0
+            elif burst:
+                burst.append(frame)
+                gap += step
+                if gap > BURST_GAP_S and gap >= SHORT_WORD_END_S:
+                    if voiced >= SHORT_WORD_MIN_S and self.command_check is not None:
+                        text = self.command_check(np.concatenate(burst))
+                        if text:
+                            self._carry, self._carry_text = burst, text
+                            self.barge.set()
+                            return
+                    burst, voiced, gap = [], 0.0, 0.0
 
     def close(self) -> None:
         try:

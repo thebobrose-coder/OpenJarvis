@@ -295,7 +295,10 @@ class Conversation:
 
     def _turn(self, utt: Utterance, listener: Listener) -> None:
         self._set("transcribing")
-        text = (self.deps.transcribe(utt.audio) or "").strip()
+        heard = getattr(utt, "text", None)  # a command already transcribed mid-playback
+        text = (
+            heard if heard is not None else self.deps.transcribe(utt.audio) or ""
+        ).strip()
         t_transcript = self.deps.clock()
         if not text:
             return

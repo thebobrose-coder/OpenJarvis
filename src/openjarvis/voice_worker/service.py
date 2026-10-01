@@ -318,12 +318,22 @@ class Worker:
         logger.info("Voice speaker fallback: %s", describe(self.out_dev, "output"))
         return self.out_dev
 
+    def _command_check(self, audio) -> str | None:
+        """A short burst heard during playback: its transcript if it's a
+        local command (so "stop" interrupts), else None."""
+        from .conversation import match_command
+
+        text = self.stt(audio)
+        return text if match_command(text, paths.voice_name()) else None
+
     def _open_mic(self, barge, duplex):
         """WASAPI first; on failure re-scan devices and retry, then MME."""
         from .voice_io import MicListener, describe, find_device, refresh_devices
 
         try:
-            return MicListener(self.vad, barge, duplex, self.in_dev)
+            return MicListener(
+                self.vad, barge, duplex, self.in_dev, self._command_check
+            )
         except Exception as first:  # noqa: BLE001
             logger.warning(
                 "Mic failed on %s (%s); re-scanning",
@@ -333,13 +343,15 @@ class Worker:
         refresh_devices()
         self._resolve_devices()
         try:
-            return MicListener(self.vad, barge, duplex, self.in_dev)
+            return MicListener(
+                self.vad, barge, duplex, self.in_dev, self._command_check
+            )
         except Exception as second:  # noqa: BLE001
             logger.warning("Mic failed again (%s); trying MME", second)
         name = paths.config().get("input_device")
         self.in_dev = find_device(name, "input", host_api="MME") if name else None
         logger.info("Voice mic fallback: %s", describe(self.in_dev, "input"))
-        return MicListener(self.vad, barge, duplex, self.in_dev)
+        return MicListener(self.vad, barge, duplex, self.in_dev, self._command_check)
 
     def _queue_audio(self) -> list[tuple[str, tuple[bytes, int]]]:
         """voice_queue in order, from the shared cache (expressive where rendered)."""
