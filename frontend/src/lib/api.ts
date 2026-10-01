@@ -623,19 +623,39 @@ export interface DayAheadTask {
   id: string;
   title: string;
   due: string;
+  /** The task list's name (Hermes feed). */
+  list?: string;
 }
 
-export interface DayAhead {
+/** Freshness fields the wave-4 proxies add to Hermes's hub feeds. */
+export interface HubFeedMeta {
+  generated_at?: string;
+  age_seconds?: number;
+  /** True when the bridge is down and this is the last good copy. */
+  stale?: boolean;
+}
+
+export interface DayAhead extends HubFeedMeta {
   events: DayAheadEvent[];
   tasks: DayAheadTask[];
   calendar_connected: boolean;
   tasks_connected: boolean;
+  window_hours?: number;
+  as_of?: string;
+  errors?: Record<string, string>;
 }
 
+/** Hermes's day_ahead feed (wave 4), regenerated every 5 minutes. */
 export async function fetchDayAhead(): Promise<DayAhead> {
   const res = await apiFetch(`/api/day-ahead`);
-  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  if (!res.ok) throw new Error(res.status === 503 ? 'Hermes Day Ahead feed unavailable' : `Failed: ${res.status}`);
   return res.json();
+}
+
+/** Ask Hermes for a fresh day_ahead (202; it lands within about 2 minutes). */
+export async function refreshDayAhead(): Promise<void> {
+  const res = await apiFetch(`/api/day-ahead/refresh`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Refresh failed: ${res.status}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -658,7 +678,7 @@ export interface WeatherConditions {
   snow_mm: number | null;
 }
 
-export interface WeatherPayload {
+export interface WeatherPayload extends HubFeedMeta {
   provider: string;
   location: {
     requested: string;
@@ -667,19 +687,26 @@ export interface WeatherPayload {
     latitude: number | null;
     longitude: number | null;
   };
+  /** "imperial" or "metric" (Hermes's weather config); the panel labels by it. */
   units: string;
   language: string;
   current: WeatherConditions;
   forecast?: WeatherConditions[];
 }
 
-/** Live current+forecast conditions, straight from WeatherTool — not cached,
- * distinct from the narrated /api/digest/weather blurb (see fetchDigest). */
+/** Hermes's weather feed (wave 4), regenerated every 15 minutes. Null when
+ * weather isn't configured (404). */
 export async function fetchWeather(): Promise<WeatherPayload | null> {
   const res = await apiFetch(`/api/weather`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  if (!res.ok) throw new Error(res.status === 503 ? 'Hermes weather feed unavailable' : `Failed: ${res.status}`);
   return res.json();
+}
+
+/** Ask Hermes for fresh weather (202; it lands within about 2 minutes). */
+export async function refreshWeather(): Promise<void> {
+  const res = await apiFetch(`/api/weather/refresh`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Refresh failed: ${res.status}`);
 }
 
 // ---------------------------------------------------------------------------

@@ -104,3 +104,15 @@ class TestPWAServing:
         assert resp.status_code == 200
         # Should get index.html, not the passwd file
         assert "SPA" in resp.text
+
+    def test_unknown_api_path_is_404_not_the_app_shell(self, client_with_static):
+        """A retired or mistyped API route must 404, not serve index.html."""
+        for path in ("/api/digest/weather", "/api/no-such-route", "/api"):
+            resp = client_with_static.get(path)
+            assert resp.status_code == 404, path
+            assert "SPA" not in resp.text
+
+    def test_spa_routes_still_fall_back_to_index(self, client_with_static):
+        resp = client_with_static.get("/dashboard/apiary")
+        assert resp.status_code == 200
+        assert "SPA" in resp.text

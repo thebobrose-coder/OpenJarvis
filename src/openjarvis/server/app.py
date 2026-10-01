@@ -8,7 +8,7 @@ import pathlib
 import threading
 import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -498,9 +498,6 @@ def create_app(
     app.include_router(create_connectors_router())
     app.include_router(create_digest_router())
     app.include_router(
-        create_digest_router(category="weather", prefix="/api/digest/weather")
-    )
-    app.include_router(
         create_digest_router(category="culture", prefix="/api/digest/culture")
     )
     app.include_router(create_breaking_news_router())
@@ -601,6 +598,9 @@ def create_app(
         @app.get("/{full_path:path}")
         async def spa_catch_all(full_path: str):
             """Serve static files directly, fall back to index.html for SPA routes."""
+            if full_path == "api" or full_path.startswith("api/"):
+                # An unknown API path is a 404, not the app shell.
+                raise HTTPException(status_code=404, detail="Not Found")
             if full_path:
                 candidate = (static_dir / full_path).resolve()
                 # Path traversal prevention

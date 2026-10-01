@@ -18,17 +18,25 @@ import {
   Droplets,
   Moon,
   Navigation,
-  Pause,
-  Play,
   Sun,
 } from 'lucide-react';
-import { fetchWeather, regenerateDigest } from '../../lib/api';
+import { fetchWeather, refreshWeather } from '../../lib/api';
 import type { WeatherPayload } from '../../lib/api';
-import { useDigestAudio } from '../../hooks/useDigestAudio';
 import { DashboardPanel } from './DashboardPanel';
+import { FeedFreshness } from './FeedFreshness';
 
-const WEATHER_PREFIX = '/api/digest/weather';
 const LIVE_REFRESH_MS = 15 * 60 * 1000;
+// Hermes regenerates weather every 15 minutes; past 45 the feed is late.
+const LATE_AFTER_S = 45 * 60;
+// After a Refresh, poll for the new document (Hermes's hub-requests job runs
+// every 2 minutes).
+const POLL_MS = 15_000;
+const POLL_LIMIT_MS = 4 * 60 * 1000;
+
+/** Unit labels from the feed's `units` (Hermes's weather config is imperial). */
+export function unitLabels(units: string | null | undefined): { temp: string; wind: string } {
+  return (units ?? '').toLowerCase() === 'imperial' ? { temp: '°F', wind: 'mph' } : { temp: '°C', wind: 'm/s' };
+}
 
 /** Map an OpenWeatherMap icon code to a symbolic lucide icon -- the graphical
  * "at a glance" read this panel exists for, not the literal OWM sprite. */
@@ -67,52 +75,68 @@ export function WeatherPanel() {
   const [weather, setWeather] = useState<WeatherPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState(false);
-
-  const {
-    digest,
-    audioUrl,
-    audioRef,
-    playing,
-    load: loadNarration,
-    toggleAudio,
-    setPlaying,
-  } = useDigestAudio(WEATHER_PREFIX, { autoLoad: false });
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadLive = useCallback(async () => {
     try {
       const w = await fetchWeather();
       setWeather(w);
       setError(null);
+      return w;
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load weather.');
+      return null;
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    // Queue one refresh on open; the current copy shows meanwhile.
+    refreshWeather().catch(() => {});
     loadLive();
-    // Narration is a secondary affordance -- a failure here (swallowed
-    // inside the hook's own error state, which this panel doesn't surface)
-    // shouldn't block the live graphical read above it.
-    loadNarration();
     const interval = setInterval(loadLive, LIVE_REFRESH_MS);
     return () => clearInterval(interval);
-  }, [loadLive, loadNarration]);
+  }, [loadLive]);
 
-  const handleRegenerate = async () => {
-    setRegenerating(true);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    const before = weather?.generated_at;
     try {
-      await regenerateDigest(WEATHER_PREFIX);
-      await Promise.all([loadLive(), loadNarration()]);
+      await refreshWeather();
+      const deadline = Date.now() + POLL_LIMIT_MS;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, POLL_MS));
+        const w = await loadLive();
+        if (w?.generated_at && w.generated_at !== before) break;
+      }
     } catch (e: any) {
-      setError(e?.message ?? 'Failed to regenerate.');
+      setError(e?.message ?? 'Failed to refresh.');
     } finally {
-      setRegenerating(false);
+      setRefreshing(false);
     }
   };
 
+  return (
+    <DashboardPanel
+      icon={weather?.current ? conditionIcon(weather.current.icon) : CloudSun}
+      title="Weather"
+      tag="15 min"
+      size="half"
+      priority
+      loading={loading}
+      error={error}
+      onRegenerate={handleRefresh}
+      regenerating={refreshing}
+    >
+      <WeatherView weather={weather} />
+    </DashboardPanel>
+  );
+}
+
+/** Conditions, the 24 h temperature curve and rain chances, from Hermes's
+ * weather feed, labelled in the feed's units, with its age. */
+export function WeatherView({ weather }: { weather: WeatherPayload | null }) {
   const current = weather?.current;
   const Icon = current ? conditionIcon(current.icon) : CloudSun;
   const forecast = (weather?.forecast ?? []).slice(0, 8);
@@ -122,18 +146,9 @@ export function WeatherPanel() {
     pop: f.precipitation_probability_percent ?? 0,
   }));
 
+  const u = unitLabels(weather?.units);
   return (
-    <DashboardPanel
-      icon={Icon}
-      title="Weather"
-      tag="15 min"
-      size="half"
-      priority
-      loading={loading}
-      error={error}
-      onRegenerate={handleRegenerate}
-      regenerating={regenerating}
-    >
+    <>
       {!weather || !current ? (
         <p style={{ color: 'var(--color-text-tertiary)' }}>
           Connect the Weather source and set a location to populate this panel.
@@ -145,11 +160,13 @@ export function WeatherPanel() {
             <div className="min-w-0">
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-semibold" style={{ color: 'var(--color-text)' }}>
-                  {current.temperature != null ? Math.round(current.temperature) : '--'}°
+                  {current.temperature != null ? Math.round(current.temperature) : '--'}
+                  {u.temp}
                 </span>
                 {current.feels_like != null && (
                   <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-                    feels {Math.round(current.feels_like)}°
+                    feels {Math.round(current.feels_like)}
+                    {u.temp}
                   </span>
                 )}
               </div>
@@ -170,7 +187,7 @@ export function WeatherPanel() {
                     }}
                   />
                   <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                    {Math.round(current.wind_speed)}
+                    {Math.round(current.wind_speed)} {u.wind}
                   </span>
                 </div>
               )}
@@ -241,35 +258,9 @@ export function WeatherPanel() {
             </div>
           )}
 
-          {digest?.text && (
-            <div
-              className="flex items-start gap-2 pt-2 text-xs"
-              style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-            >
-              {audioUrl && (
-                <button
-                  onClick={toggleAudio}
-                  className="flex items-center justify-center w-5 h-5 rounded-full shrink-0 cursor-pointer"
-                  style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
-                  title={playing ? 'Pause' : 'Play narration'}
-                >
-                  {playing ? <Pause size={10} /> : <Play size={10} />}
-                </button>
-              )}
-              <span className="pt-0.5">{digest.text}</span>
-              {audioUrl && (
-                <audio
-                  ref={audioRef}
-                  src={audioUrl}
-                  onEnded={() => setPlaying(false)}
-                  onPause={() => setPlaying(false)}
-                  style={{ display: 'none' }}
-                />
-              )}
-            </div>
-          )}
+          <FeedFreshness ageSeconds={weather.age_seconds} stale={weather.stale} staleAfterSeconds={LATE_AFTER_S} />
         </div>
       )}
-    </DashboardPanel>
+    </>
   );
 }

@@ -1,37 +1,32 @@
-"""FastAPI route for the graphical Weather panel -- live, uncached conditions.
+"""FastAPI routes for the Weather panel -- a proxy for Hermes's `weather` feed.
 
-Reuses WeatherTool directly rather than duplicating its fetch/credential
-logic, and resolves the same stored location the weather digest narration
-uses (WeatherConnector.stored_location()) so the panel and the spoken
-briefing never disagree about where "weather" means.
+Wave 4 (hq decision 0004, contract §2 "Wave 4 feeds"): Hermes regenerates
+`weather` every 15 minutes. This route passes it through in the panel's
+original shape (including `units`, which the panel labels by) plus
+`generated_at` / `age_seconds` / `stale`; a bridge 404 means "not
+configured" and stays a 404. `POST /refresh` asks Hermes for a fresh one.
+The spoken weather narration is retired: it is one sentence of the general
+digest now.
 """
 
 from __future__ import annotations
 
-import json
+from fastapi import APIRouter
 
-from fastapi import APIRouter, HTTPException
+from openjarvis.server.hermes_panel import HermesPanel
 
 weather_router = APIRouter(prefix="/api/weather", tags=["weather"])
+
+panel = HermesPanel("weather", "HERMES_WEATHER_URL")
 
 
 @weather_router.get("")
 async def get_weather() -> dict:
-    """Return current conditions and forecast for the configured location."""
-    from openjarvis.connectors.weather import WeatherConnector
-    from openjarvis.tools.weather import WeatherTool
+    """Current conditions and forecast from Hermes."""
+    return await panel.get(not_found="Weather is not configured")
 
-    connector = WeatherConnector()
-    if not connector.is_connected():
-        raise HTTPException(status_code=404, detail="Weather is not configured")
 
-    location = connector.stored_location()
-    if not location:
-        raise HTTPException(status_code=404, detail="No weather location configured")
-
-    tool = WeatherTool(connector=connector)
-    result = tool.execute(location=location, include_forecast=True, forecast_hours=24)
-    if not result.success:
-        raise HTTPException(status_code=502, detail=result.content)
-
-    return json.loads(result.content)
+@weather_router.post("/refresh")
+async def refresh_weather():
+    """Queue a Hermes refresh (202); the feed regenerates within about 2 minutes."""
+    return await panel.refresh()
