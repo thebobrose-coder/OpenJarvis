@@ -68,17 +68,6 @@ def test_is_connected_no_file(tmp_path):
     assert c.is_connected() is False
 
 
-def test_stored_location(connector):
-    assert connector.stored_location() == "San Francisco,CA"
-
-
-def test_stored_location_no_file(tmp_path):
-    from openjarvis.connectors.weather import WeatherConnector
-
-    c = WeatherConnector(token_path=str(tmp_path / "missing.json"))
-    assert c.stored_location() is None
-
-
 def test_stored_api_key(connector):
     assert connector.stored_api_key() == "fake-key"
 

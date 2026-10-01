@@ -45,20 +45,6 @@ _AUDIO_MEDIA_TYPES = {
 }
 
 
-_GENERATE_PROMPTS = {
-    "weather": "Generate the weather briefing",
-}
-
-
-def _generate_digest_sync(category: str) -> str:
-    """Generate a digest with the whole Jarvis lifecycle on one worker."""
-    from openjarvis.sdk import Jarvis
-
-    prompt = _GENERATE_PROMPTS[category]
-    with Jarvis() as jarvis:
-        return jarvis.ask(prompt, agent="morning_digest", digest_category=category)
-
-
 # ---------------------------------------------------------------------------
 # Hermes-owned categories
 # ---------------------------------------------------------------------------
@@ -394,83 +380,14 @@ def _create_hermes_digest_router(
 def create_digest_router(
     *, db_path: str = "", category: str = "general", prefix: str = "/api/digest"
 ) -> APIRouter:
-    """Create a digest API router with the given store path.
+    """Create a digest API router for a Hermes-generated category.
 
-    `category` scopes every query to that category's rows in the shared
-    DigestStore table (see digest_store.py). "general" (the world/market
-    digest) and "culture" proxy Hermes's feeds; weather is a local pipeline
-    until wave 4.
+    "general" (the world/market digest) and "culture" proxy Hermes's feeds.
+    The local digest pipeline is retired (wave 4 removed its last category,
+    weather), so any other category is an error. The store only serves the
+    legacy local rows on `/history`.
     """
+    if category not in HERMES_DIGEST_URLS:
+        raise ValueError(f"No Hermes digest feed for category {category!r}")
     store = DigestStore(db_path=db_path) if db_path else DigestStore()
-    if category in HERMES_DIGEST_URLS:
-        return _create_hermes_digest_router(category, prefix, store)
-
-    router = APIRouter(prefix=prefix, tags=["digest", category])
-
-    @router.get("")
-    async def get_digest():
-        """Return the latest digest artifact."""
-        artifact = store.get_today(category=category)
-        if artifact is None:
-            raise HTTPException(status_code=404, detail="No digest for today")
-        audio_available = (
-            artifact.audio_path.exists() if artifact.audio_path.name else False
-        )
-        return {
-            "text": artifact.text,
-            "sections": artifact.sections,
-            "articles": [],
-            "sources_used": artifact.sources_used,
-            "generated_at": artifact.generated_at.isoformat(),
-            "model_used": artifact.model_used,
-            "voice_used": artifact.voice_used,
-            "audio_available": audio_available,
-            # Absolute filesystem path -- the desktop app loads this directly
-            # via Tauri's asset protocol (convertFileSrc), which is exempt
-            # from a WebView2 media-security check that blocks both plain
-            # http:// and blob: audio sources in a packaged app. Only ever
-            # meaningful to the Tauri build; the browser-facing copy ignores
-            # it and streams from /api/digest/audio instead.
-            "audio_path": str(artifact.audio_path) if audio_available else None,
-        }
-
-    @router.get("/audio")
-    async def get_digest_audio():
-        """Stream the digest audio file."""
-        artifact = store.get_today(category=category)
-        if artifact is None:
-            raise HTTPException(status_code=404, detail="No digest for today")
-        if not artifact.audio_path.exists():
-            raise HTTPException(status_code=404, detail="Audio not available")
-        suffix = artifact.audio_path.suffix.lower()
-        media_type = _AUDIO_MEDIA_TYPES.get(suffix, "application/octet-stream")
-        return FileResponse(
-            str(artifact.audio_path),
-            media_type=media_type,
-            filename=f"digest{suffix}",
-        )
-
-    @router.post("/generate")
-    async def generate_digest():
-        """Force re-generation of the digest."""
-        try:
-            result = await asyncio.to_thread(_generate_digest_sync, category)
-            return {"status": "ok", "text": result}
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
-
-    @router.get("/history")
-    async def get_digest_history():
-        """Return past digests."""
-        history = store.history(limit=10, category=category)
-        return [
-            {
-                "text": a.text[:200],
-                "generated_at": a.generated_at.isoformat(),
-                "model_used": a.model_used,
-                "voice_used": a.voice_used,
-            }
-            for a in history
-        ]
-
-    return router
+    return _create_hermes_digest_router(category, prefix, store)

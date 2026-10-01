@@ -30,7 +30,6 @@ class QueryOrchestrator:
         system_prompt: Optional[str] = None,
         operator_id: Optional[str] = None,
         prior_messages: Optional[List[Message]] = None,
-        digest_category: str = "general",
     ) -> Dict[str, Any]:
         """Execute a query through the system and return a result dict."""
         s = self._system
@@ -84,7 +83,6 @@ class QueryOrchestrator:
                 system_prompt=system_prompt,
                 operator_id=operator_id,
                 prior_messages=prior_messages,
-                digest_category=digest_category,
             )
 
         result = s.engine.generate(
@@ -141,7 +139,6 @@ class QueryOrchestrator:
         system_prompt=None,
         operator_id=None,
         prior_messages=None,
-        digest_category: str = "general",
     ) -> Dict[str, Any]:
         """Run through an agent."""
         from openjarvis.agents._stubs import AgentContext
@@ -203,36 +200,22 @@ class QueryOrchestrator:
             agent_kwargs["memory_backend"] = s.memory_backend
 
         if agent_name == "morning_digest" and hasattr(s.config, "digest"):
-            from openjarvis.agents.morning_digest import DIGEST_CATEGORY_PRESETS
-
             dc = s.config.digest
-            preset = DIGEST_CATEGORY_PRESETS.get(digest_category)
-            if preset:
-                digest_kwargs = {
-                    "persona": preset["persona"],
-                    "sections": preset["sections"],
-                    "section_sources": preset["section_sources"],
-                }
-            else:
-                section_sources = {}
-                for sec in dc.sections:
-                    sc = getattr(dc, sec, None)
-                    if sc and hasattr(sc, "sources"):
-                        section_sources[sec] = sc.sources
-                digest_kwargs = {
+            section_sources = {}
+            for sec in dc.sections:
+                sc = getattr(dc, sec, None)
+                if sc and hasattr(sc, "sources"):
+                    section_sources[sec] = sc.sources
+            agent_kwargs.update(
+                {
                     "persona": dc.persona,
                     "sections": dc.sections,
                     "section_sources": section_sources,
-                }
-            agent_kwargs.update(digest_kwargs)
-            agent_kwargs.update(
-                {
                     "timezone": dc.timezone,
                     "voice_id": dc.voice_id,
                     "voice_speed": dc.voice_speed,
                     "tts_backend": dc.tts_backend,
                     "honorific": dc.honorific,
-                    "category": digest_category,
                 }
             )
             from openjarvis.tools.digest_collect import DigestCollectTool
