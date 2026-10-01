@@ -23,26 +23,6 @@ _SECTION_PROMPTS = {
     "health": "HEALTH — Describe only supported trends; omit raw measurements.",
     "world": "WORLD — Summarize only provided world items.",
     "music": "MUSIC — Summarize only provided listening information.",
-    "weather": (
-        "WEATHER — Summarize only the provided current conditions and forecast. "
-        "Keep it brief and practical, not a full narrative."
-    ),
-}
-
-# Config overrides for a MorningDigestAgent run outside the original
-# single global [digest] section -- e.g. a 15-minute weather pipeline
-# running independently of the once-daily general digest. "general"
-# (the original digest) needs no entry: it keeps reading straight from
-# config.toml's [digest] section, as it always has. Voice/TTS backend
-# and honorific are intentionally NOT overridden here -- every category
-# shares the same configured voice, so the whole dashboard reads as one
-# consistent narrator, not a different voice per panel.
-DIGEST_CATEGORY_PRESETS = {
-    "weather": {
-        "persona": "weather",
-        "sections": ["weather"],
-        "section_sources": {"weather": ["weather"]},
-    },
 }
 
 
@@ -77,12 +57,6 @@ class MorningDigestAgent(ToolUsingAgent):
         self._tts_backend = kwargs.pop("tts_backend", "cartesia")
         self._digest_store_path = kwargs.pop("digest_store_path", "")
         self._honorific = kwargs.pop("honorific", "sir")
-        # "general" is the original world/market digest. A distinct category
-        # (e.g. "weather") shares the same DigestStore table/TTS backend but
-        # gets its own row filter and its own audio subdirectory so two
-        # categories running on independent schedules never overwrite each
-        # other's digest.wav.
-        self._category = kwargs.pop("category", "general")
         super().__init__(*args, **kwargs)
 
     def _build_system_prompt(self) -> str:
@@ -100,28 +74,11 @@ class MorningDigestAgent(ToolUsingAgent):
             for section in sections
         )
 
-        # The honorific opening is the original single daily-briefing's
-        # style. Category panels (weather) run their own persona, which
-        # explicitly forbids it (a short utility read, not an address to the
-        # listener) -- so only inject the honorific instruction for
-        # "general", instead of letting this base instruction silently
-        # override every persona's own rule.
-        honorific_line = (
-            f"The user's preferred honorific is: {honorific}\n\n"
-            if self._category == "general"
-            else ""
-        )
-        opening_instruction = (
-            "Open briefly with the honorific and end after the last supported item. "
-            if self._category == "general"
-            else "End after the last supported item. "
-        )
-
         return (
             f"{persona_text}\n\n"
             f"Today is {now.strftime('%A, %B %d, %Y')}. "
             f"The time is {now.strftime('%I:%M %p')} in {self._timezone}.\n"
-            f"{honorific_line}"
+            f"The user's preferred honorific is: {honorific}\n\n"
             "You receive structured data from the user's connected services. "
             "The data has ALREADY been collected — it appears in the user "
             "message. You do NOT fetch anything yourself.\n\n"
@@ -129,22 +86,15 @@ class MorningDigestAgent(ToolUsingAgent):
             "Cover only the configured sections below and only when the collected "
             "data supports them. Silently omit absent data and sources.\n\n"
             f"CONFIGURED SECTIONS:\n{section_block or '- None'}\n\n"
-            f"{opening_instruction}"
+            "Open briefly with the honorific and end after the last supported item. "
             "Do not add conversational offers or personal asides.\n\n"
             "ABSOLUTE RULES (violations are unacceptable):\n"
             "- ONLY facts from the data. Zero hallucination.\n"
             "- NEVER mention disconnected or unavailable sources.\n"
             "- NEVER invent personal context or claim, offer, or suggest actions.\n"
             "- Acknowledge every source that returned data, even briefly.\n"
-            "- Email items that are account/service administrivia -- subscription "
-            "confirmations, \"welcome to X\" or \"confirm your registration\" "
-            "messages, unsubscribe notices -- are NOT news content. Skip them "
-            "entirely; do not report that they exist.\n"
             "- No markdown, emojis, bullets, or headers.\n"
-            "- Separate distinct topics or sources with a blank line (a plain "
-            "double line break) so the briefing reads as short paragraphs, not "
-            "one unbroken block. Do not use any other paragraph marker.\n"
-            "- STRICT LIMIT: 275 words. Be concise -- more room than before, not license to pad."
+            "- STRICT LIMIT: 200 words. Be concise."
         )
 
     def _resolve_sources(self) -> List[str]:
@@ -190,13 +140,6 @@ class MorningDigestAgent(ToolUsingAgent):
 
         # Step 2: Synthesize narrative via LLM
         system_prompt = self._build_system_prompt()
-        closing_instruction = (
-            "Use the honorific no more than three times, separate distinct "
-            "topics with a blank line, and keep the briefing under 275 words."
-            if self._category == "general"
-            else "Separate distinct topics with a blank line, and follow the "
-            "persona's own length limit."
-        )
         messages = [
             Message(role=Role.SYSTEM, content=system_prompt),
             Message(
@@ -206,7 +149,8 @@ class MorningDigestAgent(ToolUsingAgent):
                     f"the briefing:\n\n<collected_data>\n{collected_data}\n"
                     "</collected_data>\n\nUse configured sections only. Omit missing "
                     "data and sources. Do not add personal context or activities. "
-                    f"{closing_instruction}"
+                    "Use the honorific no more than three times and keep the "
+                    "briefing under 200 words."
                 ),
             ),
         ]
@@ -252,8 +196,6 @@ class MorningDigestAgent(ToolUsingAgent):
         tts_text = tts_text.strip()
 
         output_dir = str(get_config_dir() / "digests")
-        if self._category != "general":
-            output_dir = str(get_config_dir() / "digests" / self._category)
         tts_call = ToolCall(
             id="digest-tts-1",
             name="text_to_speech",
@@ -283,28 +225,11 @@ class MorningDigestAgent(ToolUsingAgent):
             voice_used=self._voice_id,
             quality_score=quality_score,
             evaluator_feedback=evaluator_feedback,
-            category=self._category,
         )
 
         store = DigestStore(db_path=self._digest_store_path)
         store.save(artifact)
         store.close()
-
-        # Also write to the shared memory pool so other agents (operators,
-        # managed agents) can draw on today's digest via memory_retrieve --
-        # DigestStore is separate storage and nothing else can see into it
-        # otherwise. Best-effort: must never block digest delivery.
-        try:
-            from openjarvis.tools.storage.sqlite import SQLiteMemory
-
-            memory_source = (
-                "daily_briefing"
-                if self._category == "general"
-                else f"daily_briefing:{self._category}"
-            )
-            SQLiteMemory().store(narrative, source=memory_source)
-        except Exception:  # noqa: BLE001
-            pass
 
         self._emit_turn_end(turns=1)
         return AgentResult(
