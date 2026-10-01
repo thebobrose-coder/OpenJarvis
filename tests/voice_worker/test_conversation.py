@@ -274,3 +274,15 @@ def test_sentence_splitter_on_streamed_chunks():
 )
 def test_duplex_from_device_and_override(setting, device, expected):
     assert resolve_duplex(setting, device) == expected
+
+
+def test_a_mic_that_wont_open_ends_with_the_error_tone_not_silence():
+    conv, _, _, calls = make([], [])
+
+    def broken(barge, duplex):
+        raise OSError("device busy")
+
+    conv.deps.open_listener = broken
+    conv.run()
+    assert calls["chimes"] == ["error"]
+    assert conv.ended_reason == "error" and conv.state == "idle"

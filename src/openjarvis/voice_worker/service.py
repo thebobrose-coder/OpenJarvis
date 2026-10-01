@@ -226,7 +226,7 @@ class Worker:
         from .conversation import resolve_duplex
         from .hotkeys import Hotkeys
         from .voice_input import VoiceInput
-        from .voice_io import Transcriber, Vad, device_name, find_device
+        from .voice_io import Transcriber, Vad, device_name
 
         cfg = paths.config()
         try:
@@ -235,8 +235,7 @@ class Worker:
         except Exception:  # noqa: BLE001 -- voice input is optional; the renders keep going
             logger.exception("Voice input disabled: VAD/STT failed to load")
             return
-        self.in_dev = find_device(cfg.get("input_device"), "input")
-        self.out_dev = find_device(cfg.get("output_device"), "output")
+        self._resolve_devices()
         out_name = device_name(self.out_dev, "output")
         duplex = resolve_duplex(str(cfg.get("duplex", "auto")), out_name)
         self.voice = VoiceInput(self._make_conversation, duplex, out_name)
@@ -252,20 +251,20 @@ class Worker:
         from .conversation import Conversation, Deps
         from .voice_io import (
             HermesVoiceStream,
-            MicListener,
             SpeakerPlayer,
             chime_pcm,
             hermes_key,
         )
 
-        player = SpeakerPlayer(self.out_dev)
+        self._resolve_devices()
+        player = SpeakerPlayer(self.out_dev, fallback=self._speaker_fallback)
         url = os.environ.get(
             "HERMES_VOICE_URL", "http://127.0.0.1:8642/p/voice/v1/chat/completions"
         )
         key = hermes_key()
 
         def open_listener(barge, duplex):
-            listener = MicListener(self.vad, barge, duplex, self.in_dev)
+            listener = self._open_mic(barge, duplex)
             player.listener = listener
             return listener
 
@@ -285,6 +284,54 @@ class Worker:
             voice_name=paths.voice_name,
         )
         return Conversation(deps, self.voice.duplex, on_change=on_change)
+
+    def _resolve_devices(self) -> None:
+        """Devices by name, at every conversation start: indexes from an
+        earlier PortAudio scan can point at a different endpoint later."""
+        from .voice_io import describe, find_device, refresh_devices
+
+        refresh_devices()  # a fresh scan: the first open on a stale scan can fail
+        cfg = paths.config()
+        self.in_dev = find_device(cfg.get("input_device"), "input")
+        self.out_dev = find_device(cfg.get("output_device"), "output")
+        logger.info(
+            "Voice devices: mic=%s, speaker=%s",
+            describe(self.in_dev, "input"),
+            describe(self.out_dev, "output"),
+        )
+
+    def _speaker_fallback(self) -> int | None:
+        """The speaker failed to open: re-scan, then prefer the MME endpoint."""
+        from .voice_io import describe, find_device, refresh_devices
+
+        refresh_devices()
+        name = paths.config().get("output_device")
+        self.out_dev = find_device(name, "output", host_api="MME") if name else None
+        logger.info("Voice speaker fallback: %s", describe(self.out_dev, "output"))
+        return self.out_dev
+
+    def _open_mic(self, barge, duplex):
+        """WASAPI first; on failure re-scan devices and retry, then MME."""
+        from .voice_io import MicListener, describe, find_device, refresh_devices
+
+        try:
+            return MicListener(self.vad, barge, duplex, self.in_dev)
+        except Exception as first:  # noqa: BLE001
+            logger.warning(
+                "Mic failed on %s (%s); re-scanning",
+                describe(self.in_dev, "input"),
+                first,
+            )
+        refresh_devices()
+        self._resolve_devices()
+        try:
+            return MicListener(self.vad, barge, duplex, self.in_dev)
+        except Exception as second:  # noqa: BLE001
+            logger.warning("Mic failed again (%s); trying MME", second)
+        name = paths.config().get("input_device")
+        self.in_dev = find_device(name, "input", host_api="MME") if name else None
+        logger.info("Voice mic fallback: %s", describe(self.in_dev, "input"))
+        return MicListener(self.vad, barge, duplex, self.in_dev)
 
     def _queue_audio(self) -> list[tuple[str, tuple[bytes, int]]]:
         """voice_queue in order, from the shared cache (expressive where rendered)."""

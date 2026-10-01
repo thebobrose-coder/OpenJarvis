@@ -30,25 +30,55 @@ BARGE_GUARD_S = 0.3  # ignore VAD this long after each clip starts (click/bleed)
 MAX_UTTERANCE_S = 30.0
 
 
-def find_device(name_part: str | None, kind: str) -> int | None:
+HOST_API_PREFERENCE = ("Windows WASAPI", "MME")  # never WDM-KS or DirectSound
+
+
+def refresh_devices() -> None:
+    """Re-scan PortAudio's devices (a headset reconnect, or a host API that
+    wasn't ready when the worker started at logon)."""
+    import sounddevice as sd
+
+    sd._terminate()
+    sd._initialize()
+
+
+def find_device(
+    name_part: str | None, kind: str, host_api: str | None = None
+) -> int | None:
     """A device index whose name contains ``name_part`` (case-insensitive),
-    preferring WASAPI; None means the system default."""
+    on WASAPI if there is one, else MME (or only ``host_api`` when given).
+    None means the system default (or no match)."""
     if not name_part:
         return None
     import sounddevice as sd
 
     want = name_part.lower()
     apis = sd.query_hostapis()
-    best = None
+    found: dict[str, int] = {}
     for i, d in enumerate(sd.query_devices()):
         channels = (
             d["max_input_channels"] if kind == "input" else d["max_output_channels"]
         )
-        if channels and want in d["name"].lower():
-            if apis[d["hostapi"]]["name"] == "Windows WASAPI":
-                return i
-            best = i if best is None else best
-    return best
+        api = apis[d["hostapi"]]["name"]
+        if channels and want in d["name"].lower() and api not in found:
+            found[api] = i
+    for api in (host_api,) if host_api else HOST_API_PREFERENCE:
+        if api in found:
+            return found[api]
+    return None
+
+
+def describe(index: int | None, kind: str) -> str:
+    """'<host api>: <name>' for the log."""
+    import sounddevice as sd
+
+    if index is None:
+        index = sd.default.device[0 if kind == "input" else 1]
+    try:
+        d = sd.query_devices(index)
+        return f"{sd.query_hostapis(d['hostapi'])['name']}: {d['name']}"
+    except Exception:  # noqa: BLE001
+        return f"device {index}"
 
 
 def native_rate(index: int | None, kind: str) -> int:
@@ -154,8 +184,10 @@ class MicListener:
         silence = 0.0
         deadline = time.monotonic() + timeout
         while True:
+            if self.barge.is_set():
+                return None  # stopped (UI, hotkey, mute, "that's all"): close promptly
             try:
-                frame = self.frames.get(timeout=0.5)
+                frame = self.frames.get(timeout=0.1)
             except queue.Empty:
                 if not speech and time.monotonic() > deadline:
                     return None
@@ -216,8 +248,9 @@ class SpeakerPlayer:
     """Plays 16-bit mono PCM in small blocks so an interrupt stops it within
     ~50 ms. While it plays, the listener watches for a barge-in."""
 
-    def __init__(self, device: int | None) -> None:
+    def __init__(self, device: int | None, fallback=None) -> None:
         self.device = device
+        self.fallback = fallback  # () -> a replacement device index after a failed open
         self.listener: MicListener | None = None
 
     def play(self, audio: tuple[bytes, int], interrupt: threading.Event) -> bool:
@@ -239,9 +272,23 @@ class SpeakerPlayer:
             watcher.start()
         finished = True
         try:
-            with sd.OutputStream(
-                samplerate=sr, channels=1, dtype="float32", device=self.device
-            ) as out:
+            try:
+                out = sd.OutputStream(
+                    samplerate=sr, channels=1, dtype="float32", device=self.device
+                )
+            except Exception:  # noqa: BLE001 -- e.g. a stale device index
+                if self.fallback is None:
+                    raise
+                self.device = self.fallback()
+                rate = native_rate(self.device, "output")
+                if rate != sr:
+                    samples = resample(samples, round(len(samples) * rate / sr))
+                    sr = rate
+                block = int(sr * 0.05)
+                out = sd.OutputStream(
+                    samplerate=sr, channels=1, dtype="float32", device=self.device
+                )
+            with out:
                 for i in range(0, len(samples), block):
                     if interrupt.is_set():
                         finished = False
@@ -353,7 +400,11 @@ def hermes_key() -> str:
 
 def chime_pcm(kind: str, sr: int = 24000) -> tuple[bytes, int]:
     """Two short, soft synthesized tones: rising for start, falling for end."""
-    notes = (660.0, 880.0) if kind == "start" else (880.0, 660.0)
+    notes = {
+        "start": (660.0, 880.0),
+        "end": (880.0, 660.0),
+        "error": (440.0, 330.0),
+    }.get(kind, (880.0, 660.0))
     parts = []
     for f in notes:
         t = np.arange(int(sr * 0.11)) / sr

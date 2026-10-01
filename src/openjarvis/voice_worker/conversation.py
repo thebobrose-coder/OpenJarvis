@@ -243,8 +243,10 @@ class Conversation:
 
     # -- the loop --
     def run(self) -> None:
-        listener = self.deps.open_listener(self._interrupt, self.duplex)
+        listener: Listener | None = None
+        failed = False
         try:
+            listener = self.deps.open_listener(self._interrupt, self.duplex)
             self.deps.chime("start")
             while not self._stop.is_set():
                 self._set("listening")
@@ -256,10 +258,18 @@ class Conversation:
                     self.ended_reason = "silence"
                     break
                 self._turn(utt, listener)
+        except Exception:  # noqa: BLE001 -- e.g. the mic couldn't open: say so audibly
+            failed = True
+            self.ended_reason = "error"
+            logger.exception("Voice conversation failed")
         finally:
-            listener.close()  # the mic closes with the conversation
+            if listener is not None:
+                listener.close()  # the mic closes with the conversation
             self._set("idle")
-            self.deps.chime("end")
+            try:
+                self.deps.chime("error" if failed else "end")
+            except Exception:  # noqa: BLE001
+                logger.warning("Chime failed", exc_info=True)
             logger.info(
                 "Voice conversation ended (%s): %d turns, %d barge-ins",
                 self.ended_reason or "stopped",
@@ -400,6 +410,7 @@ class Conversation:
             if self._speak(audio, listener):
                 i += 1
                 continue
+            self._interrupt.clear()  # the barge-in that stopped the item
             utt = listener.next_utterance(5.0)
             said = self.deps.transcribe(utt.audio) if utt else ""
             if said:
