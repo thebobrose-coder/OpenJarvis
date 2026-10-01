@@ -127,6 +127,22 @@ class SentenceSplitter:
         return [rest] if rest else []
 
 
+_CLAUSE_BREAK = re.compile(r"(?<=[,;:])\s+|\s+(?=[—–-]{1,2}\s)")
+FIRST_CLAUSE_MIN = 25
+
+
+def split_first_clause(sentence: str) -> list[str]:
+    """Split a long sentence at its first clause break after ~25 characters,
+    so the first audio of a reply can start before the whole sentence is
+    synthesized. Short sentences come back whole."""
+    if len(sentence) < 2 * FIRST_CLAUSE_MIN:
+        return [sentence]
+    for m in _CLAUSE_BREAK.finditer(sentence):
+        if m.start() >= FIRST_CLAUSE_MIN and len(sentence) - m.end() >= 10:
+            return [sentence[: m.start()].strip(), sentence[m.end() :].strip()]
+    return [sentence]
+
+
 def sentences_from_stream(chunks: Iterable[str]) -> Iterator[str]:
     splitter = SentenceSplitter()
     for chunk in chunks:
@@ -313,10 +329,18 @@ class Conversation:
                         if cancel.is_set():
                             return
 
+                first = True
                 for sentence in sentences_from_stream(timed()):
                     spoken = clean_for_speech(sentence)
-                    if spoken and not cancel.is_set():
-                        ready.put((spoken, self.deps.tts(spoken)))
+                    if not spoken:
+                        continue
+                    # The first sentence goes clause by clause: first audio sooner.
+                    parts = split_first_clause(spoken) if first else [spoken]
+                    first = False
+                    for part in parts:
+                        if cancel.is_set():
+                            return
+                        ready.put((part, self.deps.tts(part)))
             except Exception:  # noqa: BLE001 -- a broken stream ends the reply
                 if not cancel.is_set():
                     logger.warning("Hermes stream failed", exc_info=True)

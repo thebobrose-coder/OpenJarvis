@@ -24,7 +24,7 @@ SPEECH_PROB = 0.5
 PRE_ROLL_S = 0.3
 END_SILENCE_S = 0.7  # end of speech after this much trailing silence...
 SHORT_PAUSE_S = 1.2  # ...but allow up to this for a pause in a short utterance
-SHORT_UTTERANCE_S = 2.0
+SHORT_UTTERANCE_S = 1.0  # the 1.2 s pause allowance only applies below this much speech
 BARGE_MIN_S = 0.4  # speech this long during playback is a barge-in
 BARGE_GUARD_S = 0.3  # ignore VAD this long after each clip starts (click/bleed)
 MAX_UTTERANCE_S = 30.0
@@ -333,10 +333,12 @@ class Transcriber:
     """faster-whisper small.en, int8, on the CPU (the GPU belongs to qwen and
     the expressive renders)."""
 
-    def __init__(self) -> None:
+    def __init__(self, model: str = "small.en", cpu_threads: int = 8) -> None:
         from faster_whisper import WhisperModel
 
-        self.model = WhisperModel("small.en", device="cpu", compute_type="int8")
+        self.model = WhisperModel(
+            model, device="cpu", compute_type="int8", cpu_threads=cpu_threads
+        )
 
     def __call__(self, audio: np.ndarray) -> str:
         segments, _ = self.model.transcribe(

@@ -286,3 +286,39 @@ def test_a_mic_that_wont_open_ends_with_the_error_tone_not_silence():
     conv.run()
     assert calls["chimes"] == ["error"]
     assert conv.ended_reason == "error" and conv.state == "idle"
+
+
+def test_first_sentence_is_split_at_a_clause_for_a_faster_first_clip():
+    from openjarvis.voice_worker.conversation import split_first_clause
+
+    long = (
+        "There are six prospects in the drafted stage, "
+        "and the top one ranks first this week."
+    )
+    assert split_first_clause(long) == [
+        "There are six prospects in the drafted stage,",
+        "and the top one ranks first this week.",
+    ]
+    assert split_first_clause("Six are drafted.") == ["Six are drafted."]
+    assert split_first_clause(
+        "A, b and then a long tail with no other clause break at all here."
+    ) == ["A, b and then a long tail with no other clause break at all here."]
+
+
+def test_only_the_first_sentence_of_a_reply_is_split():
+    conv, _, player, _ = make(
+        ["Question?", None],
+        [
+            [
+                "There are six prospects in the drafted stage, ",
+                "and the top one ranks first. ",
+                "Second sentence, with a comma in it.",
+            ]
+        ],
+    )
+    conv.run()
+    assert player.played == [
+        "AUDIO:There are six prospects in the drafted stage,",
+        "AUDIO:and the top one ranks first.",
+        "AUDIO:Second sentence, with a comma in it.",
+    ]

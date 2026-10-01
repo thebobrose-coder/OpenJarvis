@@ -234,9 +234,12 @@ class Worker:
 
             # Leave CPU headroom for audio: synthesis and STT otherwise take
             # every core and the playback/VAD threads stutter.
-            torch.set_num_threads(max(2, (os.cpu_count() or 4) // 4))
+            threads = max(2, (os.cpu_count() or 4) // 2)
+            torch.set_num_threads(threads)
             self.vad = Vad()
-            self.stt = Transcriber()
+            self.stt = Transcriber(
+                str(cfg.get("stt_model", "small.en")), cpu_threads=min(8, threads)
+            )
         except Exception:  # noqa: BLE001 -- voice input is optional; the renders keep going
             logger.exception("Voice input disabled: VAD/STT failed to load")
             return
