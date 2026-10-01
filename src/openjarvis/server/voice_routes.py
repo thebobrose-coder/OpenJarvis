@@ -227,3 +227,72 @@ async def speak(request: Request):
             status_code=503, detail="Voice worker unavailable"
         ) from None
     return Response(content=resp.content, media_type="audio/wav")
+
+
+# ---------- voice input (hq 0010 phase 1): proxies for the worker ----------
+
+_VOICE_ACTIONS = frozenset({"start", "stop", "mute", "unmute"})
+
+
+@voice_router.get("/state")
+async def voice_state():
+    """The voice conversation's state and this conversation's turns."""
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+            resp = await client.get(f"{voice_paths.WORKER_URL}/voice/state")
+    except httpx.HTTPError:
+        raise HTTPException(
+            status_code=503, detail="Voice worker unavailable"
+        ) from None
+    if resp.status_code != 200:
+        raise HTTPException(status_code=503, detail="Voice input not ready")
+    return resp.json()
+
+
+@voice_router.get("/events")
+async def voice_events():
+    """Server-sent events of state changes and turns, passed through live."""
+    from fastapi.responses import StreamingResponse
+
+    client = httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=None))
+    try:
+        req = client.build_request("GET", f"{voice_paths.WORKER_URL}/voice/events")
+        resp = await client.send(req, stream=True)
+    except httpx.HTTPError:
+        await client.aclose()
+        raise HTTPException(
+            status_code=503, detail="Voice worker unavailable"
+        ) from None
+    if resp.status_code != 200:
+        await resp.aclose()
+        await client.aclose()
+        raise HTTPException(status_code=503, detail="Voice input not ready")
+
+    async def relay():
+        try:
+            async for chunk in resp.aiter_raw():
+                yield chunk
+        finally:
+            await resp.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        relay(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
+    )
+
+
+@voice_router.post("/{action}")
+async def voice_action(action: str):
+    """Start or stop a conversation, mute or unmute the mic."""
+    if action not in _VOICE_ACTIONS:
+        raise HTTPException(status_code=404, detail="Unknown voice action")
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+            resp = await client.post(f"{voice_paths.WORKER_URL}/voice/{action}")
+    except httpx.HTTPError:
+        raise HTTPException(
+            status_code=503, detail="Voice worker unavailable"
+        ) from None
+    if resp.status_code != 200:
+        raise HTTPException(status_code=503, detail="Voice input not ready")
+    return resp.json()

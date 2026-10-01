@@ -107,3 +107,50 @@ export async function voiceAudioSrc(a: VoiceAudio): Promise<string | null> {
   }
   return a.audio_url ? `${getBase()}${a.audio_url}${version}` : null;
 }
+
+// ---------------------------------------------------------------------------
+// Voice input (hq 0010 phase 1): the worker's conversation state, live.
+// ---------------------------------------------------------------------------
+
+export type VoiceStateName = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking' | 'muted';
+
+export interface VoiceTurn {
+  role: 'user' | 'assistant';
+  text: string;
+  at: string;
+}
+
+export interface VoiceState {
+  state: VoiceStateName;
+  conversation_id: string | null;
+  duplex: 'full' | 'half' | string;
+  device: string;
+  /** This conversation's turns only, in memory on the worker. */
+  turns: VoiceTurn[];
+}
+
+export async function fetchVoiceState(): Promise<VoiceState> {
+  const res = await apiFetch('/api/voice/state');
+  if (!res.ok) throw new Error(res.status === 503 ? 'Voice input is not running' : `Failed: ${res.status}`);
+  return res.json();
+}
+
+export async function voiceAction(action: 'start' | 'stop' | 'mute' | 'unmute'): Promise<VoiceState> {
+  const res = await apiFetch(`/api/voice/${action}`, { method: 'POST' });
+  if (!res.ok) throw new Error(res.status === 503 ? 'Voice input is not running' : `Failed: ${res.status}`);
+  return res.json();
+}
+
+/** Live state updates; returns an unsubscribe function. */
+export function subscribeVoiceState(onState: (s: VoiceState) => void, onError?: () => void): () => void {
+  const source = new EventSource(`${getBase()}/api/voice/events`);
+  source.onmessage = (e) => {
+    try {
+      onState(JSON.parse(e.data) as VoiceState);
+    } catch {
+      /* ignore a malformed event */
+    }
+  };
+  source.onerror = () => onError?.();
+  return () => source.close();
+}

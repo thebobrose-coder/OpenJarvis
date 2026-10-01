@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router';
 import { ApprovalBell } from './ApprovalBell';
+import { VoiceIndicator } from './shared/VoiceIndicator';
 import { Sidebar } from './Sidebar/Sidebar';
 import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
@@ -35,6 +36,7 @@ export function Layout() {
       <div className="hud-backdrop" aria-hidden="true" />
       <SystemPulse apiReachable={apiReachable} />
       <ApprovalBell />
+      <VoiceIndicator />
 
       {/* Health check banner */}
       {apiReachable === false && (

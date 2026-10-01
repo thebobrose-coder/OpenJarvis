@@ -8,6 +8,7 @@ import argparse
 import json
 import logging
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -214,6 +215,99 @@ class Worker:
         with self.lock:
             return self.fast.render(text)
 
+    # ---------- voice input (hq 0010 phase 1) ----------
+    def start_voice_input(self) -> None:
+        """Load VAD + STT in the background, then register the hotkeys."""
+        threading.Thread(
+            target=self._init_voice, name="voice-init", daemon=True
+        ).start()
+
+    def _init_voice(self) -> None:
+        from .conversation import resolve_duplex
+        from .hotkeys import Hotkeys
+        from .voice_input import VoiceInput
+        from .voice_io import Transcriber, Vad, device_name, find_device
+
+        cfg = paths.config()
+        try:
+            self.vad = Vad()
+            self.stt = Transcriber()
+        except Exception:  # noqa: BLE001 -- voice input is optional; the renders keep going
+            logger.exception("Voice input disabled: VAD/STT failed to load")
+            return
+        self.in_dev = find_device(cfg.get("input_device"), "input")
+        self.out_dev = find_device(cfg.get("output_device"), "output")
+        out_name = device_name(self.out_dev, "output")
+        duplex = resolve_duplex(str(cfg.get("duplex", "auto")), out_name)
+        self.voice = VoiceInput(self._make_conversation, duplex, out_name)
+        Hotkeys(
+            {
+                str(cfg.get("hotkey_talk", "ctrl+alt+space")): self.voice.toggle,
+                str(cfg.get("hotkey_mute", "ctrl+alt+m")): self.voice.toggle_mute,
+            }
+        ).start()
+        logger.info("Voice input ready (duplex=%s)", duplex)
+
+    def _make_conversation(self, on_change):
+        from .conversation import Conversation, Deps
+        from .voice_io import (
+            HermesVoiceStream,
+            MicListener,
+            SpeakerPlayer,
+            chime_pcm,
+            hermes_key,
+        )
+
+        player = SpeakerPlayer(self.out_dev)
+        url = os.environ.get(
+            "HERMES_VOICE_URL", "http://127.0.0.1:8642/p/voice/v1/chat/completions"
+        )
+        key = hermes_key()
+
+        def open_listener(barge, duplex):
+            listener = MicListener(self.vad, barge, duplex, self.in_dev)
+            player.listener = listener
+            return listener
+
+        def chime(kind):
+            listener, player.listener = player.listener, None  # a chime is never barged
+            player.play(chime_pcm(kind), threading.Event())
+            player.listener = listener
+
+        deps = Deps(
+            open_listener=open_listener,
+            transcribe=self.stt,
+            hermes=lambda text, sid: HermesVoiceStream(url, key, text, sid),
+            tts=self.fast.render,
+            player=player,
+            chime=chime,
+            queue_audio=self._queue_audio,
+            voice_name=paths.voice_name,
+        )
+        return Conversation(deps, self.voice.duplex, on_change=on_change)
+
+    def _queue_audio(self) -> list[tuple[str, tuple[bytes, int]]]:
+        """voice_queue in order, from the shared cache (expressive where rendered)."""
+        import wave
+
+        out = []
+        try:
+            items = sorted(fetch_queue(), key=lambda i: i.get("order", 0))
+        except Exception:  # noqa: BLE001
+            return out
+        for item in items:
+            wav = self.cache.wav_path(str(item.get("id", "")))
+            if not wav.exists():
+                continue
+            with wave.open(str(wav), "rb") as w:
+                out.append(
+                    (
+                        str(item.get("title", "")),
+                        (w.readframes(w.getnframes()), w.getframerate()),
+                    )
+                )
+        return out
+
     def block_fast(self, block: dict[str, Any]) -> dict[str, Any]:
         """Render one block on the fast lane into the cache, unless it's cached.
         The loop upgrades expressive-lane blocks later, as usual."""
@@ -265,9 +359,51 @@ def make_handler(worker: Worker):
                 return self._json(200, {"ok": True})
             if self.path == "/status":
                 return self._json(200, worker.status())
+            voice = getattr(worker, "voice", None)
+            if self.path == "/voice/state":
+                if voice is None:
+                    return self._json(503, {"error": "voice input not ready"})
+                return self._json(200, voice.state())
+            if self.path == "/voice/events":
+                if voice is None:
+                    return self._json(503, {"error": "voice input not ready"})
+                return self._events(voice)
             return self._json(404, {"error": "not found"})
 
+        def _events(self, voice) -> None:
+            q = voice.subscribe()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            try:
+                while True:
+                    try:
+                        event = q.get(timeout=15)
+                        self.wfile.write(f"data: {event}\n\n".encode())
+                    except queue.Empty:
+                        self.wfile.write(b": keep-alive\n\n")
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            finally:
+                voice.unsubscribe(q)
+
         def do_POST(self):  # noqa: N802
+            if self.path.startswith("/voice/"):
+                voice = getattr(worker, "voice", None)
+                if voice is None:
+                    return self._json(503, {"error": "voice input not ready"})
+                action = {
+                    "/voice/start": voice.start,
+                    "/voice/stop": lambda: voice.stop("ui"),
+                    "/voice/mute": voice.mute,
+                    "/voice/unmute": voice.unmute,
+                }.get(self.path)
+                if action is None:
+                    return self._json(404, {"error": "not found"})
+                action()
+                return self._json(200, voice.state())
             try:
                 body = self._body()
             except (ValueError, json.JSONDecodeError):
@@ -336,11 +472,16 @@ def main(argv: list[str] | None = None) -> None:
     )
     ap.add_argument("--fallback-minutes", type=float, default=20.0)
     ap.add_argument("--device", default="cuda")
+    ap.add_argument(
+        "--no-voice-input", action="store_true", help="renders only; no mic or hotkeys"
+    )
     args = ap.parse_args(argv)
     setup_logging()
     logger.info("Voice worker starting (lease: %s)", paths.lease_path())
     worker = Worker(args.fallback_minutes, args.device)
     threading.Thread(target=worker.loop, args=(args.interval,), daemon=True).start()
+    if not args.no_voice_input and paths.config().get("voice_input", True):
+        worker.start_voice_input()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(worker))
     logger.info("Listening on 127.0.0.1:%d", args.port)
     server.serve_forever()

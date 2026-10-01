@@ -298,3 +298,58 @@ def test_digest_renders_speech0_on_the_fast_lane_on_demand(voice_dir):
     assert path is not None and path.name == f"{ID_B}.wav"
     assert dr._voice_used(payload, path) == "bm_george"
     assert any(r.url.path == "/blocks/fast" for r in seen)
+
+
+# -- voice input proxies (hq 0010) -------------------------------------------
+
+
+def _voice_worker(req: httpx.Request):
+    state = {
+        "state": "listening",
+        "conversation_id": "c-1",
+        "duplex": "full",
+        "device": "Sample Headset",
+        "turns": [],
+    }
+    if req.url.path == "/voice/state" and req.method == "GET":
+        return httpx.Response(200, json=state)
+    if (
+        req.url.path in ("/voice/start", "/voice/stop", "/voice/mute", "/voice/unmute")
+        and req.method == "POST"
+    ):
+        return httpx.Response(200, json={**state, "action": req.url.path})
+    return httpx.Response(404)
+
+
+def test_voice_state_and_actions_proxy_the_worker():
+    client, patcher, seen = _client(worker=_voice_worker)
+    with patcher:
+        assert client.get("/api/voice/state").json()["state"] == "listening"
+        for action in ("start", "stop", "mute", "unmute"):
+            body = client.post(f"/api/voice/{action}").json()
+            assert body["action"] == f"/voice/{action}"
+    assert all(r.url.port == 8650 for r in seen)
+
+
+def test_unknown_voice_action_is_404_and_a_down_worker_503():
+    client, patcher, _ = _client(worker=_voice_worker)
+    with patcher:
+        assert client.post("/api/voice/explode").status_code == 404
+    client, patcher, _ = _client()
+    with patcher:
+        assert client.get("/api/voice/state").status_code == 503
+        assert client.post("/api/voice/start").status_code == 503
+
+
+def test_prepare_and_speak_are_not_swallowed_by_the_action_route(voice_dir):
+    client, patcher, _ = _client(worker=_worker_that_renders(voice_dir))
+    with patcher:
+        assert (
+            client.post("/api/voice/speak", json={"text": "Sample."}).status_code == 200
+        )
+        assert (
+            client.post(
+                "/api/voice/prepare", json={"feed": "other", "id": ID_A}
+            ).status_code
+            == 400
+        )

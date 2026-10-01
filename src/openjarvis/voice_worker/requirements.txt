@@ -16,3 +16,7 @@ numpy==1.26.4
 setuptools<81
 # misaki (Kokoro's G2P) needs this spaCy model and would otherwise try to pip-install it at runtime.
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+# Voice input (hq 0010 phase 1): mic/speaker I/O, voice activity detection, speech to text (CPU).
+sounddevice==0.5.6
+silero-vad==6.2.3
+faster-whisper==1.2.1
