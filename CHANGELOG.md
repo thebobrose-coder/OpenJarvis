@@ -137,6 +137,41 @@ panel bridge (`HERMES_BRIDGE_URL`, default `http://127.0.0.1:8643`).
 The proxy forwards only allowlisted refresh flags and decisions on
 12-hex recommendation ids.
 
+**Commerce: the Fixes tab** (Overview | Fixes (N)). The operator's review
+seat for Hermes's catalog fixes, i.e. proposed corrections to product copy
+(the `catalog_fixes` feed, contract v1.3–v1.3.3). Once a Hermes writer is
+live, it applies the fixes the operator approves.
+- **Cards:** grouped by fix class, with filters for status and class. Each
+  card shows the validator checks, the judge's verdict, the rationale, and
+  a per-field word diff of the visible text, with an HTML-source toggle.
+  The store's HTML is never rendered: it's turned into text with string
+  operations. Dropped figures are boxed, and the structured `drops` field
+  (falling back to the specs check's text) says why each figure was let go,
+  whether a linked finding or a judge flag.
+- **Decisions:** Approve (sends the hash of the patch as displayed), Edit
+  then approve, Reject (final, inline confirm), and "Approve these N" per
+  class (inline confirm; it leaves review-only fixes out and doesn't count
+  toward auto-apply). "Approve over judge" is offered only on fixes whose
+  sole failed check is the judge, and shows the flag beside the button.
+- **After the writer goes live:** P1 approvals wait in a `confirm` status.
+  The operator re-confirms each one (Confirm, key `c`), or uses "Confirm
+  these N", which stays disabled until the class's spot-check passes.
+  Revert asks before restoring the old copy. History shows the writer's
+  refusals and failures, and an invalid card that no failed check explains
+  shows why.
+- **Header:** the writer's state ("Writer live since … · n/cap today"), a
+  pause switch (reverts still run while paused), and the feed's age.
+- **Class panel:** read-only. It shows streak, bulk approvals, edits,
+  rejects, the writer's applied / verified / failed / reverted counts, the
+  spot-check, and the four conditions for suggesting auto-apply. There is
+  no tier control.
+- **Keys:** `j`/`k` move, `a` approve, `e` edit, `r` reject, `c` confirm.
+
+Decisions go through `/api/commerce/fixes/*`. The backend adds the
+operator token from a file named by `HERMES_FIX_TOKEN_FILE` in
+`credentials.toml`. The token never reaches the frontend, and it is never
+logged or returned.
+
 **Business Development page** (`/bizdev`), generic by business line. A
 pipeline board for a Hermes prospect-research role
 (`GET /api/bizdev/{bd_pipeline|bd_stats|bd_prospects}`):
