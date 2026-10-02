@@ -1,5 +1,6 @@
 import { Pause, Play, RefreshCw, Newspaper } from 'lucide-react';
 import { useDailyBriefAudio } from '../lib/DailyBriefAudioContext';
+import { AutoFixes } from '../components/Commerce/fixes/AutoFixes';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
@@ -95,6 +96,9 @@ export function BriefingPage() {
               }}
             >
               {digest.text}
+            </div>
+            <div className="mt-3">
+              <AutoFixes fixes={digest.auto_fixes} />
             </div>
           </>
         )}

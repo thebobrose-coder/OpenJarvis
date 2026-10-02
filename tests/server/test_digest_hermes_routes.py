@@ -139,6 +139,29 @@ def test_culture_passes_articles_through(tmp_path):
     assert resp.json()["articles"] == [_ARTICLE]
 
 
+def test_general_passes_auto_fixes_through(tmp_path):
+    fix = {
+        "patch_id": "0123456789ab",
+        "store": "store-a",
+        "product_title": "Example Lamp",
+        "admin_url": "https://admin.example.com/products/1",
+        "fix_class": {"store": "store-a", "rule": "4", "field": "descriptionHtml"},
+        "applied_at": "2026-10-03T05:10:00Z",
+    }
+    payload = _payload()
+    payload["data"]["auto_fixes"] = [fix]
+    client, patcher = _client(lambda r: httpx.Response(200, json=payload), tmp_path)
+    with patcher:
+        body = client.get("/api/digest").json()
+    assert body["auto_fixes"] == [fix]
+
+    # Without the key (before v1.4) it's an empty list.
+    dr._cache.clear()
+    client, patcher = _client(lambda r: httpx.Response(200, json=_payload()), tmp_path)
+    with patcher:
+        assert client.get("/api/digest").json()["auto_fixes"] == []
+
+
 def test_yesterdays_document_is_404(tmp_path, tts_calls):
     payload = _payload(generated_at=_stamp(timedelta(days=2)))
     client, patcher = _client(lambda r: httpx.Response(200, json=payload), tmp_path)

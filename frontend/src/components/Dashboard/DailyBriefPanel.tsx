@@ -1,5 +1,6 @@
 import { Newspaper, Pause, Play } from 'lucide-react';
 import { useDailyBriefAudio } from '../../lib/DailyBriefAudioContext';
+import { AutoFixes } from '../Commerce/fixes/AutoFixes';
 import { DashboardPanel } from './DashboardPanel';
 import { FeedFreshness } from './FeedFreshness';
 
@@ -52,6 +53,7 @@ export function DailyBriefPanel() {
             )}
             <p className="whitespace-pre-wrap flex-1">{digest.text}</p>
           </div>
+          <AutoFixes fixes={digest.auto_fixes} />
         </div>
       )}
     </DashboardPanel>

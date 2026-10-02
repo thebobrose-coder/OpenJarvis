@@ -1,3 +1,4 @@
+import type { AutoFix } from './fixes-api';
 import type { ModelInfo, SavingsData, ServerInfo } from '../types';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabase';
 import { serializeToolCallArguments } from './tool-call';
@@ -527,6 +528,9 @@ export interface Digest {
   audio_path: string | null;
   /** Changes when the voice worker upgrades the audio (e.g. fast to expressive). */
   audio_version?: string | null;
+  /** General digest only (contract v1.4): catalog fixes auto-applied since
+   * the previous 06:00 digest. */
+  auto_fixes?: AutoFix[];
   /** Hermes-backed digests (general, culture) only: the document's age, and
    * whether it is the last good copy served while the bridge is down. */
   age_seconds?: number;

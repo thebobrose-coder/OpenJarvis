@@ -22,6 +22,7 @@ import {
   BULK_NO_STREAK,
   ELIGIBILITY_RULE,
   FixesTab,
+  type FixesTabProps,
   P1_BANNER,
   PAUSE_TITLE,
   STREAK_EXPLAINED,
@@ -34,7 +35,7 @@ import {
   keyAction,
   refusalText,
   sortPatches,
-  spotPending,
+  spotBlockers,
   writerLine,
 } from './FixesTab';
 import { PatchCard, REVERT_QUESTION, REVIEW_ONLY_TITLE, statusLabel, type CardPanel } from './PatchCard';
@@ -129,7 +130,7 @@ function card(p: Patch, panel: CardPanel = null) {
   );
 }
 
-function tab(f: CatalogFixes | null) {
+function tab(f: CatalogFixes | null, extra: Partial<FixesTabProps> = {}) {
   return renderToStaticMarkup(
     <FixesTab
       feed={f}
@@ -143,6 +144,7 @@ function tab(f: CatalogFixes | null) {
       onDecide={async () => true}
       onDecideClass={async () => null}
       onPause={() => {}}
+      {...extra}
     />,
   );
 }
@@ -442,7 +444,7 @@ describe('FixesTab', () => {
     expect(html).toContain('Writer live · 3/40 today');
   });
 
-  it('class panel is read-only and explains eligibility, with no tier control', () => {
+  it('class panel explains eligibility, and has no tier control without onSetTier', () => {
     const html = tab(
       feed([patch(ids(1), 'approved')], {
         classes: [
@@ -450,10 +452,10 @@ describe('FixesTab', () => {
         ],
       }),
     );
-    expect(html).toContain('Eligible for auto-apply. That switch is an operator config change, not available here.');
+    expect(html).toContain('Eligible for auto-apply');
     expect(html).toContain(STREAK_EXPLAINED);
     expect(html).toContain('>Bulk<');
-    expect(html).not.toMatch(/set tier|promote|tier 1/i);
+    expect(html).not.toContain('Allow auto-apply');
   });
 
   it('says so before the fixer has run', () => {
@@ -529,10 +531,10 @@ describe('v1.3.3: confirm, writer, revert, tier evidence', () => {
     }
   });
 
-  it('a confirm card reads like a proposal: its chip, the diff, and only Confirm', () => {
+  it('a confirm card reads like a proposal: its chip, the diff, Confirm and Reject', () => {
     const html = card(patch(ids(1), 'confirm', { drops_figure: true }));
     expect(html).toContain('approved before the writer: confirm to apply');
-    expect(html).toContain('data-actions="confirm"');
+    expect(html).toContain('data-actions="confirm reject"');
     expect(html).toContain('> Confirm<');
     expect(html).toContain('line-through');
     expect(card(patch(ids(2), 'approved', { confirmed: { at: '2026-10-03T15:00:00Z', via: 'class' } }))).toContain(
@@ -579,7 +581,7 @@ describe('v1.3.3: confirm, writer, revert, tier evidence', () => {
       patch(ids(3), 'confirm', { review_only: true }),
       patch(ids(4), 'proposed'),
     ];
-    const spot = spotPending([cls({ spot_check: { confirmed: 0, required: 5, passed: false } })]);
+    const spot = spotBlockers([cls({ spot_check: { confirmed: 0, required: 5, passed: false } })], patches);
     expect(sortPatches(patches, spot).map((p) => p.id)).toEqual([ids(2), ids(3), ids(4), ids(1)]);
     expect(sortPatches(patches).map((p) => p.id)).toEqual([ids(3), ids(4), ids(1), ids(2)]);
   });

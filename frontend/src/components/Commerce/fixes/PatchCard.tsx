@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, CheckCheck, Pencil, RotateCcw, ShieldAlert, X } from 'lucide-react';
 import {
   actionsFor,
+  entryWhy,
   isWriterEntry,
   judgeOnlyInvalid,
   specDrops,
@@ -44,6 +45,8 @@ const PENDING_LABEL: Record<FixAction, string> = {
 };
 
 export const REVERT_QUESTION = 'Restore the copy from before this fix?';
+/** v1.3.4: Reject on a `confirm` card withdraws a P1 approval. */
+export const WITHDRAW_QUESTION = 'Withdraw this approval? It won’t be applied.';
 
 export type CardPanel = 'edit' | 'reject' | 'revert' | 'over-judge' | null;
 
@@ -58,7 +61,7 @@ const textareaStyle: React.CSSProperties = {
   border: '1px solid var(--color-border)',
 };
 
-function NoteConfirm({
+export function NoteConfirm({
   label,
   tone,
   onConfirm,
@@ -133,9 +136,15 @@ function History({ history }: { history: Patch['history'] }) {
       </summary>
       <ul className="flex flex-col gap-0.5 mt-1" data-history>
         {history.map((h, i) => {
-          const why = h.reason ?? h.note;
+          const why = entryWhy(h);
           return (
-            <li key={i} data-event={h.status} data-writer-entry={isWriterEntry(h) || undefined} style={isWriterEntry(h) ? { color: 'var(--color-warning)' } : undefined}>
+            <li
+              key={i}
+              data-event={h.status}
+              data-writer-entry={isWriterEntry(h) || undefined}
+              title={h.reason && h.note ? h.note : undefined}
+              style={isWriterEntry(h) ? { color: 'var(--color-warning)' } : undefined}
+            >
               <span className="tabular-nums">{shortDateTime(h.at)}</span> · {h.status.replace(/_/g, ' ')}
               {why ? `: ${why}` : ''}
             </li>
@@ -292,6 +301,21 @@ export function PatchCard({
             review only: never auto-applied
           </Chip>
         )}
+        {patch.applied?.via === 'auto' && (
+          <Chip tone="accent" title="Applied by the writer without asking (tier 1)">
+            auto
+          </Chip>
+        )}
+        {patch.auto_candidate && (
+          <Chip tone="neutral" title="Handed to the writer as a tier-1 candidate">
+            auto candidate
+          </Chip>
+        )}
+        {patch.applied?.read_back_mismatch && (
+          <Chip tone="warning" title="The writer changed the product, but its read-back didn’t equal this fix’s text">
+            read-back differs
+          </Chip>
+        )}
         <span className="text-[13px] font-medium" style={{ color: 'var(--color-text)' }}>
           <ExtLink url={patch.admin_url} title="Open in Shopify admin">
             {patch.product_title}
@@ -385,12 +409,26 @@ export function PatchCard({
       {panel === 'edit' && actions.includes('edit') ? (
         <Editor patch={patch} onSubmit={(opts) => onDecide('edit', opts)} onCancel={() => onPanel(null)} />
       ) : panel === 'reject' && actions.includes('reject') ? (
-        <NoteConfirm
-          label="Reject (final)"
-          tone="error"
-          onConfirm={(note) => onDecide('reject', { note })}
-          onCancel={() => onPanel(null)}
-        />
+        patch.status === 'confirm' ? (
+          <div className="flex flex-col gap-1.5" data-withdraw>
+            <span className="text-[12px]" style={{ color: 'var(--color-text)' }}>
+              {WITHDRAW_QUESTION}
+            </span>
+            <NoteConfirm
+              label="Reject"
+              tone="error"
+              onConfirm={(note) => onDecide('reject', { note })}
+              onCancel={() => onPanel(null)}
+            />
+          </div>
+        ) : (
+          <NoteConfirm
+            label="Reject (final)"
+            tone="error"
+            onConfirm={(note) => onDecide('reject', { note })}
+            onCancel={() => onPanel(null)}
+          />
+        )
       ) : panel === 'over-judge' && overJudge && judge ? (
         <div className="flex flex-col gap-1.5">
           <JudgeFlag judge={judge} />
@@ -448,7 +486,10 @@ export function PatchCard({
               </>
             )}
             {actions.includes('reject') && (
-              <SmallButton onClick={() => onPanel('reject')} title="Reject; final (r)">
+              <SmallButton
+                onClick={() => onPanel('reject')}
+                title={patch.status === 'confirm' ? `${WITHDRAW_QUESTION} (r)` : 'Reject; final (r)'}
+              >
                 <X size={11} /> Reject
               </SmallButton>
             )}

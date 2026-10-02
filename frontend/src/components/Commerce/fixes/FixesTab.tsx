@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCheck, Pause, Play, Wrench, X } from 'lucide-react';
 import {
   FIX_STATUSES,
+  type AutofixPolicy,
   REFUSAL_REASON,
   isWaiting,
   needsOperator,
@@ -27,24 +28,38 @@ const DECIDED = 3;
 
 export const classKey = (c: FixClass) => `${c.store}|${c.rule}|${c.field}`;
 
-/** Keys of the classes whose spot-check hasn't passed (v1.3.3 A9). */
-export const spotPending = (classes: ClassStats[] | undefined) =>
-  new Set((classes ?? []).filter((c) => c.spot_check && !c.spot_check.passed).map(classKey));
+/** The P1 approvals to confirm one at a time before a class's spot-check
+ * can pass (A9). v1.3.4 names them in `spot_check.blockers`; a feed without
+ * the key falls back to inferring them: the class's figure-dropping
+ * `confirm` patches. */
+export function spotBlockers(classes: ClassStats[] | undefined, patches: Patch[] | undefined): Set<string> {
+  const ids = new Set<string>();
+  for (const c of classes ?? []) {
+    const spot = c.spot_check;
+    if (!spot || spot.passed) continue;
+    if (Array.isArray(spot.blockers)) spot.blockers.forEach((id) => ids.add(id));
+    else
+      (patches ?? [])
+        .filter((p) => p.status === 'confirm' && p.drops_figure && classKey(p.fix_class) === classKey(c))
+        .forEach((p) => ids.add(p.id));
+  }
+  return ids;
+}
 
-// What needs a single decision leads: a waiting review-only fix (A7), and,
-// in a class still in its spot-check, a figure-dropping fix to confirm (A9).
-function rank(p: Patch, spot: Set<string>): number {
+// What needs a single decision leads: a waiting review-only fix (A7), and a
+// spot-check blocker to confirm (A9).
+function rank(p: Patch, blockers: Set<string>): number {
   if (p.review_only && needsOperator(p.status)) return -1;
-  if (p.status === 'confirm' && p.drops_figure && spot.has(classKey(p.fix_class))) return -1;
+  if (p.status === 'confirm' && blockers.has(p.id)) return -1;
   return ORDER[p.status] ?? DECIDED;
 }
 
 /** Single-decision fixes first, then proposed, invalid, to confirm, then the
  * rest by most recently decided. */
-export function sortPatches(patches: Patch[], spot: Set<string> = new Set()): Patch[] {
+export function sortPatches(patches: Patch[], blockers: Set<string> = new Set()): Patch[] {
   return [...patches].sort((a, b) => {
-    const oa = rank(a, spot);
-    const ob = rank(b, spot);
+    const oa = rank(a, blockers);
+    const ob = rank(b, blockers);
     if (oa !== ob) return oa - ob;
     if (oa === DECIDED) return (b.decided_at ?? '').localeCompare(a.decided_at ?? '');
     return a.created_at.localeCompare(b.created_at);
@@ -92,22 +107,34 @@ export const classConfirmable = (group: FixGroup, pending: Record<string, Pendin
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 
+/** The spot-check blockers Hermes names (v1.3.4), or null for a feed
+ * without the key. */
+export const namedBlockers = (stats?: ClassStats): string[] | null => {
+  const spot = stats?.spot_check;
+  if (!spot || spot.passed) return null;
+  return Array.isArray(spot.blockers) ? spot.blockers : null;
+};
+
+export const BLOCKERS_LEAD = 'Confirm these singly first:';
+
 /** What the class confirm says: the spot-check's state while it hasn't
- * passed, and what must still be confirmed singly. */
+ * passed, and what must still be confirmed singly. Blockers Hermes names
+ * are listed separately, as links (see BLOCKERS_LEAD). */
 export function classConfirmNotes(group: FixGroup, pending: Record<string, PendingFix>, stats?: ClassStats): string[] {
   const open = openConfirm(group, pending);
   const notes: string[] = [];
   const spot = stats?.spot_check;
+  const named = namedBlockers(stats);
   if (spot && !spot.passed) {
+    const counted = `Spot-check: confirmed ${spot.confirmed} of ${spot.required}`;
+    if (spot.confirmed < spot.required) notes.push(`${counted}. Confirm one at a time until it passes.`);
+    else if (named) notes.push(`${counted}.`);
     // Past the count, what's missing is a figure-dropping P1 approval
     // confirmed on its own (A9).
-    notes.push(
-      spot.confirmed >= spot.required
-        ? `Spot-check: confirmed ${spot.confirmed} of ${spot.required}, but each figure-dropping approval must also be confirmed one at a time.`
-        : `Spot-check: confirmed ${spot.confirmed} of ${spot.required}. Confirm one at a time until it passes.`,
-    );
+    else notes.push(`${counted}, but each figure-dropping approval must also be confirmed one at a time.`);
   }
-  const figures = open.filter((p) => p.drops_figure && !p.review_only).length;
+  // Only without Hermes's list: infer the figure-droppers ourselves.
+  const figures = named ? 0 : open.filter((p) => p.drops_figure && !p.review_only).length;
   if (figures) {
     notes.push(
       `${plural(figures, 'figure-dropping fix is', 'figure-dropping fixes are')} waiting; confirm those one at a time.`,
@@ -119,13 +146,38 @@ export function classConfirmNotes(group: FixGroup, pending: Record<string, Pendi
 }
 
 export const ELIGIBILITY_RULE =
-  'Suggest auto-apply when: 20 single approvals in a row, 20 fixes applied and verified, no reverts, no failed verifications.';
+  'Suggest auto-apply when: 20 single approvals in a row, 20 fixes applied and verified, and no revert or failed verification since the streak began.';
 
 /** The writer line in the header (v1.3.3). */
 export function writerLine(w: CatalogFixes['writer']): string {
   if (!w.live) return 'Writer not live';
   const since = w.live_since ? ` since ${shortDateTime(w.live_since)}` : '';
   return `Writer live${since} · ${num(w.writes_today)}/${w.writes_cap ?? '—'} today`;
+}
+
+const STATUS_OLD_MS = 10 * 60 * 1000;
+
+/** The writer's own status, in amber, when something needs a look
+ * (v1.3.4): a store whose credentials fail, a pause the writer hasn't
+ * caught up with, and a status more than 10 minutes old. */
+export function writerWarnings(
+  w: CatalogFixes['writer'],
+  paused: boolean,
+  storeNames: Record<string, string>,
+  now: number = Date.now(),
+): string[] {
+  const out: string[] = [];
+  for (const [store, c] of Object.entries(w.credentials ?? {})) {
+    if (c && c.ok === false) out.push(`${storeNames[store] ?? store}: ${c.reason || 'credentials failing'}`);
+  }
+  if (typeof w.paused_writer === 'boolean' && w.paused_writer !== paused) {
+    out.push(w.paused_writer ? 'Writer still sees pause' : 'Writer hasn’t seen pause yet');
+  }
+  if (w.status_at) {
+    const age = now - Date.parse(w.status_at);
+    if (age > STATUS_OLD_MS) out.push(`writer status ${Math.floor(age / 60000)} min old`);
+  }
+  return out;
 }
 
 export const PAUSE_TITLE = {
@@ -135,6 +187,34 @@ export const PAUSE_TITLE = {
 
 export const BULK_NO_STREAK = 'These approvals won’t count toward auto-apply.';
 export const STREAK_EXPLAINED = 'Counts only fixes approved one at a time, unedited.';
+
+export const tierConfirmText = (label: string) =>
+  `Allow auto-apply for ${label}? Up to 20 a day are applied without asking, within 50 per store and 1 per product. Any revert or failed verification turns it off.`;
+
+export const NO_POLICY = 'No class auto-applies';
+
+/** The policy file's line on the class panel. */
+export function policyLine(policy: AutofixPolicy | null | undefined): string {
+  if (!policy) return 'Auto-fix policy file: not available here';
+  if (!policy.exists) return NO_POLICY;
+  return `Auto-fix policy updated ${policy.updated_at ? shortDateTime(policy.updated_at) : '—'}`;
+}
+
+/** Whether the policy file lists the class (the file is the truth; the
+ * feed's `policy_tier` catches up at its next rewrite). */
+export function inPolicy(c: ClassStats, policy: AutofixPolicy | null | undefined): boolean {
+  if (policy) return policy.classes.some((p) => classKey(p) === classKey(c));
+  return c.policy_tier === 1;
+}
+
+const DEMOTE_WORDS: Record<string, string> = {
+  revert: 'a revert',
+  failed_verify: 'a failed verification',
+  rules_changed: 'the rules changed',
+};
+
+export const demotedNote = (d: NonNullable<ClassStats['demoted']>) =>
+  `Demoted: ${DEMOTE_WORDS[d.reason] ?? d.reason} ${shortDateTime(d.at)}`;
 
 /** What the class-approval confirm says beside its button. */
 export function classConfirmText(reviewOnly: number): string {
@@ -157,7 +237,7 @@ type StatusFilter = 'all' | 'waiting' | FixStatus;
 export function keyAction(key: string, status: FixStatus): Exclude<FixAction, 'revert'> | null {
   if (key === 'a' && status === 'proposed') return 'approve';
   if (key === 'e' && isWaiting(status)) return 'edit';
-  if (key === 'r' && status === 'proposed') return 'reject';
+  if (key === 'r' && (status === 'proposed' || status === 'confirm')) return 'reject';
   if (key === 'c' && status === 'confirm') return 'confirm';
   return null;
 }
@@ -173,13 +253,16 @@ function FixesHeader({
   paused,
   pausePending,
   onPause,
+  storeNames,
 }: {
   feed: CatalogFixes;
   paused: boolean;
   pausePending: boolean;
   onPause: (paused: boolean) => void;
+  storeNames: Record<string, string>;
 }) {
   const w = feed.writer;
+  const warnings = writerWarnings(w, paused, storeNames);
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
       <SmallButton
@@ -193,14 +276,93 @@ function FixesHeader({
       </SmallButton>
       {pausePending && <span style={{ color: 'var(--color-text-tertiary)' }}>recording…</span>}
       <span data-writer={w.live ? 'live' : 'off'}>{writerLine(w)}</span>
+      {warnings.map((t) => (
+        <span key={t} data-writer-warning style={{ color: 'var(--color-warning)' }}>
+          {t}
+        </span>
+      ))}
       <FeedFreshness ageSeconds={feed.age_seconds} stale={feed.stale} staleAfterSeconds={26 * 3600} label="Fixes" />
     </div>
   );
 }
 
-function ClassPanel({ classes, storeNames }: { classes: ClassStats[]; storeNames: Record<string, string> }) {
+/** The tier control for one class (v1.4, 0011 A13): Allow auto-apply only
+ * while the feed says it's eligible, behind an inline confirm; Turn off
+ * always. Both write the policy file through OpenJarvis's backend. */
+export function TierControl({
+  c,
+  label,
+  listed,
+  busy,
+  onSetTier,
+  startAsking = false,
+}: {
+  c: ClassStats;
+  label: string;
+  listed: boolean;
+  busy: boolean;
+  onSetTier: (c: ClassStats, tier: 0 | 1) => Promise<boolean>;
+  /** Open with the inline confirm showing (tests). */
+  startAsking?: boolean;
+}) {
+  const [asking, setAsking] = useState(startAsking);
+  const raisable = !listed || !!c.demoted;
+  if (asking) {
+    return (
+      <span className="flex flex-wrap items-center gap-2" data-tier-confirm>
+        <span role="note" style={{ color: 'var(--color-text)' }}>
+          {tierConfirmText(label)}
+        </span>
+        <SmallButton
+          tone="warning"
+          disabled={busy || !c.eligible}
+          onClick={() => void onSetTier(c, 1).then(() => setAsking(false))}
+        >
+          Confirm: allow auto-apply
+        </SmallButton>
+        <SmallButton onClick={() => setAsking(false)}>Cancel</SmallButton>
+      </span>
+    );
+  }
   return (
-    <DashboardPanel icon={CheckCheck} title="Fix classes" tag="Read-only" size="full">
+    <span className="flex flex-wrap items-center gap-2">
+      {raisable && (
+        <span data-tier-allow={c.eligible ? 'enabled' : 'disabled'}>
+          <SmallButton
+            disabled={busy || !c.eligible}
+            onClick={() => setAsking(true)}
+            title={c.eligible ? 'Let the writer apply this class’s fixes without asking' : ELIGIBILITY_RULE}
+          >
+            Allow auto-apply
+          </SmallButton>
+        </span>
+      )}
+      {listed && (
+        <span data-tier-off>
+          <SmallButton disabled={busy} onClick={() => void onSetTier(c, 0)}>
+            Turn off auto-apply
+          </SmallButton>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ClassPanel({
+  classes,
+  storeNames,
+  policy,
+  tierPending,
+  onSetTier,
+}: {
+  classes: ClassStats[];
+  storeNames: Record<string, string>;
+  policy?: AutofixPolicy | null;
+  tierPending?: string | null;
+  onSetTier?: (c: ClassStats, tier: 0 | 1) => Promise<boolean>;
+}) {
+  return (
+    <DashboardPanel icon={CheckCheck} title="Fix classes" tag="Tier control" size="full">
       {classes.length === 0 ? (
         <Quiet>No fix classes yet.</Quiet>
       ) : (
@@ -210,7 +372,10 @@ function ClassPanel({ classes, storeNames }: { classes: ClassStats[]; storeNames
             Reverts are revert decisions; Applied to Reverted count the writer’s outcomes.
           </p>
           <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-            {ELIGIBILITY_RULE}
+            {ELIGIBILITY_RULE} Reverted and Failed verify are the all-time record.
+          </p>
+          <p className="text-[11px] mb-1.5" data-policy-line style={{ color: 'var(--color-text-secondary)' }}>
+            {policyLine(policy)}
           </p>
           <table className="w-full text-[12px]">
             <thead>
@@ -231,6 +396,8 @@ function ClassPanel({ classes, storeNames }: { classes: ClassStats[]; storeNames
                   'Reverted',
                   'Spot-check',
                   'Tier',
+                  'Policy tier',
+                  'Auto applied',
                   '',
                 ].map((h) => (
                   <th key={h} className="font-normal pr-3 pb-1" title={h === 'Streak' ? STREAK_EXPLAINED : undefined}>
@@ -240,30 +407,59 @@ function ClassPanel({ classes, storeNames }: { classes: ClassStats[]; storeNames
               </tr>
             </thead>
             <tbody>
-              {classes.map((c) => (
-                <tr key={classKey(c)} style={{ color: 'var(--color-text)' }}>
-                  <td className="pr-3 py-0.5">{storeNames[c.store] ?? c.store}</td>
-                  <td className="pr-3">{ruleLabel(c.rule)}</td>
-                  <td className="pr-3">{c.field}</td>
-                  <td className="pr-3 tabular-nums">{num(c.streak)}</td>
-                  <td className="pr-3 tabular-nums">{num(c.bulk_approvals ?? 0)}</td>
-                  <td className="pr-3 tabular-nums">{num(c.approvals)}</td>
-                  <td className="pr-3 tabular-nums">{num(c.edits)}</td>
-                  <td className="pr-3 tabular-nums">{num(c.rejects)}</td>
-                  <td className="pr-3 tabular-nums">{num(c.reverts)}</td>
-                  <td className="pr-3 tabular-nums">{num(c.applied ?? 0)}</td>
-                  <td className="pr-3 tabular-nums">{num(c.verified ?? 0)}</td>
-                  <td className="pr-3 tabular-nums">{num(c.failed_verify ?? 0)}</td>
-                  <td className="pr-3 tabular-nums">{num(c.reverted ?? 0)}</td>
-                  <td className="pr-3 tabular-nums" data-spot={c.spot_check ? String(c.spot_check.passed) : undefined}>
-                    {c.spot_check ? `${c.spot_check.confirmed}/${c.spot_check.required}${c.spot_check.passed ? ' ✓' : ''}` : '—'}
-                  </td>
-                  <td className="pr-3 tabular-nums">{c.tier}</td>
-                  <td className="text-[11px]" style={{ color: 'var(--color-success)' }}>
-                    {c.eligible && 'Eligible for auto-apply. That switch is an operator config change, not available here.'}
-                  </td>
-                </tr>
-              ))}
+              {classes.map((c) => {
+                const label = `${storeNames[c.store] ?? c.store} · ${ruleLabel(c.rule)} · ${c.field}`;
+                const listed = inPolicy(c, policy);
+                return (
+                  <tr key={classKey(c)} data-class={classKey(c)} style={{ color: 'var(--color-text)' }}>
+                    <td className="pr-3 py-0.5">{storeNames[c.store] ?? c.store}</td>
+                    <td className="pr-3">{ruleLabel(c.rule)}</td>
+                    <td className="pr-3">{c.field}</td>
+                    <td className="pr-3 tabular-nums">
+                      {num(c.streak)}
+                      {c.streak_since && (
+                        <span className="block text-[10.5px]" data-streak-since style={{ color: 'var(--color-text-tertiary)' }}>
+                          streak since {shortDateTime(c.streak_since)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="pr-3 tabular-nums">{num(c.bulk_approvals ?? 0)}</td>
+                    <td className="pr-3 tabular-nums">{num(c.approvals)}</td>
+                    <td className="pr-3 tabular-nums">{num(c.edits)}</td>
+                    <td className="pr-3 tabular-nums">{num(c.rejects)}</td>
+                    <td className="pr-3 tabular-nums">{num(c.reverts)}</td>
+                    <td className="pr-3 tabular-nums">{num(c.applied ?? 0)}</td>
+                    <td className="pr-3 tabular-nums">{num(c.verified ?? 0)}</td>
+                    <td className="pr-3 tabular-nums">{num(c.failed_verify ?? 0)}</td>
+                    <td className="pr-3 tabular-nums">{num(c.reverted ?? 0)}</td>
+                    <td className="pr-3 tabular-nums" data-spot={c.spot_check ? String(c.spot_check.passed) : undefined}>
+                      {c.spot_check ? `${c.spot_check.confirmed}/${c.spot_check.required}${c.spot_check.passed ? ' ✓' : ''}` : '—'}
+                    </td>
+                    <td className="pr-3 tabular-nums" data-tier={c.tier}>{c.tier}</td>
+                    <td className="pr-3 tabular-nums" data-policy-tier={listed ? 1 : 0}>{listed ? 1 : 0}</td>
+                    <td className="pr-3 tabular-nums">{num(c.auto_applied ?? 0)}</td>
+                    <td className="text-[11px]">
+                      <span className="flex flex-col gap-1">
+                        {c.demoted && (
+                          <span data-demoted style={{ color: 'var(--color-warning)' }}>
+                            {demotedNote(c.demoted)}
+                          </span>
+                        )}
+                        {c.eligible && <span style={{ color: 'var(--color-success)' }}>Eligible for auto-apply</span>}
+                        {onSetTier && (
+                          <TierControl
+                            c={c}
+                            label={label}
+                            listed={listed}
+                            busy={tierPending === classKey(c)}
+                            onSetTier={onSetTier}
+                          />
+                        )}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -289,6 +485,10 @@ export interface FixesTabProps {
   onOpenRec?: (id: string) => void;
   notice?: string | null;
   onClearNotice?: () => void;
+  /** v1.4: the auto-fix policy file and the tier control. */
+  policy?: AutofixPolicy | null;
+  tierPending?: string | null;
+  onSetTier?: (c: ClassStats, tier: 0 | 1) => Promise<boolean>;
 }
 
 /** The Fixes tab (hq 0011 §7): review Hermes's catalog fixes quickly.
@@ -310,6 +510,9 @@ export function FixesTab({
   onOpenRec,
   notice,
   onClearNotice,
+  policy,
+  tierPending,
+  onSetTier,
 }: FixesTabProps) {
   const [status, setStatus] = useState<StatusFilter>('all');
   const [cls, setCls] = useState('all');
@@ -337,8 +540,17 @@ export function FixesTab({
         (cls === 'all' || classKey(p.fix_class) === cls) &&
         (status === 'all' || (status === 'waiting' ? needsOperator(p.status) : p.status === status)),
     );
-    return groupPatches(sortPatches(visible, spotPending(classes)));
+    return groupPatches(sortPatches(visible, spotBlockers(classes, patches)));
   }, [patches, classes, selectedStore, cls, status]);
+  const titles = useMemo(() => new Map((patches ?? []).map((p) => [p.id, p.product_title])), [patches]);
+
+  /** Show a card wherever the filters left it, and focus it. */
+  const openCard = (id: string) => {
+    setStatus('all');
+    setCls('all');
+    setFocusId(id);
+    setPanel(null);
+  };
   const flat = useMemo(() => groups.flatMap((g) => g.patches), [groups]);
 
   const focused = flat.find((p) => p.id === focusId) ?? flat[0] ?? null;
@@ -414,7 +626,7 @@ export function FixesTab({
                 {P1_BANNER}
               </div>
             )}
-            <FixesHeader feed={feed} paused={paused} pausePending={pausePending} onPause={onPause} />
+            <FixesHeader feed={feed} paused={paused} pausePending={pausePending} onPause={onPause} storeNames={storeNames} />
             {notice && (
               <div
                 className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-[12px]"
@@ -433,7 +645,7 @@ export function FixesTab({
               <Select label="Status" value={status} options={statusOptions} onChange={setStatus} />
               <Select label="Class" value={cls} options={[{ value: 'all', label: 'All' }, ...classOptions]} onChange={setCls} />
               <span className="text-[11px] ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
-                j / k move · a approve · e edit · r reject · c confirm
+                j / k move · a approve · e edit · r reject or withdraw · c confirm
               </span>
             </div>
 
@@ -448,6 +660,7 @@ export function FixesTab({
                 const stats = statsByKey.get(g.key);
                 const spotBlocked = !!stats?.spot_check && !stats.spot_check.passed;
                 const confirmNotes = classConfirmNotes(g, pending, stats);
+                const blockers = namedBlockers(stats) ?? [];
                 const asking = confirmClass?.key === g.key ? confirmClass.action : null;
                 const result = classResults[g.key];
                 return (
@@ -501,6 +714,27 @@ export function FixesTab({
                         {confirmNotes.join(' ')}
                       </p>
                     )}
+                    {blockers.length > 0 && (
+                      <p className="text-[11px]" role="note" data-blockers style={{ color: 'var(--color-warning)' }}>
+                        {BLOCKERS_LEAD}{' '}
+                        {blockers.map((id, i) => (
+                          <span key={id}>
+                            {i > 0 && ', '}
+                            <a
+                              href={`#fix-${id}`}
+                              data-blocker={id}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                openCard(id);
+                              }}
+                              style={{ color: 'inherit', textDecoration: 'underline' }}
+                            >
+                              {titles.get(id) ?? id.slice(0, 6)}
+                            </a>
+                          </span>
+                        ))}
+                      </p>
+                    )}
                     {result && (
                       <p className="text-[11.5px]" role="status" style={{ color: 'var(--color-text-secondary)' }}>
                         {result.action === 'approve' ? 'Approved' : 'Confirmed'} {result.done.length}
@@ -532,7 +766,15 @@ export function FixesTab({
         )}
       </DashboardPanel>
 
-      {feed && <ClassPanel classes={feed.classes ?? []} storeNames={storeNames} />}
+      {feed && (
+        <ClassPanel
+          classes={feed.classes ?? []}
+          storeNames={storeNames}
+          policy={policy}
+          tierPending={tierPending}
+          onSetTier={onSetTier}
+        />
+      )}
     </div>
   );
 }

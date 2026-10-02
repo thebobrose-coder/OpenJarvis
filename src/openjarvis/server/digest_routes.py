@@ -258,6 +258,8 @@ def _shape(category: str, payload: dict, audio_path: Path | None, stale: bool) -
         "sections": {},
         "articles": (data.get("articles") or []) if category == "culture" else [],
         "sources_used": data.get("sources_used") or [],
+        # v1.4: catalog fixes auto-applied since the previous 06:00 digest.
+        "auto_fixes": (data.get("auto_fixes") or []) if category == "general" else [],
         "generated_at": data.get("generated_local") or payload["generated_at"],
         "model_used": data.get("model_used", ""),
         "voice_used": _voice_used(payload, audio_path) or load_config().digest.voice_id,

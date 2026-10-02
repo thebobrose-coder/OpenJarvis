@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  TIER_REFUSAL,
   approveClassRequest,
+  fetchAutofixPolicy,
   fetchCatalogFixes,
   fixRequest,
   postFix,
+  tierRequest,
+  type AutofixPolicy,
   type CatalogFixes,
+  type ClassStats,
   type ClassAction,
   type FixAction,
   type FixClass,
@@ -95,6 +100,17 @@ export interface ClassResult {
   refused: { id: string; reason: string }[];
 }
 
+/** What a tier change's answer means for the operator: null when written. */
+export function tierOutcome(res: FixResponse): string | null {
+  if (res.status === 200) return null;
+  const detail = res.body.detail;
+  if (detail && typeof detail === 'object' && 'reason' in detail) {
+    const reason = String((detail as { reason: unknown }).reason);
+    return `Not changed: ${TIER_REFUSAL[reason] ?? reason}.`;
+  }
+  return typeof detail === 'string' ? detail : `Failed: ${res.status}`;
+}
+
 export function useCatalogFixes() {
   const [data, setData] = useState<CatalogFixes | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,6 +119,8 @@ export function useCatalogFixes() {
   const [cardNotes, setCardNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [pausedLocal, setPausedLocal] = useState<boolean | null>(null);
+  const [policy, setPolicy] = useState<AutofixPolicy | null>(null);
+  const [tierPending, setTierPending] = useState<string | null>(null);
 
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
@@ -125,6 +143,18 @@ export function useCatalogFixes() {
       setLoading(false);
     }
   }, []);
+
+  const loadPolicy = useCallback(async () => {
+    try {
+      setPolicy(await fetchAutofixPolicy());
+    } catch {
+      setPolicy(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPolicy();
+  }, [loadPolicy]);
 
   useEffect(() => {
     void load();
@@ -211,6 +241,30 @@ export function useCatalogFixes() {
     [load, recheck],
   );
 
+  /** Raise a class to tier 1 or lower it to 0: OpenJarvis's backend writes
+   * the policy file. Resolves true when written. */
+  const setTier = useCallback(
+    async (cls: ClassStats, tier: 0 | 1, note?: string) => {
+      const key = `${cls.store}|${cls.rule}|${cls.field}`;
+      setTierPending(key);
+      try {
+        const message = tierOutcome(await postFix(tierRequest(cls, tier, note)));
+        await loadPolicy();
+        if (message) {
+          setNotice(message);
+          void load();
+        }
+        return !message;
+      } catch {
+        setNotice('Couldn’t reach OpenJarvis’s server.');
+        return false;
+      } finally {
+        setTierPending(null);
+      }
+    },
+    [load, loadPolicy],
+  );
+
   return {
     data,
     loading,
@@ -225,6 +279,9 @@ export function useCatalogFixes() {
     decide,
     decideClass,
     setPaused,
+    policy,
+    tierPending,
+    setTier,
   };
 }
 

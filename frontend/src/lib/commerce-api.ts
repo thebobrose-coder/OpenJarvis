@@ -229,7 +229,31 @@ export interface ComplianceFindings extends FeedMeta {
   speech?: SpeechBlock[];
 
   run_at: string;
-  counts: { open: number; new?: number; open_by_property?: Record<string, number> };
+  /** v1.4 (0011 A12): `advisory` never counts in `open`. */
+  counts: { open: number; new?: number; open_by_property?: Record<string, number>; advisory?: number };
+  open_findings?: ComplianceFinding[];
+  /** v1.4 (A12): spec-only findings on the writer's carried-over copy. */
+  advisory_findings?: AdvisoryFinding[];
+}
+
+export interface ComplianceFinding {
+  id: string;
+  property: string;
+  kind?: string;
+  location?: string;
+  link?: string;
+  field?: string;
+  quote?: string;
+  rule?: string;
+  reason?: string;
+  first_seen?: string;
+  /** v1.4 (A12): a finding the judge opened on writer copy by majority. */
+  readings?: { flagged: number; of: number };
+}
+
+export interface AdvisoryFinding extends ComplianceFinding {
+  advisory_reason: string;
+  patch_id?: string;
 }
 
 // -- calls --------------------------------------------------------------------

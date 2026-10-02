@@ -377,3 +377,213 @@ def test_catalog_fixes_feed_is_proxied():
     assert resp.status_code == 200
     assert resp.json()["paused"] is False
     assert "X-Operator-Token" not in seen[0].headers
+
+
+def test_withdrawing_a_confirm_patch_is_a_reject_with_the_token():
+    """v1.3.4: Reject is accepted on a `confirm` patch; the proxy is the same."""
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(
+            f"/api/commerce/fixes/{_ID}/reject", json={"note": "withdraw"}
+        )
+    assert resp.status_code == 202
+    assert seen[0].url.path == f"/fixes/{_ID}/reject"
+    assert seen[0].headers["X-Operator-Token"] == _TOKEN
+    assert json.loads(seen[0].content) == {"note": "withdraw"}
+
+
+# -- the tier control (v1.4): the policy file, never the bridge ---------------
+
+_RULES = "b" * 64
+_CLASS = {"store": "store-a", "rule": "4", "field": "descriptionHtml"}
+
+
+@pytest.fixture
+def policy(tmp_path, monkeypatch, _token):
+    path = tmp_path / "policy" / "autofix-policy.json"
+    keys = {fr.TOKEN_KEY: str(_token), fr.POLICY_KEY: str(path)}
+    monkeypatch.setattr(fr, "get_tool_credential", lambda tool, key: keys.get(key))
+    return path
+
+
+def _feed(**cls):
+    klass = {**_CLASS, "eligible": True, "rules_sha256": _RULES, **cls}
+    return {
+        "feed": "catalog_fixes",
+        "generated_at": "2026-10-02T06:00:00Z",
+        "data": {"patches": [], "classes": [klass]},
+    }
+
+
+def _local(handler, host="127.0.0.1"):
+    client, patcher, seen = _client(handler)
+    from fastapi.testclient import TestClient
+
+    return TestClient(client.app, client=(host, 50000)), patcher, seen
+
+
+def _raise(**extra):
+    return {**_CLASS, "tier": 1, "rules_sha256": _RULES, **extra}
+
+
+def test_raise_writes_the_v14_shape_and_never_posts_to_hermes(policy):
+    client, patcher, seen = _local(lambda req: httpx.Response(200, json=_feed()))
+    with patcher:
+        resp = client.post("/api/commerce/fixes/policy", json=_raise(note="earned"))
+    assert resp.status_code == 200
+    doc = json.loads(policy.read_text(encoding="utf-8"))
+    assert set(doc) == {"version", "updated_at", "classes"}
+    assert doc["version"] == 1
+    (entry,) = doc["classes"]
+    assert entry == {
+        **_CLASS,
+        "tier": 1,
+        "since": doc["updated_at"],
+        "rules_sha256": _RULES,
+        "note": "earned",
+    }
+    # Only a read of the feed; nothing is sent to Hermes.
+    assert [(r.method, r.url.path) for r in seen] == [("GET", "/panels/catalog_fixes")]
+    assert "X-Operator-Token" not in seen[0].headers
+    # Atomic: no temp file left behind.
+    assert [p.name for p in policy.parent.iterdir()] == [policy.name]
+    assert resp.json()["classes"] == doc["classes"]
+
+
+def test_raise_keeps_other_classes_and_replaces_a_demoted_entry(policy):
+    other = {
+        **_CLASS,
+        "store": "store-b",
+        "tier": 1,
+        "since": "x",
+        "rules_sha256": _RULES,
+    }
+    old = {**_CLASS, "tier": 1, "since": "2026-10-01T00:00:00Z", "rules_sha256": _RULES}
+    policy.parent.mkdir()
+    policy.write_text(
+        json.dumps({"version": 1, "updated_at": "u", "classes": [other, old]}),
+        encoding="utf-8",
+    )
+    client, patcher, _ = _local(lambda req: httpx.Response(200, json=_feed()))
+    with patcher:
+        assert (
+            client.post("/api/commerce/fixes/policy", json=_raise()).status_code == 200
+        )
+    classes = json.loads(policy.read_text(encoding="utf-8"))["classes"]
+    assert classes[0] == other
+    assert len(classes) == 2 and classes[1]["since"] != old["since"]
+
+
+@pytest.mark.parametrize(
+    "feed, body, reason",
+    [
+        (_feed(eligible=False), _raise(), "not_eligible"),
+        (_feed(rules_sha256="c" * 64), _raise(), "changed"),
+        (_feed(), _raise(rules_sha256=None), "changed"),
+        (_feed(rules_sha256=None), _raise(), "no_rules_hash"),
+        (_feed(store="store-z"), _raise(), "unknown"),
+    ],
+)
+def test_raise_is_refused_unless_the_feed_vouches_for_it(policy, feed, body, reason):
+    client, patcher, _ = _local(lambda req: httpx.Response(200, json=feed))
+    with patcher:
+        resp = client.post("/api/commerce/fixes/policy", json=body)
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == {"reason": reason}
+    assert not policy.exists()
+
+
+def test_raise_with_the_bridge_down_is_503_and_writes_nothing(policy):
+    def down(req):
+        raise httpx.ConnectError("refused", request=req)
+
+    client, patcher, _ = _local(down)
+    with patcher:
+        resp = client.post("/api/commerce/fixes/policy", json=_raise())
+    assert resp.status_code == 503
+    assert not policy.exists()
+
+
+def test_turn_off_removes_the_class_without_the_feed(policy):
+    other = {
+        **_CLASS,
+        "store": "store-b",
+        "tier": 1,
+        "since": "x",
+        "rules_sha256": _RULES,
+    }
+    mine = {**_CLASS, "tier": 1, "since": "y", "rules_sha256": _RULES}
+    policy.parent.mkdir()
+    policy.write_text(
+        json.dumps({"version": 1, "updated_at": "u", "classes": [other, mine]}),
+        encoding="utf-8",
+    )
+    # Not eligible, and the bridge isn't consulted at all.
+    client, patcher, seen = _local(lambda req: httpx.Response(500))
+    with patcher:
+        resp = client.post("/api/commerce/fixes/policy", json={**_CLASS, "tier": 0})
+    assert resp.status_code == 200
+    doc = json.loads(policy.read_text(encoding="utf-8"))
+    assert doc["classes"] == [other]
+    assert doc["updated_at"] != "u"
+    assert seen == []
+
+
+def test_turn_off_with_no_file_creates_none(policy):
+    client, patcher, seen = _local(lambda req: httpx.Response(500))
+    with patcher:
+        resp = client.post("/api/commerce/fixes/policy", json={**_CLASS, "tier": 0})
+    assert resp.status_code == 200
+    assert resp.json() == {"exists": False, "updated_at": None, "classes": []}
+    assert not policy.exists() and seen == []
+
+
+def test_an_unreadable_policy_is_refused_not_overwritten(policy):
+    policy.parent.mkdir()
+    policy.write_text("{not json", encoding="utf-8")
+    client, patcher, _ = _local(lambda req: httpx.Response(200, json=_feed()))
+    with patcher:
+        resp = client.post("/api/commerce/fixes/policy", json=_raise())
+        got = client.get("/api/commerce/fixes/policy")
+    assert resp.status_code == 409 and got.status_code == 409
+    assert policy.read_text(encoding="utf-8") == "{not json"
+
+
+def test_get_policy_reads_the_file(policy):
+    client, patcher, _ = _local(lambda req: httpx.Response(500))
+    with patcher:
+        assert client.get("/api/commerce/fixes/policy").json()["exists"] is False
+    policy.parent.mkdir()
+    policy.write_text(
+        json.dumps({"version": 1, "updated_at": "2026-10-03T00:00:00Z", "classes": []}),
+        encoding="utf-8",
+    )
+    with patcher:
+        body = client.get("/api/commerce/fixes/policy").json()
+    assert body == {"exists": True, "updated_at": "2026-10-03T00:00:00Z", "classes": []}
+
+
+@pytest.mark.parametrize("method", ["get", "post"])
+def test_policy_is_refused_off_this_machine(policy, method):
+    client, patcher, seen = _local(
+        lambda req: httpx.Response(200, json=_feed()), host="192.168.1.20"
+    )
+    with patcher:
+        if method == "get":
+            resp = client.get("/api/commerce/fixes/policy")
+        else:
+            resp = client.post("/api/commerce/fixes/policy", json=_raise())
+    assert resp.status_code == 403
+    assert not policy.exists() and seen == []
+
+
+def test_policy_not_configured_is_503(monkeypatch, _token):
+    monkeypatch.setattr(
+        fr,
+        "get_tool_credential",
+        lambda tool, key: str(_token) if key == fr.TOKEN_KEY else None,
+    )
+    client, patcher, _ = _local(lambda req: httpx.Response(200, json=_feed()))
+    with patcher:
+        resp = client.post("/api/commerce/fixes/policy", json=_raise())
+    assert resp.status_code == 503

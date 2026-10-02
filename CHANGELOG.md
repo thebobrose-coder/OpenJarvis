@@ -172,6 +172,40 @@ operator token from a file named by `HERMES_FIX_TOKEN_FILE` in
 `credentials.toml`. The token never reaches the frontend, and it is never
 logged or returned.
 
+**Commerce Fixes tab: contract v1.3.4 and the v1.4 tiers.**
+- **Writer header:** a store whose writer credentials fail shows its reason
+  in amber; so does a pause the writer hasn't caught up with, and a writer
+  status more than 10 minutes old.
+- **History:** the writer's machine `reason` code is read before the note
+  and shown in words (`checks_failed:specs,html` reads "checks failed:
+  specs, HTML"); an unknown code shows as is. "Why invalid" uses it.
+- **Spot-check blockers:** the class confirm names the P1 approvals still to
+  confirm singly ("Confirm these singly first: …", each a link to its card),
+  and those cards sort first. The panel's own figure-dropper guess is kept
+  only for feeds without `spot_check.blockers`.
+- **Reject on `confirm` cards** withdraws a P1 approval ("Withdraw this
+  approval? It won't be applied."); `r` opens it.
+- **Compliance:** advisory findings (a spec carried over unchanged onto the
+  writer's copy) in a collapsed "Advisory (N)" list with a link to the fix;
+  they never count as open. Findings opened by majority show "2 of 3
+  readings".
+- **Tier control:** the class panel gains Tier, Policy tier, Auto applied, a
+  "Demoted: …" note, "streak since …", and the A14 eligibility sentence.
+  "Allow auto-apply" (enabled only while the class is eligible, behind an
+  inline confirm naming the caps) and "Turn off auto-apply" (always) write
+  the operator-only auto-fix policy file through `GET|POST
+  /api/commerce/fixes/policy`. That route is OpenJarvis's own: it never
+  calls a Hermes write route, answers only over loopback, writes the file
+  atomically (temp + rename), refuses a raise unless the latest
+  `catalog_fixes` shows the class eligible with the same rules hash, and
+  refuses rather than overwrites an unreadable file. The file's path is
+  `HERMES_AUTOFIX_POLICY_FILE` in `credentials.toml`.
+- **Auto-applied fixes:** the Daily Brief lists the general digest's
+  `auto_fixes` with Revert (the existing revert route, inline confirm) while
+  the fix is applied, verified, or failed-verify. Cards carry "auto" and
+  "auto candidate" chips, and "read-back differs" when the writer's
+  read-back didn't match.
+
 **Business Development page** (`/bizdev`), generic by business line. A
 pipeline board for a Hermes prospect-research role
 (`GET /api/bizdev/{bd_pipeline|bd_stats|bd_prospects}`):

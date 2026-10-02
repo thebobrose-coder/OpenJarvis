@@ -1,7 +1,7 @@
 /**
  * Catalog fixes: Hermes's proposed product-copy fixes and the operator's
  * decisions on them (hq/contracts/openjarvis-hermes.md v1.3 §2, "Catalog
- * fixes", through v1.3.3). The feed is proxied like the other ecom feeds; the
+ * fixes", through v1.3.4 and the v1.4 tiers). The feed is proxied like the other ecom feeds; the
  * decision POSTs go to /api/commerce/fixes, where the backend adds the
  * operator token. The token never reaches this code. From P2 the writer
  * applies approved fixes once it is live.
@@ -78,10 +78,11 @@ export interface Patch {
   created_at: string;
   decided_at: string | null;
   note: string | null;
-  /** Decisions and, from P2, the writer's outcomes (`refused`,
-   * `failed_apply`, `revert_blocked`) with their reasons. */
+  /** Decisions and, from P2, the writer's outcomes. v1.3.4: `reason` is a
+   * machine code, set only on the writer's entries; `note` keeps the words. */
   history: { status: string; at: string; note?: string | null; reason?: string | null }[];
-  applied: { at: string; snapshot_id: string } | null;
+  /** v1.3.4 `read_back_mismatch`; v1.4 `via`: who applied it. */
+  applied: { at: string; snapshot_id: string; read_back_mismatch?: boolean; via?: 'operator' | 'auto' } | null;
   verified: { at: string; by: string } | null;
   /** v1.3.2 (0011 A6): the operator approved this over a judge flag. */
   judge_overridden?: boolean;
@@ -94,6 +95,8 @@ export interface Patch {
   drops_figure?: boolean;
   /** v1.3.3 (A9): set when a P1 approval was re-confirmed. */
   confirmed?: { at: string; via: 'single' | 'class' } | null;
+  /** v1.4: Hermes has handed it to the writer as a tier-1 candidate. */
+  auto_candidate?: boolean;
 }
 
 export interface ClassStats extends FixClass {
@@ -105,16 +108,33 @@ export interface ClassStats extends FixClass {
   edits: number;
   rejects: number;
   reverts: number;
+  /** v1.4: the effective tier, 1 only when the policy says 1 and the class
+   * isn't demoted. */
   tier: number;
-  /** v1.3.3 (A11): streak ≥ 20, verified ≥ 20, nothing reverted or failed. */
+  /** v1.4 (A14): streak ≥ 20, verified ≥ 20, and no revert or failed
+   * verification since the streak began. */
   eligible: boolean;
+  /** v1.4: what the policy file says, the property's rules hash, a demotion
+   * since the policy's `since`, and the auto-applied count. */
+  policy_tier?: number;
+  rules_sha256?: string;
+  demoted?: { at: string; reason: string } | null;
+  auto_applied?: number;
+  /** v1.4 (A14): the first approval of the current streak; null at 0. */
+  streak_since?: string | null;
   /** v1.3.3 (A11): the writer's outcomes, as patch counts. */
   applied?: number;
   verified?: number;
   failed_verify?: number;
   reverted?: number;
   /** v1.3.3 (A9): while the class has P1 approvals to re-confirm. */
-  spot_check?: { confirmed: number; required: number; passed: boolean } | null;
+  spot_check?: {
+    confirmed: number;
+    required: number;
+    passed: boolean;
+    /** v1.3.4: the figure-dropping P1 approvals not yet confirmed singly. */
+    blockers?: string[];
+  } | null;
 }
 
 export interface CatalogFixes extends FeedMeta {
@@ -129,10 +149,26 @@ export interface CatalogFixes extends FeedMeta {
     auto_cap: number | null;
     /** v1.3.3: when the writer went live; null before. */
     live_since?: string | null;
+    /** v1.3.4: the pause as the writer last saw it, when it last wrote its
+     * status, and each enabled store's credentials. */
+    paused_writer?: boolean;
+    status_at?: string | null;
+    credentials?: Record<string, { ok: boolean; reason?: string | null }>;
   };
   counts: Partial<Record<FixStatus, number>>;
   patches: Patch[];
   classes: ClassStats[];
+}
+
+/** v1.4: a fix the writer applied without asking, as the general digest
+ * lists it (`digest_general.data.auto_fixes`). */
+export interface AutoFix {
+  patch_id: string;
+  store: string;
+  product_title: string;
+  admin_url?: string;
+  fix_class: FixClass;
+  applied_at: string;
 }
 
 export type FixAction = 'approve' | 'edit' | 'reject' | 'revert' | 'confirm';
@@ -145,7 +181,8 @@ export function actionsFor(status: FixStatus): FixAction[] {
     case 'invalid':
       return ['edit'];
     case 'confirm':
-      return ['confirm'];
+      // v1.3.4: Reject withdraws a P1 approval instead of confirming it.
+      return ['confirm', 'reject'];
     case 'applied':
     case 'verified':
     case 'failed-verify':
@@ -165,17 +202,53 @@ export const WRITER_EVENTS = new Set(['refused', 'failed_apply', 'revert_blocked
 
 type HistoryEntry = Patch['history'][number];
 
-/** A writer entry: one of its own events, or, as the live writer records a
- * refusal, a status change whose note says the writer refused it. */
+/** A writer entry: one with a `reason` (v1.3.4). Older entries have only a
+ * note, so for them: one of the writer's own events, or a status change
+ * whose note says the writer refused it. */
 export const isWriterEntry = (h: HistoryEntry) =>
-  WRITER_EVENTS.has(h.status) || /^the writer refused/i.test(h.note ?? '');
+  !!h.reason || WRITER_EVENTS.has(h.status) || /^the writer refused/i.test(h.note ?? '');
+
+/** The validator checks' names in words. */
+export const CHECK_WORDS: Record<string, string> = {
+  fields: 'fields',
+  fresh_before: 'current copy',
+  specs: 'specs',
+  phrases: 'phrases',
+  html: 'HTML',
+  length: 'length',
+  judge: 'judge',
+};
+
+/** The writer's reason codes (v1.3.4) in words; an unknown code shows as is. */
+const REASON_WORDS: Record<string, string> = {
+  stale: 'the live copy changed since the fix was made',
+  hash_mismatch: 'the fix changed after it was approved',
+  no_property: 'no rules for this store',
+  failed_apply: 'Shopify didn’t take the change',
+  revert_blocked: 'the revert was blocked',
+};
+
+export function reasonText(code: string): string {
+  const auto = /^auto_refused:(.*)$/.exec(code);
+  if (auto) return `auto-apply refused: ${reasonText(auto[1])}`;
+  const checks = /^checks_failed:(.*)$/.exec(code);
+  if (checks) {
+    const names = checks[1].split(',').map((c) => c.trim()).filter(Boolean);
+    const words = names.map((c) => CHECK_WORDS[c] ?? c).join(', ');
+    return `${names.length === 1 ? 'check' : 'checks'} failed: ${words}`;
+  }
+  return REASON_WORDS[code] ?? code;
+}
+
+/** What a history entry says: its reason first, then its note. */
+export const entryWhy = (h: HistoryEntry): string | null => (h.reason ? reasonText(h.reason) : h.note || null);
 
 /** Why a card is in its status when its checks don't say: the latest
- * history note on an invalid card with no failed check, or on a writer
- * entry. Otherwise null. */
+ * history entry's reason (else note) on a writer entry, or on an invalid
+ * card with no failed check. Otherwise null. */
 export function statusReason(patch: Pick<Patch, 'status' | 'validator' | 'history'>): string | null {
   const last = patch.history[patch.history.length - 1];
-  const why = last && (last.reason ?? last.note);
+  const why = last && entryWhy(last);
   if (!why) return null;
   if (isWriterEntry(last)) return why;
   if (patch.status === 'invalid' && patch.validator.checks.every((c) => c.passed)) return why;
@@ -236,6 +309,55 @@ export const REFUSAL_REASON: Record<string, string> = {
   spot_check: 'spot-check not passed yet',
   not_live: 'the writer isn’t live yet',
 };
+
+// -- the tier control (v1.4, 0011 A13) ----------------------------------------
+
+/** One class in the auto-fix policy file. */
+export interface PolicyClass extends FixClass {
+  tier: 1;
+  since: string;
+  rules_sha256: string;
+  note?: string;
+}
+
+/** The policy file as OpenJarvis's backend reads it; missing: none auto-applies. */
+export interface AutofixPolicy {
+  exists: boolean;
+  updated_at: string | null;
+  classes: PolicyClass[];
+}
+
+/** Why the backend refused a tier change, in the operator's words. */
+export const TIER_REFUSAL: Record<string, string> = {
+  not_eligible: 'the class isn’t eligible in the latest feed',
+  changed: 'the class’s rules changed since shown',
+  no_rules_hash: 'the feed has no rules hash for this class yet',
+  unknown: 'the class isn’t in the latest feed',
+  unreadable: 'the policy file can’t be read; fix it by hand first',
+};
+
+/** The policy file, or null when the backend can't say (not configured). */
+export async function fetchAutofixPolicy(): Promise<AutofixPolicy | null> {
+  const res = await apiFetch('/api/commerce/fixes/policy');
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/** A tier change: a request to OpenJarvis's own backend, which writes the
+ * policy file; nothing goes to Hermes. Raising sends the rules hash shown. */
+export function tierRequest(cls: FixClass & { rules_sha256?: string }, tier: 0 | 1, note?: string): FixRequest {
+  return {
+    path: '/api/commerce/fixes/policy',
+    body: {
+      store: cls.store,
+      rule: cls.rule,
+      field: cls.field,
+      tier,
+      ...(tier === 1 ? { rules_sha256: cls.rules_sha256 ?? null } : {}),
+      ...cleanNote(note),
+    },
+  };
+}
 
 export interface FixRequest {
   path: string;

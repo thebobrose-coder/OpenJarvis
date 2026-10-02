@@ -32,7 +32,8 @@ export type FixesProps = Pick<
   | 'setPaused'
   | 'notice'
   | 'clearNotice'
->;
+> &
+  Partial<Pick<CatalogFixesState, 'policy' | 'tierPending' | 'setTier'>>;
 
 export interface CommerceViewProps {
   feeds: FeedStates;
@@ -91,6 +92,10 @@ export function CommerceView({
     window.setTimeout(() => document.getElementById(`rec-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
   };
   const waiting = waitingCount(fixes?.data ?? null);
+  const openFix = (id: string) => {
+    setTab('fixes');
+    window.setTimeout(() => document.getElementById(`fix-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+  };
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -150,6 +155,9 @@ export function CommerceView({
           onOpenRec={openRec}
           notice={fixes.notice}
           onClearNotice={fixes.clearNotice}
+          policy={fixes.policy}
+          tierPending={fixes.tierPending}
+          onSetTier={fixes.setTier}
         />
       ) : (
         <>
@@ -209,6 +217,7 @@ export function CommerceView({
               findings={feeds.compliance_findings.data}
               loading={feeds.compliance_findings.loading}
               error={feeds.compliance_findings.error}
+              onOpenFix={fixes ? openFix : undefined}
             />
           </div>
         </>
