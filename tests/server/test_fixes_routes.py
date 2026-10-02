@@ -86,6 +86,74 @@ def test_approve_over_judge_forwards_the_flag():
     }
 
 
+def test_confirm_sends_the_displayed_hash_with_the_token():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(
+            f"/api/commerce/fixes/{_ID}/confirm", json={"patch_sha256": _SHA}
+        )
+    assert resp.status_code == 202
+    assert seen[0].url.path == f"/fixes/{_ID}/confirm"
+    assert seen[0].headers["X-Operator-Token"] == _TOKEN
+    assert json.loads(seen[0].content) == {"patch_sha256": _SHA}
+
+
+def test_confirm_class_lists_the_patches_and_passes_refusals_through():
+    reply = {"confirmed": [], "refused": [{"id": _ID, "reason": "spot_check"}]}
+    client, patcher, seen = _client(lambda req: httpx.Response(202, json=reply))
+    body = {
+        "store": "alpha",
+        "rule": "4",
+        "field": "descriptionHtml",
+        "patches": [{"id": _ID, "patch_sha256": _SHA}],
+    }
+    with patcher:
+        resp = client.post("/api/commerce/fixes/confirm-class", json=body)
+    assert resp.status_code == 202
+    assert resp.json() == reply
+    assert seen[0].url.path == "/fixes/confirm-class"
+    assert seen[0].headers["X-Operator-Token"] == _TOKEN
+    assert json.loads(seen[0].content) == body
+
+
+@pytest.mark.parametrize(
+    "path,body",
+    [
+        (f"/api/commerce/fixes/{_ID}/confirm", {"patch_sha256": _SHA}),
+        (
+            "/api/commerce/fixes/confirm-class",
+            {
+                "store": "alpha",
+                "rule": "4",
+                "field": "descriptionHtml",
+                "patches": [{"id": _ID, "patch_sha256": _SHA}],
+            },
+        ),
+    ],
+)
+def test_confirm_not_live_passes_through(path, body):
+    client, patcher, _ = _client(
+        lambda req: httpx.Response(409, json={"reason": "not_live"})
+    )
+    with patcher:
+        resp = client.post(path, json=body)
+    assert resp.status_code == 409
+    assert resp.json() == {"reason": "not_live"}
+
+
+def test_bad_confirm_never_reaches_the_bridge():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        bad_id = client.post(
+            "/api/commerce/fixes/nothex/confirm", json={"patch_sha256": _SHA}
+        )
+        bad_sha = client.post(
+            f"/api/commerce/fixes/{_ID}/confirm", json={"patch_sha256": "x"}
+        )
+    assert bad_id.status_code == 400 and bad_sha.status_code == 400
+    assert seen == []
+
+
 def test_approve_class_review_only_refusal_passes_through():
     reply = {"approved": [], "refused": [{"id": _ID, "reason": "review_only"}]}
     client, patcher, _ = _client(lambda req: httpx.Response(202, json=reply))

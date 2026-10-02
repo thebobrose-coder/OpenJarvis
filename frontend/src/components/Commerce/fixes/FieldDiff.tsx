@@ -25,10 +25,17 @@ const STYLE: Record<DiffOp['type'], React.CSSProperties> = {
 /** Why the specs check let a figure go (0011 A4, A7), by normalized figure. */
 type DropMarks = Map<string, 'finding' | 'judge'>;
 
+/** The diff boxes word by word, so a token like "1000 lm" is also keyed by
+ * its figure alone. */
+const tokenKeys = (t: string) => {
+  const head = t.trim().split(/\s+/)[0];
+  return head !== t.trim() && NUMERIC.test(head) ? [normNum(t), normNum(head)] : [normNum(t)];
+};
+
 export function dropMarks(drops?: SpecDrops): DropMarks {
   const marks: DropMarks = new Map();
-  for (const f of drops?.finding ?? []) marks.set(normNum(f), 'finding');
-  for (const f of drops?.judge ?? []) marks.set(normNum(f), 'judge');
+  for (const f of drops?.finding ?? []) for (const t of f.tokens) for (const k of tokenKeys(t)) marks.set(k, 'finding');
+  for (const t of drops?.judge ?? []) for (const k of tokenKeys(t)) marks.set(k, 'judge');
   return marks;
 }
 

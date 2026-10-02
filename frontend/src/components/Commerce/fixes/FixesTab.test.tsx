@@ -8,6 +8,7 @@ import {
   judgeOnlyInvalid,
   specDrops,
   type CatalogFixes,
+  type ClassStats,
   type FixStatus,
   type Patch,
 } from '../../../lib/fixes-api';
@@ -18,17 +19,24 @@ import { ALL_STORES } from '../format';
 import { DiffBody } from './FieldDiff';
 import {
   BULK_NO_STREAK,
+  ELIGIBILITY_RULE,
   FixesTab,
   P1_BANNER,
+  PAUSE_TITLE,
   STREAK_EXPLAINED,
   classApprovable,
+  classConfirmNotes,
   classConfirmText,
+  classConfirmable,
   classReviewOnly,
   groupPatches,
+  keyAction,
   refusalText,
   sortPatches,
+  spotPending,
+  writerLine,
 } from './FixesTab';
-import { PatchCard, REVIEW_ONLY_TITLE, type CardPanel } from './PatchCard';
+import { PatchCard, REVERT_QUESTION, REVIEW_ONLY_TITLE, statusLabel, type CardPanel } from './PatchCard';
 import { diffWords, droppedNumbers, htmlToText } from './diff';
 
 // Neutral fixtures only: this repo is public.
@@ -132,7 +140,7 @@ function tab(f: CatalogFixes | null) {
       storeNames={{ alpha: 'Alpha' }}
       recTitles={{}}
       onDecide={async () => true}
-      onApproveClass={async () => null}
+      onDecideClass={async () => null}
       onPause={() => {}}
     />,
   );
@@ -165,7 +173,7 @@ describe('PatchCard', () => {
   it.each(FIX_STATUSES)('renders a %s patch with its chip and only its actions', (status) => {
     const html = card(patch(ids(1), status));
     expect(html).toContain(`data-status="${status}"`);
-    expect(html).toContain(`>${status}<`);
+    expect(html).toContain(`>${statusLabel(status)}<`);
     const actions = actionsFor(status);
     if (actions.length) expect(html).toContain(`data-actions="${actions.join(' ')}"`);
     else expect(html).not.toContain('data-actions');
@@ -248,7 +256,7 @@ describe('PatchCard', () => {
         ],
       },
     });
-    expect(specDrops(p)).toEqual({ finding: ['5 W'], judge: ['99%'], unexempt: [] });
+    expect(specDrops(p)).toEqual({ finding: [{ id: 'f'.repeat(32), tokens: ['5 W'] }], judge: ['99%'], unexempt: [] });
     expect(specDrops(specsFailed(p))).toEqual({ finding: [], judge: [], unexempt: ['1000 lm'] });
     const html = card(p);
     expect(html).toMatch(/data-drop="judge"[^>]*>99%</);
@@ -350,7 +358,7 @@ describe('decisions', () => {
   });
 
   it('shows a review_only refusal like the other refusal reasons', () => {
-    expect(refusalText({ id: ids(2), reason: 'review_only' })).toBe('000000 (review only: approve it on its own)');
+    expect(refusalText({ id: ids(2), reason: 'review_only' })).toBe('000000 (review only: one at a time)');
     expect(refusalText({ id: ids(2), reason: 'changed' })).toBe('000000 (changed since shown)');
     expect(refusalText({ id: ids(2), reason: 'new_reason' })).toBe('000000 (new_reason)');
   });
@@ -416,7 +424,7 @@ describe('FixesTab', () => {
   it('shows the P1 banner, the writer state and a class group with its count', () => {
     const html = tab(feed([patch(ids(1), 'proposed'), patch(ids(2), 'proposed'), patch(ids(3), 'invalid')]));
     expect(html).toContain(P1_BANNER);
-    expect(html).toContain('Writes today: not live');
+    expect(html).toContain('Writer not live');
     expect(html).toContain('Pause writer');
     expect(html).toContain('Alpha · rule 4 · descriptionHtml');
     expect(html).toContain('Approve these 2');
@@ -430,7 +438,7 @@ describe('FixesTab', () => {
     const html = tab(live);
     expect(html).not.toContain(P1_BANNER);
     expect(html).toContain('Paused · Resume');
-    expect(html).toContain('3 / 40');
+    expect(html).toContain('Writer live · 3/40 today');
   });
 
   it('class panel is read-only and explains eligibility, with no tier control', () => {
@@ -465,7 +473,7 @@ describe('FixesTab', () => {
       paused: false,
       pausePending: false,
       decide: async () => true,
-      approveClass: async () => null,
+      decideClass: async () => null,
       setPaused: async () => {},
       notice: null,
       clearNotice: () => {},
@@ -484,6 +492,180 @@ describe('FixesTab', () => {
     expect(overview).toContain('Fixes (2)');
     expect(overview).not.toContain(P1_BANNER);
     expect(renderToStaticMarkup(<CommerceView {...props} initialTab="fixes" />)).toContain(P1_BANNER);
+  });
+});
+
+describe('v1.3.3: confirm, writer, revert, tier evidence', () => {
+  const cls = (over: Partial<ClassStats> = {}): ClassStats => ({
+    store: 'alpha',
+    rule: '4',
+    field: 'descriptionHtml',
+    streak: 0,
+    approvals: 0,
+    edits: 0,
+    rejects: 0,
+    reverts: 0,
+    tier: 0,
+    eligible: false,
+    ...over,
+  });
+  const liveWriter = { live: true, writes_today: 3, writes_cap: 40, auto_today: 0, auto_cap: 0, live_since: '2026-10-03T14:00:00Z' };
+
+  it('a single confirm sends the displayed hash; the class confirm goes to confirm-class', () => {
+    const p = patch(ids(5), 'confirm');
+    expect(fixRequest('confirm', p, { note: ' ok ' })).toEqual({
+      path: `/api/commerce/fixes/${p.id}/confirm`,
+      body: { patch_sha256: p.patch_sha256, note: 'ok' },
+    });
+    expect(approveClassRequest(p.fix_class, [p], undefined, 'confirm').path).toBe('/api/commerce/fixes/confirm-class');
+    expect(approveClassRequest(p.fix_class, [p]).path).toBe('/api/commerce/fixes/approve-class');
+  });
+
+  it('c confirms only a confirm card; a stays plain approve', () => {
+    for (const s of FIX_STATUSES) {
+      expect(keyAction('c', s)).toBe(s === 'confirm' ? 'confirm' : null);
+      expect(keyAction('a', s)).toBe(s === 'proposed' ? 'approve' : null);
+    }
+  });
+
+  it('a confirm card reads like a proposal: its chip, the diff, and only Confirm', () => {
+    const html = card(patch(ids(1), 'confirm', { drops_figure: true }));
+    expect(html).toContain('approved before the writer: confirm to apply');
+    expect(html).toContain('data-actions="confirm"');
+    expect(html).toContain('> Confirm<');
+    expect(html).toContain('line-through');
+    expect(card(patch(ids(2), 'approved', { confirmed: { at: '2026-10-03T15:00:00Z', via: 'class' } }))).toContain(
+      'confirmed · class',
+    );
+  });
+
+  it('the class confirm is disabled until the spot-check passes, and says why', () => {
+    const patches = [
+      patch(ids(1), 'confirm'),
+      patch(ids(2), 'confirm', { drops_figure: true }),
+      patch(ids(3), 'confirm', { review_only: true, drops_figure: true }),
+    ];
+    const blocked = cls({ spot_check: { confirmed: 2, required: 5, passed: false } });
+    const g = groupPatches(sortPatches(patches))[0];
+    expect(classConfirmable(g, {}).map((p) => p.id)).toEqual([ids(1), ids(2)]);
+    expect(classConfirmNotes(g, {}, blocked)).toEqual([
+      'Spot-check: confirmed 2 of 5. Confirm one at a time until it passes.',
+      '1 figure-dropping fix is still unconfirmed; confirm them one at a time.',
+      '1 review-only fix needs a single confirm.',
+    ]);
+    // The attributes of the button whose own text is "Confirm these N".
+    const confirmButton = (html: string) =>
+      html.match(/<button([^>]*)>(?:(?!<\/button>).)*?Confirm these \d+<\/button>/)?.[1] ?? null;
+    const html = tab(feed(patches, { classes: [blocked] }));
+    expect(confirmButton(html)).toContain('disabled=""');
+    expect(html).toContain('Confirm these 2');
+    expect(html).toContain('Spot-check: confirmed 2 of 5.');
+    const open = tab(feed([patches[0]], { classes: [cls({ spot_check: { confirmed: 5, required: 5, passed: true } })] }));
+    expect(open).toContain('Confirm these 1');
+    expect(confirmButton(open)).not.toBeNull();
+    expect(confirmButton(open)).not.toContain('disabled=""');
+    expect(open).not.toContain('Spot-check: confirmed');
+  });
+
+  it('in a class still in its spot-check, figure-dropping and review-only confirms sort first', () => {
+    const patches = [
+      patch(ids(1), 'confirm'),
+      patch(ids(2), 'confirm', { drops_figure: true }),
+      patch(ids(3), 'confirm', { review_only: true }),
+      patch(ids(4), 'proposed'),
+    ];
+    const spot = spotPending([cls({ spot_check: { confirmed: 0, required: 5, passed: false } })]);
+    expect(sortPatches(patches, spot).map((p) => p.id)).toEqual([ids(2), ids(3), ids(4), ids(1)]);
+    expect(sortPatches(patches).map((p) => p.id)).toEqual([ids(3), ids(4), ids(1), ids(2)]);
+  });
+
+  it('shows spot_check, review_only and not_live refusals in words', () => {
+    expect(refusalText({ id: ids(2), reason: 'spot_check' })).toBe('000000 (spot-check not passed yet)');
+    expect(refusalText({ id: ids(2), reason: 'not_live' })).toBe('000000 (the writer isn’t live yet)');
+    expect(refusalText({ id: ids(2), reason: 'review_only' })).toBe('000000 (review only: one at a time)');
+  });
+
+  it('a 409 not_live says the writer is not live', async () => {
+    const out = await runDecision(
+      fixRequest('confirm', patch(ids(1), 'confirm')),
+      async () => ({ status: 409, body: { reason: 'not_live' } }),
+      async () => {},
+    );
+    expect(out).toMatchObject({ ok: false, message: expect.stringContaining('isn’t live yet') });
+  });
+
+  it('the header shows the writer in both states, and pause says reverts still run', () => {
+    expect(writerLine(feed([]).writer)).toBe('Writer not live');
+    expect(writerLine(liveWriter)).toMatch(/^Writer live since .+ · 3\/40 today$/);
+    expect(writerLine({ ...liveWriter, live_since: null })).toBe('Writer live · 3/40 today');
+    const html = tab(feed([patch(ids(1), 'applied')], { writer: liveWriter }));
+    expect(html).toContain('data-writer="live"');
+    expect(html).toContain(PAUSE_TITLE.running);
+    expect(PAUSE_TITLE.running).toContain('Reverts still run');
+  });
+
+  it('revert asks before restoring the old copy, only on applied statuses', () => {
+    for (const s of FIX_STATUSES) {
+      expect(card(patch(ids(1), s)).includes('Revert')).toBe(['applied', 'verified', 'failed-verify'].includes(s));
+    }
+    const html = card(patch(ids(1), 'applied'), 'revert');
+    expect(html).toContain(REVERT_QUESTION);
+    expect(html).toContain('Note (optional)');
+  });
+
+  it("renders the writer's history entries with their reasons", () => {
+    const html = card(
+      patch(ids(1), 'approved', {
+        history: [
+          { status: 'proposed', at: '2026-10-02T06:00:00Z' },
+          { status: 'approved', at: '2026-10-02T07:00:00Z' },
+          { status: 'refused', at: '2026-10-03T08:00:00Z', note: 'cap reached' },
+          { status: 'failed_apply', at: '2026-10-03T09:00:00Z', reason: 'read-back mismatch' },
+          { status: 'revert_blocked', at: '2026-10-03T10:00:00Z', note: 'live copy changed' },
+        ],
+      }),
+    );
+    expect(html).toContain('<details open=""');
+    expect(html).toContain('History (5)');
+    expect(html).toMatch(/data-event="refused".*cap reached/);
+    expect(html).toMatch(/data-event="failed_apply".*failed apply: read-back mismatch/);
+    expect(html).toMatch(/data-event="revert_blocked".*revert blocked: live copy changed/);
+  });
+
+  it('the class panel shows the four writer counts and the four-condition rule', () => {
+    const html = tab(
+      feed([patch(ids(1), 'verified')], {
+        classes: [cls({ applied: 7, verified: 6, failed_verify: 1, reverted: 2, spot_check: null })],
+      }),
+    );
+    expect(html).toContain(ELIGIBILITY_RULE);
+    for (const h of ['Applied', 'Verified', 'Failed verify', 'Reverted']) expect(html).toContain(`>${h}<`);
+    expect(html).toMatch(/>7<\/td><td[^>]*>6<\/td><td[^>]*>1<\/td><td[^>]*>2<\/td>/);
+    expect(html).not.toMatch(/set tier|promote|tier 1/i);
+  });
+
+  it('reads drops from `drops`, falling back to the specs detail', () => {
+    const detail = 'ok: dropped under finding ' + 'a'.repeat(32) + ': 5 W; dropped under judge flag: 99%';
+    const old = patch(ids(1), 'proposed', {
+      validator: { passed: true, checks: [{ name: 'specs', passed: true, detail }] },
+    });
+    expect(specDrops(old)).toEqual({ finding: [{ id: 'a'.repeat(32), tokens: ['5 W'] }], judge: ['99%'], unexempt: [] });
+    const structured = { ...old, drops: { finding: [{ id: 'b'.repeat(32), tokens: ['1000 lm'] }], judge: ['98%', '99%'] } };
+    expect(specDrops(structured)).toEqual({
+      finding: [{ id: 'b'.repeat(32), tokens: ['1000 lm'] }],
+      judge: ['98%', '99%'],
+      unexempt: [],
+    });
+    const html = card({
+      ...structured,
+      changes: [
+        { field: 'descriptionHtml', before: '<p>Rated (98-99%) and 1000 lm.</p>', before_sha256: 'b'.repeat(64), after: '<p>Rated.</p>' },
+      ],
+    });
+    expect(html).toContain('Dropped under finding bbbbbbbb: 1000 lm');
+    expect(html).toContain('Dropped under judge flag: 98%, 99%');
+    expect(html).toMatch(/data-drop="judge"[^>]*>\(98-99%\)</);
+    expect(html).toMatch(/data-drop="finding"[^>]*>1000</);
   });
 });
 

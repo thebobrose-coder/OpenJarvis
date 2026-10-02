@@ -5,6 +5,7 @@ import {
   fixRequest,
   postFix,
   type CatalogFixes,
+  type ClassAction,
   type FixAction,
   type FixClass,
   type FixRequest,
@@ -56,7 +57,9 @@ export async function runDecision(
         ? CHANGED_MESSAGE
         : reason === 'not_applied'
           ? 'Nothing to revert: this fix was never applied.'
-          : 'This fix was already decided, or a decision on it is still being recorded.';
+          : reason === 'not_live'
+            ? 'The writer isn’t live yet, so there’s nothing to confirm.'
+            : 'This fix was already decided, or a decision on it is still being recorded.';
     return { ok: false, message, reloaded: true };
   }
   if (res.status === 401) return { ok: false, message: 'The bridge refused the operator token.', reloaded: false };
@@ -86,7 +89,9 @@ export function reconcileFixes(
 }
 
 export interface ClassResult {
-  approved: string[];
+  action: ClassAction;
+  /** The ids the bridge accepted (`approved` or `confirmed`). */
+  done: string[];
   refused: { id: string; reason: string }[];
 }
 
@@ -165,21 +170,24 @@ export function useCatalogFixes() {
     [load, markPending, recheck],
   );
 
-  const approveClass = useCallback(
-    async (cls: FixClass, patches: Patch[]): Promise<ClassResult | null> => {
-      const outcome = await runDecision(approveClassRequest(cls, patches), postFix, load);
+  /** "Approve these N" or "Confirm these N" on one class. */
+  const decideClass = useCallback(
+    async (cls: FixClass, patches: Patch[], action: ClassAction = 'approve'): Promise<ClassResult | null> => {
+      const outcome = await runDecision(approveClassRequest(cls, patches, undefined, action), postFix, load);
       if (!outcome.ok) {
         setNotice(outcome.message);
         return null;
       }
+      const ids = outcome.body[action === 'approve' ? 'approved' : 'confirmed'];
       const result: ClassResult = {
-        approved: Array.isArray(outcome.body.approved) ? (outcome.body.approved as string[]) : [],
+        action,
+        done: Array.isArray(ids) ? (ids as string[]) : [],
         refused: Array.isArray(outcome.body.refused) ? (outcome.body.refused as ClassResult['refused']) : [],
       };
-      const approved = new Set(result.approved);
+      const done = new Set(result.done);
       markPending(
-        patches.filter((p) => approved.has(p.id)),
-        'approve',
+        patches.filter((p) => done.has(p.id)),
+        action,
       );
       recheck();
       if (result.refused.length) void load();
@@ -215,7 +223,7 @@ export function useCatalogFixes() {
     pausePending: pausedLocal !== null,
     reload: load,
     decide,
-    approveClass,
+    decideClass,
     setPaused,
   };
 }

@@ -28,7 +28,7 @@ export type FixesProps = Pick<
   | 'paused'
   | 'pausePending'
   | 'decide'
-  | 'approveClass'
+  | 'decideClass'
   | 'setPaused'
   | 'notice'
   | 'clearNotice'
@@ -145,7 +145,7 @@ export function CommerceView({
           storeNames={storeNames}
           recTitles={recTitles}
           onDecide={fixes.decide}
-          onApproveClass={fixes.approveClass}
+          onDecideClass={fixes.decideClass}
           onPause={(p) => void fixes.setPaused(p)}
           onOpenRec={openRec}
           notice={fixes.notice}

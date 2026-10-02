@@ -4,7 +4,9 @@ import {
   FIX_STATUSES,
   REFUSAL_REASON,
   isWaiting,
+  needsOperator,
   type CatalogFixes,
+  type ClassAction,
   type ClassStats,
   type FixAction,
   type FixClass,
@@ -15,29 +17,39 @@ import type { ClassResult, PendingFix } from '../../../hooks/useCatalogFixes';
 import { DashboardPanel } from '../../Dashboard/DashboardPanel';
 import { FeedFreshness } from '../../Dashboard/FeedFreshness';
 import { Chip, Quiet, Select, SmallButton } from '../../shared/ui';
-import { ALL_STORES, num } from '../format';
+import { ALL_STORES, num, shortDateTime } from '../format';
 import { PatchCard, type CardPanel, type DecideOpts } from './PatchCard';
 
 export const P1_BANNER = 'Proposals only. Decisions are recorded; nothing is written to Shopify yet.';
 
-const ORDER: Record<string, number> = { proposed: 0, invalid: 1 };
+const ORDER: Record<string, number> = { proposed: 0, invalid: 1, confirm: 2 };
+const DECIDED = 3;
 
-// A waiting review-only fix needs a single approval, so it leads (v1.3.2 A7).
-const rank = (p: Patch) => (p.review_only && isWaiting(p.status) ? -1 : (ORDER[p.status] ?? 2));
+export const classKey = (c: FixClass) => `${c.store}|${c.rule}|${c.field}`;
 
-/** Waiting review-only fixes first, then proposed, then invalid, then the
+/** Keys of the classes whose spot-check hasn't passed (v1.3.3 A9). */
+export const spotPending = (classes: ClassStats[] | undefined) =>
+  new Set((classes ?? []).filter((c) => c.spot_check && !c.spot_check.passed).map(classKey));
+
+// What needs a single decision leads: a waiting review-only fix (A7), and,
+// in a class still in its spot-check, a figure-dropping fix to confirm (A9).
+function rank(p: Patch, spot: Set<string>): number {
+  if (p.review_only && needsOperator(p.status)) return -1;
+  if (p.status === 'confirm' && p.drops_figure && spot.has(classKey(p.fix_class))) return -1;
+  return ORDER[p.status] ?? DECIDED;
+}
+
+/** Single-decision fixes first, then proposed, invalid, to confirm, then the
  * rest by most recently decided. */
-export function sortPatches(patches: Patch[]): Patch[] {
+export function sortPatches(patches: Patch[], spot: Set<string> = new Set()): Patch[] {
   return [...patches].sort((a, b) => {
-    const oa = rank(a);
-    const ob = rank(b);
+    const oa = rank(a, spot);
+    const ob = rank(b, spot);
     if (oa !== ob) return oa - ob;
-    if (oa === 2) return (b.decided_at ?? '').localeCompare(a.decided_at ?? '');
+    if (oa === DECIDED) return (b.decided_at ?? '').localeCompare(a.decided_at ?? '');
     return a.created_at.localeCompare(b.created_at);
   });
 }
-
-export const classKey = (c: FixClass) => `${c.store}|${c.rule}|${c.field}`;
 export const ruleLabel = (rule: string) => (/^\d+$/.test(rule) ? `rule ${rule}` : rule);
 
 export interface FixGroup {
@@ -70,6 +82,51 @@ export function classApprovable(group: FixGroup, pending: Record<string, Pending
 export const classReviewOnly = (group: FixGroup, pending: Record<string, PendingFix>) =>
   openProposed(group, pending).filter((p) => p.review_only).length;
 
+const openConfirm = (group: FixGroup, pending: Record<string, PendingFix>) =>
+  group.patches.filter((p) => p.status === 'confirm' && !pending[p.id]);
+
+/** The class confirm (A9): the P1 approvals waiting to be re-confirmed,
+ * review-only ones left out (they're always confirmed one at a time). */
+export const classConfirmable = (group: FixGroup, pending: Record<string, PendingFix>) =>
+  openConfirm(group, pending).filter((p) => !p.review_only);
+
+const plural = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
+
+/** What the class confirm says: the spot-check's state while it hasn't
+ * passed, and what must still be confirmed singly. */
+export function classConfirmNotes(group: FixGroup, pending: Record<string, PendingFix>, stats?: ClassStats): string[] {
+  const open = openConfirm(group, pending);
+  const notes: string[] = [];
+  const spot = stats?.spot_check;
+  if (spot && !spot.passed) {
+    notes.push(`Spot-check: confirmed ${spot.confirmed} of ${spot.required}. Confirm one at a time until it passes.`);
+  }
+  const figures = open.filter((p) => p.drops_figure && !p.review_only).length;
+  if (figures) {
+    notes.push(
+      `${plural(figures, 'figure-dropping fix is', 'figure-dropping fixes are')} still unconfirmed; confirm them one at a time.`,
+    );
+  }
+  const reviewOnly = open.filter((p) => p.review_only).length;
+  if (reviewOnly) notes.push(`${plural(reviewOnly, 'review-only fix needs', 'review-only fixes need')} a single confirm.`);
+  return notes;
+}
+
+export const ELIGIBILITY_RULE =
+  'Suggest auto-apply when: 20 single approvals in a row, 20 fixes applied and verified, no reverts, no failed verifications.';
+
+/** The writer line in the header (v1.3.3). */
+export function writerLine(w: CatalogFixes['writer']): string {
+  if (!w.live) return 'Writer not live';
+  const since = w.live_since ? ` since ${shortDateTime(w.live_since)}` : '';
+  return `Writer live${since} · ${num(w.writes_today)}/${w.writes_cap ?? '—'} today`;
+}
+
+export const PAUSE_TITLE = {
+  running: 'Pause stops the writer applying fixes. Reverts still run (0011 A1).',
+  paused: 'The writer is paused: it applies nothing, but reverts still run (0011 A1). Resume lets it apply again.',
+};
+
 export const BULK_NO_STREAK = 'These approvals won’t count toward auto-apply.';
 export const STREAK_EXPLAINED = 'Counts only fixes approved one at a time, unedited.';
 
@@ -84,9 +141,20 @@ export const refusalText = (r: { id: string; reason: string }) =>
   `${r.id.slice(0, 6)} (${REFUSAL_REASON[r.reason] ?? r.reason})`;
 
 export const waitingCount = (feed: CatalogFixes | null) =>
-  feed ? (feed.counts.proposed ?? 0) + (feed.counts.invalid ?? 0) : 0;
+  feed ? (feed.counts.proposed ?? 0) + (feed.counts.invalid ?? 0) + (feed.counts.confirm ?? 0) : 0;
 
 type StatusFilter = 'all' | 'waiting' | FixStatus;
+
+/** What a key does on the focused card: a approve and r reject a proposal,
+ * e edits a waiting fix, c confirms a P1 approval. Approve over judge has
+ * no key (A6). */
+export function keyAction(key: string, status: FixStatus): Exclude<FixAction, 'revert'> | null {
+  if (key === 'a' && status === 'proposed') return 'approve';
+  if (key === 'e' && isWaiting(status)) return 'edit';
+  if (key === 'r' && status === 'proposed') return 'reject';
+  if (key === 'c' && status === 'confirm') return 'confirm';
+  return null;
+}
 
 function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -112,18 +180,13 @@ function FixesHeader({
         tone={paused ? 'warning' : 'neutral'}
         onClick={() => onPause(!paused)}
         disabled={pausePending}
-        title={paused ? 'The writer is paused. Resume lets it apply approved fixes (from P2).' : 'Stop the writer from applying anything (from P2)'}
+        title={paused ? PAUSE_TITLE.paused : PAUSE_TITLE.running}
       >
         {paused ? <Play size={11} /> : <Pause size={11} />}
         {paused ? 'Paused · Resume' : 'Pause writer'}
       </SmallButton>
       {pausePending && <span style={{ color: 'var(--color-text-tertiary)' }}>recording…</span>}
-      <span>
-        Writes today:{' '}
-        {w.live
-          ? `${num(w.writes_today)} / ${w.writes_cap ?? '—'} · auto ${num(w.auto_today)} / ${w.auto_cap ?? '—'}`
-          : 'not live'}
-      </span>
+      <span data-writer={w.live ? 'live' : 'off'}>{writerLine(w)}</span>
       <FeedFreshness ageSeconds={feed.age_seconds} stale={feed.stale} staleAfterSeconds={26 * 3600} label="Fixes" />
     </div>
   );
@@ -138,11 +201,32 @@ function ClassPanel({ classes, storeNames }: { classes: ClassStats[]; storeNames
         <div className="overflow-x-auto">
           <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
             Streak: {STREAK_EXPLAINED} Bulk: approvals through “Approve these N”, which don’t count toward it.
+            Reverts are revert decisions; Applied to Reverted count the writer’s outcomes.
+          </p>
+          <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+            {ELIGIBILITY_RULE}
           </p>
           <table className="w-full text-[12px]">
             <thead>
               <tr className="text-left" style={{ color: 'var(--color-text-tertiary)' }}>
-                {['Store', 'Rule', 'Field', 'Streak', 'Bulk', 'Approvals', 'Edits', 'Rejects', 'Reverts', 'Tier', ''].map((h) => (
+                {[
+                  'Store',
+                  'Rule',
+                  'Field',
+                  'Streak',
+                  'Bulk',
+                  'Approvals',
+                  'Edits',
+                  'Rejects',
+                  'Reverts',
+                  'Applied',
+                  'Verified',
+                  'Failed verify',
+                  'Reverted',
+                  'Spot-check',
+                  'Tier',
+                  '',
+                ].map((h) => (
                   <th key={h} className="font-normal pr-3 pb-1" title={h === 'Streak' ? STREAK_EXPLAINED : undefined}>
                     {h}
                   </th>
@@ -161,6 +245,13 @@ function ClassPanel({ classes, storeNames }: { classes: ClassStats[]; storeNames
                   <td className="pr-3 tabular-nums">{num(c.edits)}</td>
                   <td className="pr-3 tabular-nums">{num(c.rejects)}</td>
                   <td className="pr-3 tabular-nums">{num(c.reverts)}</td>
+                  <td className="pr-3 tabular-nums">{num(c.applied ?? 0)}</td>
+                  <td className="pr-3 tabular-nums">{num(c.verified ?? 0)}</td>
+                  <td className="pr-3 tabular-nums">{num(c.failed_verify ?? 0)}</td>
+                  <td className="pr-3 tabular-nums">{num(c.reverted ?? 0)}</td>
+                  <td className="pr-3 tabular-nums" data-spot={c.spot_check ? String(c.spot_check.passed) : undefined}>
+                    {c.spot_check ? `${c.spot_check.confirmed}/${c.spot_check.required}${c.spot_check.passed ? ' ✓' : ''}` : '—'}
+                  </td>
                   <td className="pr-3 tabular-nums">{c.tier}</td>
                   <td className="text-[11px]" style={{ color: 'var(--color-success)' }}>
                     {c.eligible && 'Eligible for auto-apply. That switch is an operator config change, not available here.'}
@@ -187,7 +278,7 @@ export interface FixesTabProps {
   storeNames: Record<string, string>;
   recTitles: Record<string, string>;
   onDecide: (patch: Patch, action: FixAction, opts?: DecideOpts) => Promise<boolean>;
-  onApproveClass: (cls: FixClass, patches: Patch[]) => Promise<ClassResult | null>;
+  onDecideClass: (cls: FixClass, patches: Patch[], action?: ClassAction) => Promise<ClassResult | null>;
   onPause: (paused: boolean) => void;
   onOpenRec?: (id: string) => void;
   notice?: string | null;
@@ -195,7 +286,7 @@ export interface FixesTabProps {
 }
 
 /** The Fixes tab (hq 0011 §7): review Hermes's catalog fixes quickly.
- * Keyboard: j/k move, a approve, e edit, r reject. */
+ * Keyboard: j/k move, a approve, e edit, r reject, c confirm. */
 export function FixesTab({
   feed,
   loading,
@@ -208,7 +299,7 @@ export function FixesTab({
   storeNames,
   recTitles,
   onDecide,
-  onApproveClass,
+  onDecideClass,
   onPause,
   onOpenRec,
   notice,
@@ -219,9 +310,11 @@ export function FixesTab({
   const [focusId, setFocusId] = useState<string | null>(null);
   const [panel, setPanel] = useState<{ id: string; kind: CardPanel } | null>(null);
   const [classResults, setClassResults] = useState<Record<string, ClassResult>>({});
-  const [confirmClass, setConfirmClass] = useState<string | null>(null);
+  const [confirmClass, setConfirmClass] = useState<{ key: string; action: ClassAction } | null>(null);
 
   const patches = feed?.patches;
+  const classes = feed?.classes;
+  const statsByKey = useMemo(() => new Map((classes ?? []).map((c) => [classKey(c), c])), [classes]);
   const classOptions = useMemo(() => {
     const seen = new Map<string, FixClass>();
     for (const p of patches ?? []) seen.set(classKey(p.fix_class), p.fix_class);
@@ -236,10 +329,10 @@ export function FixesTab({
       (p) =>
         (selectedStore === ALL_STORES || p.store === selectedStore) &&
         (cls === 'all' || classKey(p.fix_class) === cls) &&
-        (status === 'all' || (status === 'waiting' ? isWaiting(p.status) : p.status === status)),
+        (status === 'all' || (status === 'waiting' ? needsOperator(p.status) : p.status === status)),
     );
-    return groupPatches(sortPatches(visible));
-  }, [patches, selectedStore, cls, status]);
+    return groupPatches(sortPatches(visible, spotPending(classes)));
+  }, [patches, classes, selectedStore, cls, status]);
   const flat = useMemo(() => groups.flatMap((g) => g.patches), [groups]);
 
   const focused = flat.find((p) => p.id === focusId) ?? flat[0] ?? null;
@@ -274,20 +367,22 @@ export function FixesTab({
       if (e.key === 'j') move(1);
       else if (e.key === 'k') move(-1);
       else if (!focused || pending[focused.id]) return;
-      else if (e.key === 'a' && focused.status === 'proposed') void decide(focused, 'approve');
-      else if (e.key === 'e' && isWaiting(focused.status)) setPanel({ id: focused.id, kind: 'edit' });
-      else if (e.key === 'r' && focused.status === 'proposed') setPanel({ id: focused.id, kind: 'reject' });
-      else return;
+      else {
+        const act = keyAction(e.key, focused.status);
+        if (!act) return;
+        if (act === 'edit' || act === 'reject') setPanel({ id: focused.id, kind: act });
+        else void decide(focused, act);
+      }
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [decide, focused, move, pending]);
 
-  const approveGroup = async (g: FixGroup) => {
+  const decideGroup = async (g: FixGroup, action: ClassAction) => {
     setConfirmClass(null);
-    const list = classApprovable(g, pending);
-    const result = await onApproveClass(g.cls, list);
+    const list = action === 'approve' ? classApprovable(g, pending) : classConfirmable(g, pending);
+    const result = await onDecideClass(g.cls, list, action);
     if (result) setClassResults((r) => ({ ...r, [g.key]: result }));
   };
 
@@ -332,7 +427,7 @@ export function FixesTab({
               <Select label="Status" value={status} options={statusOptions} onChange={setStatus} />
               <Select label="Class" value={cls} options={[{ value: 'all', label: 'All' }, ...classOptions]} onChange={setCls} />
               <span className="text-[11px] ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
-                j / k move · a approve · e edit · r reject
+                j / k move · a approve · e edit · r reject · c confirm
               </span>
             </div>
 
@@ -342,6 +437,12 @@ export function FixesTab({
               groups.map((g) => {
                 const approvable = classApprovable(g, pending);
                 const reviewOnly = classReviewOnly(g, pending);
+                const confirmable = classConfirmable(g, pending);
+                const hasConfirm = g.patches.some((p) => p.status === 'confirm' && !pending[p.id]);
+                const stats = statsByKey.get(g.key);
+                const spotBlocked = !!stats?.spot_check && !stats.spot_check.passed;
+                const confirmNotes = classConfirmNotes(g, pending, stats);
+                const asking = confirmClass?.key === g.key ? confirmClass.action : null;
                 const result = classResults[g.key];
                 return (
                   <section key={g.key} className="flex flex-col gap-2.5">
@@ -351,9 +452,9 @@ export function FixesTab({
                       </span>
                       <Chip tone="muted">{g.patches.length}</Chip>
                       {approvable.length > 0 &&
-                        (confirmClass === g.key ? (
+                        (asking === 'approve' ? (
                           <>
-                            <SmallButton tone="accent" onClick={() => void approveGroup(g)}>
+                            <SmallButton tone="accent" onClick={() => void decideGroup(g, 'approve')}>
                               <CheckCheck size={11} /> Confirm: approve these {approvable.length}
                             </SmallButton>
                             <SmallButton onClick={() => setConfirmClass(null)}>Cancel</SmallButton>
@@ -363,7 +464,7 @@ export function FixesTab({
                           </>
                         ) : (
                           <SmallButton
-                            onClick={() => setConfirmClass(g.key)}
+                            onClick={() => setConfirmClass({ key: g.key, action: 'approve' })}
                             title={`Approves exactly the listed proposed fixes, each as displayed. Not a tier change.${
                               reviewOnly ? ` Leaves out ${reviewOnly} review-only.` : ''
                             }`}
@@ -371,10 +472,32 @@ export function FixesTab({
                             <CheckCheck size={11} /> Approve these {approvable.length}
                           </SmallButton>
                         ))}
+                      {hasConfirm &&
+                        (asking === 'confirm' ? (
+                          <>
+                            <SmallButton tone="accent" onClick={() => void decideGroup(g, 'confirm')}>
+                              <CheckCheck size={11} /> Confirm: confirm these {confirmable.length}
+                            </SmallButton>
+                            <SmallButton onClick={() => setConfirmClass(null)}>Cancel</SmallButton>
+                          </>
+                        ) : (
+                          <SmallButton
+                            onClick={() => setConfirmClass({ key: g.key, action: 'confirm' })}
+                            disabled={spotBlocked || confirmable.length === 0}
+                            title="Re-confirms exactly the listed P1 approvals, each as displayed, so the writer applies them."
+                          >
+                            <CheckCheck size={11} /> Confirm these {confirmable.length}
+                          </SmallButton>
+                        ))}
                     </div>
+                    {hasConfirm && confirmNotes.length > 0 && (
+                      <p className="text-[11px]" role="note" data-confirm-notes style={{ color: 'var(--color-text-secondary)' }}>
+                        {confirmNotes.join(' ')}
+                      </p>
+                    )}
                     {result && (
                       <p className="text-[11.5px]" role="status" style={{ color: 'var(--color-text-secondary)' }}>
-                        Approved {result.approved.length}
+                        {result.action === 'approve' ? 'Approved' : 'Confirmed'} {result.done.length}
                         {result.refused.length > 0 &&
                           `; refused ${result.refused.length}: ${result.refused.map(refusalText).join(', ')}`}
                       </p>

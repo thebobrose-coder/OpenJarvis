@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Pencil, RotateCcw, ShieldAlert, X } from 'lucide-react';
-import { actionsFor, judgeOnlyInvalid, specDrops, type FixAction, type FixStatus, type Patch } from '../../../lib/fixes-api';
+import { Check, CheckCheck, Pencil, RotateCcw, ShieldAlert, X } from 'lucide-react';
+import {
+  WRITER_EVENTS,
+  actionsFor,
+  judgeOnlyInvalid,
+  specDrops,
+  type FixAction,
+  type FixStatus,
+  type Patch,
+  type SpecDrops,
+} from '../../../lib/fixes-api';
 import type { PendingFix } from '../../../hooks/useCatalogFixes';
 import { Chip, ExtIcon, ExtLink, SmallButton, type Tone } from '../../shared/ui';
 import { shortDateTime } from '../format';
@@ -12,18 +21,28 @@ export const STATUS_TONE: Record<FixStatus, Tone> = {
   approved: 'success',
   rejected: 'muted',
   stale: 'warning',
+  confirm: 'accent',
   applied: 'success',
   verified: 'success',
   'failed-verify': 'error',
   reverted: 'muted',
 };
 
+/** The status chip's words; most statuses read as themselves. */
+export const STATUS_LABEL: Partial<Record<FixStatus, string>> = {
+  confirm: 'approved before the writer: confirm to apply',
+};
+export const statusLabel = (s: FixStatus) => STATUS_LABEL[s] ?? s;
+
 const PENDING_LABEL: Record<FixAction, string> = {
   approve: 'approved',
   edit: 'edited',
   reject: 'rejected',
   revert: 'revert requested',
+  confirm: 'confirmed',
 };
+
+export const REVERT_QUESTION = 'Restore the copy from before this fix?';
 
 export type CardPanel = 'edit' | 'reject' | 'revert' | 'over-judge' | null;
 
@@ -80,6 +99,48 @@ function JudgeFlag({ judge }: { judge: NonNullable<Patch['judge']> }) {
     <span className="text-[11.5px]" data-judge-flag style={{ color: 'var(--color-warning)' }}>
       Judge: {judge.quote && <span className="italic">“{judge.quote}”</span>} {judge.reason}
     </span>
+  );
+}
+
+/** The figures the specs check let go, and why (0011 A4, A7). */
+function DropLines({ drops }: { drops: SpecDrops }) {
+  if (!drops.finding.length && !drops.judge.length) return null;
+  return (
+    <ul className="flex flex-col gap-0.5 text-[11.5px]" data-drop-lines style={{ color: 'var(--color-text-secondary)' }}>
+      {drops.finding.map((f) => (
+        <li key={f.id}>
+          Dropped under finding {f.id.slice(0, 8)}: {f.tokens.join(', ')}
+        </li>
+      ))}
+      {drops.judge.length > 0 && (
+        <li style={{ color: 'var(--color-warning)' }}>Dropped under judge flag: {drops.judge.join(', ')}</li>
+      )}
+    </ul>
+  );
+}
+
+/** Decisions and the writer's outcomes, newest last. Writer refusals and
+ * failures stay open so their reasons are seen. */
+function History({ history }: { history: Patch['history'] }) {
+  if (history.length < 2 && !history.some((h) => WRITER_EVENTS.has(h.status))) return null;
+  const flagged = history.some((h) => WRITER_EVENTS.has(h.status));
+  return (
+    <details open={flagged} className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+      <summary className="cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}>
+        History ({history.length})
+      </summary>
+      <ul className="flex flex-col gap-0.5 mt-1" data-history>
+        {history.map((h, i) => {
+          const why = h.reason ?? h.note;
+          return (
+            <li key={i} data-event={h.status} style={WRITER_EVENTS.has(h.status) ? { color: 'var(--color-warning)' } : undefined}>
+              <span className="tabular-nums">{shortDateTime(h.at)}</span> · {h.status.replace(/_/g, ' ')}
+              {why ? `: ${why}` : ''}
+            </li>
+          );
+        })}
+      </ul>
+    </details>
   );
 }
 
@@ -210,7 +271,12 @@ export function PatchCard({
       }}
     >
       <div className="flex flex-wrap items-center gap-1.5">
-        <Chip tone={STATUS_TONE[patch.status] ?? 'neutral'}>{patch.status}</Chip>
+        <Chip tone={STATUS_TONE[patch.status] ?? 'neutral'}>{statusLabel(patch.status)}</Chip>
+        {patch.confirmed && (
+          <Chip tone="success" title={`Re-confirmed ${shortDateTime(patch.confirmed.at)}`}>
+            confirmed · {patch.confirmed.via}
+          </Chip>
+        )}
         {pending && <Chip tone="muted">{PENDING_LABEL[pending.action]} · recording…</Chip>}
         {patch.edited && <Chip tone="neutral" title="The operator's text replaced the model's">edited</Chip>}
         {overridden && (
@@ -290,6 +356,8 @@ export function PatchCard({
         </p>
       )}
 
+      <DropLines drops={drops} />
+
       {patch.changes.map((c) => (
         <FieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} drops={drops} />
       ))}
@@ -299,6 +367,7 @@ export function PatchCard({
           Note: “{patch.note}”
         </p>
       )}
+      <History history={patch.history} />
       {cardNote && (
         <p className="text-[12px]" role="status" style={{ color: 'var(--color-warning)' }}>
           {cardNote}
@@ -325,15 +394,29 @@ export function PatchCard({
           />
         </div>
       ) : panel === 'revert' && actions.includes('revert') ? (
-        <NoteConfirm
-          label="Revert"
-          tone="warning"
-          onConfirm={(note) => onDecide('revert', { note })}
-          onCancel={() => onPanel(null)}
-        />
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[12px]" style={{ color: 'var(--color-text)' }}>
+            {REVERT_QUESTION}
+          </span>
+          <NoteConfirm
+            label="Revert"
+            tone="warning"
+            onConfirm={(note) => onDecide('revert', { note })}
+            onCancel={() => onPanel(null)}
+          />
+        </div>
       ) : (
         actions.length > 0 && (
           <div className="flex flex-wrap gap-2" data-actions={actions.join(' ')}>
+            {actions.includes('confirm') && (
+              <SmallButton
+                tone="accent"
+                onClick={() => onDecide('confirm')}
+                title="Re-confirm exactly this fix so the writer applies it (c)"
+              >
+                <CheckCheck size={11} /> Confirm
+              </SmallButton>
+            )}
             {actions.includes('approve') && (
               <SmallButton tone="accent" onClick={() => onDecide('approve')} title="Approve exactly this fix (a)">
                 <Check size={11} /> Approve
@@ -362,7 +445,7 @@ export function PatchCard({
               </SmallButton>
             )}
             {actions.includes('revert') && (
-              <SmallButton tone="warning" onClick={() => onPanel('revert')}>
+              <SmallButton tone="warning" onClick={() => onPanel('revert')} title={REVERT_QUESTION}>
                 <RotateCcw size={11} /> Revert
               </SmallButton>
             )}

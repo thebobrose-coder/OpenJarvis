@@ -1,5 +1,5 @@
 """FastAPI routes for the Commerce page's Fixes tab -- the operator's
-decisions on Hermes's catalog fixes (hq/contracts/openjarvis-hermes.md v1.3.2
+decisions on Hermes's catalog fixes (hq/contracts/openjarvis-hermes.md v1.3.3
 §2, "Catalog fixes").
 
 The feed itself (`catalog_fixes`) is read through `/api/commerce/<feed>`
@@ -10,8 +10,10 @@ token is a file the operator created, its path is local config
 per request, never logged, and never sent to the frontend. The bridge's
 202 / 401 / 409 answers are passed through as they come.
 
-In P1 nothing is written to Shopify: the bridge records each decision for
-the next phase to apply.
+The bridge records each decision; from P2 the writer applies approved fixes
+once it is live. P1 approvals wait in `confirm` until the operator
+re-confirms them (0011 A9); before the writer is live both confirm routes
+answer 409 not_live, which is passed through like the others.
 """
 
 from __future__ import annotations
@@ -108,9 +110,11 @@ def _with_note(body: dict, note: Optional[str]) -> dict:
     return {**body, "note": note} if note else body
 
 
-@fixes_router.post("/approve-class")
-async def approve_class(body: ApproveClassBody) -> JSONResponse:
-    """Approve the listed patches of one class (not a tier change)."""
+class ConfirmBody(NoteBody):
+    patch_sha256: str
+
+
+def _class_payload(body: ApproveClassBody) -> dict:
     if body.field not in FIELDS:
         raise HTTPException(status_code=400, detail="Invalid field")
     for p in body.patches:
@@ -123,8 +127,23 @@ async def approve_class(body: ApproveClassBody) -> JSONResponse:
         "field": body.field,
         "patches": [{"id": p.id, "patch_sha256": p.patch_sha256} for p in body.patches],
     }
+    return _with_note(payload, body.note)
+
+
+@fixes_router.post("/approve-class")
+async def approve_class(body: ApproveClassBody) -> JSONResponse:
+    """Approve the listed patches of one class (not a tier change)."""
     return await _post(
-        "/fixes/approve-class", _with_note(payload, body.note), _operator_headers()
+        "/fixes/approve-class", _class_payload(body), _operator_headers()
+    )
+
+
+@fixes_router.post("/confirm-class")
+async def confirm_class(body: ApproveClassBody) -> JSONResponse:
+    """Re-confirm the listed P1 approvals of one class (v1.3.3, 0011 A9).
+    The bridge refuses them all while the class's spot-check hasn't passed."""
+    return await _post(
+        "/fixes/confirm-class", _class_payload(body), _operator_headers()
     )
 
 
@@ -149,6 +168,18 @@ async def approve(fix_id: str, body: ApproveBody) -> JSONResponse:
     return await _post(
         f"/fixes/{fix_id}/approve",
         _with_note(payload, body.note),
+        _operator_headers(),
+    )
+
+
+@fixes_router.post("/{fix_id}/confirm")
+async def confirm(fix_id: str, body: ConfirmBody) -> JSONResponse:
+    """Re-confirm one P1 approval, exactly as displayed (v1.3.3, 0011 A9)."""
+    _check_id(fix_id)
+    _check_sha(body.patch_sha256)
+    return await _post(
+        f"/fixes/{fix_id}/confirm",
+        _with_note({"patch_sha256": body.patch_sha256}, body.note),
         _operator_headers(),
     )
 
