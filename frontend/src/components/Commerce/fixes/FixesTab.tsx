@@ -99,12 +99,18 @@ export function classConfirmNotes(group: FixGroup, pending: Record<string, Pendi
   const notes: string[] = [];
   const spot = stats?.spot_check;
   if (spot && !spot.passed) {
-    notes.push(`Spot-check: confirmed ${spot.confirmed} of ${spot.required}. Confirm one at a time until it passes.`);
+    // Past the count, what's missing is a figure-dropping P1 approval
+    // confirmed on its own (A9).
+    notes.push(
+      spot.confirmed >= spot.required
+        ? `Spot-check: confirmed ${spot.confirmed} of ${spot.required}, but each figure-dropping approval must also be confirmed one at a time.`
+        : `Spot-check: confirmed ${spot.confirmed} of ${spot.required}. Confirm one at a time until it passes.`,
+    );
   }
   const figures = open.filter((p) => p.drops_figure && !p.review_only).length;
   if (figures) {
     notes.push(
-      `${plural(figures, 'figure-dropping fix is', 'figure-dropping fixes are')} still unconfirmed; confirm them one at a time.`,
+      `${plural(figures, 'figure-dropping fix is', 'figure-dropping fixes are')} waiting; confirm those one at a time.`,
     );
   }
   const reviewOnly = open.filter((p) => p.review_only).length;

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, CheckCheck, Pencil, RotateCcw, ShieldAlert, X } from 'lucide-react';
 import {
-  WRITER_EVENTS,
   actionsFor,
+  isWriterEntry,
   judgeOnlyInvalid,
   specDrops,
+  statusReason,
   type FixAction,
   type FixStatus,
   type Patch,
@@ -119,13 +120,14 @@ function DropLines({ drops }: { drops: SpecDrops }) {
   );
 }
 
-/** Decisions and the writer's outcomes, newest last. Writer refusals and
- * failures stay open so their reasons are seen. */
+/** Decisions and the writer's outcomes, newest last. Writer entries are
+ * amber; the list opens by itself while the latest entry is one, so a
+ * superseded refusal stays in the record without crowding the card. */
 function History({ history }: { history: Patch['history'] }) {
-  if (history.length < 2 && !history.some((h) => WRITER_EVENTS.has(h.status))) return null;
-  const flagged = history.some((h) => WRITER_EVENTS.has(h.status));
+  if (history.length < 2 && !history.some(isWriterEntry)) return null;
+  const last = history[history.length - 1];
   return (
-    <details open={flagged} className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+    <details open={!!last && isWriterEntry(last)} className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
       <summary className="cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}>
         History ({history.length})
       </summary>
@@ -133,7 +135,7 @@ function History({ history }: { history: Patch['history'] }) {
         {history.map((h, i) => {
           const why = h.reason ?? h.note;
           return (
-            <li key={i} data-event={h.status} style={WRITER_EVENTS.has(h.status) ? { color: 'var(--color-warning)' } : undefined}>
+            <li key={i} data-event={h.status} data-writer-entry={isWriterEntry(h) || undefined} style={isWriterEntry(h) ? { color: 'var(--color-warning)' } : undefined}>
               <span className="tabular-nums">{shortDateTime(h.at)}</span> · {h.status.replace(/_/g, ' ')}
               {why ? `: ${why}` : ''}
             </li>
@@ -256,6 +258,7 @@ export function PatchCard({
   );
   const judge = patch.judge;
   const drops = specDrops(patch);
+  const reason = statusReason(patch);
 
   return (
     <article
@@ -339,6 +342,11 @@ export function PatchCard({
         )}
       </div>
 
+      {reason && (
+        <p className="text-[11.5px]" role="status" data-status-reason style={{ color: 'var(--color-warning)' }}>
+          Why {statusLabel(patch.status)}: {reason}
+        </p>
+      )}
       {failed.some((c) => c.detail) && (
         <ul className="flex flex-col gap-0.5 text-[11.5px]" style={{ color: 'var(--color-error)' }}>
           {failed

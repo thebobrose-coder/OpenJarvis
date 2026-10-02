@@ -163,6 +163,25 @@ export const needsOperator = (s: FixStatus) => isWaiting(s) || s === 'confirm';
 /** The writer's own history entries (v1.3.3), shown as warnings. */
 export const WRITER_EVENTS = new Set(['refused', 'failed_apply', 'revert_blocked']);
 
+type HistoryEntry = Patch['history'][number];
+
+/** A writer entry: one of its own events, or, as the live writer records a
+ * refusal, a status change whose note says the writer refused it. */
+export const isWriterEntry = (h: HistoryEntry) =>
+  WRITER_EVENTS.has(h.status) || /^the writer refused/i.test(h.note ?? '');
+
+/** Why a card is in its status when its checks don't say: the latest
+ * history note on an invalid card with no failed check, or on a writer
+ * entry. Otherwise null. */
+export function statusReason(patch: Pick<Patch, 'status' | 'validator' | 'history'>): string | null {
+  const last = patch.history[patch.history.length - 1];
+  const why = last && (last.reason ?? last.note);
+  if (!why) return null;
+  if (isWriterEntry(last)) return why;
+  if (patch.status === 'invalid' && patch.validator.checks.every((c) => c.passed)) return why;
+  return null;
+}
+
 /** An invalid patch whose only failed check is the judge: the operator may
  * approve it over the judge (v1.3.2, 0011 A6). The deterministic checks stay
  * binding, so any other failed check rules it out. */

@@ -7,6 +7,7 @@ import {
   fixRequest,
   judgeOnlyInvalid,
   specDrops,
+  statusReason,
   type CatalogFixes,
   type ClassStats,
   type FixStatus,
@@ -550,7 +551,7 @@ describe('v1.3.3: confirm, writer, revert, tier evidence', () => {
     expect(classConfirmable(g, {}).map((p) => p.id)).toEqual([ids(1), ids(2)]);
     expect(classConfirmNotes(g, {}, blocked)).toEqual([
       'Spot-check: confirmed 2 of 5. Confirm one at a time until it passes.',
-      '1 figure-dropping fix is still unconfirmed; confirm them one at a time.',
+      '1 figure-dropping fix is waiting; confirm those one at a time.',
       '1 review-only fix needs a single confirm.',
     ]);
     // The attributes of the button whose own text is "Confirm these N".
@@ -565,6 +566,10 @@ describe('v1.3.3: confirm, writer, revert, tier evidence', () => {
     expect(confirmButton(open)).not.toBeNull();
     expect(confirmButton(open)).not.toContain('disabled=""');
     expect(open).not.toContain('Spot-check: confirmed');
+    const counted = classConfirmNotes(g, {}, cls({ spot_check: { confirmed: 26, required: 5, passed: false } }));
+    expect(counted[0]).toBe(
+      'Spot-check: confirmed 26 of 5, but each figure-dropping approval must also be confirmed one at a time.',
+    );
   });
 
   it('in a class still in its spot-check, figure-dropping and review-only confirms sort first', () => {
@@ -666,6 +671,41 @@ describe('v1.3.3: confirm, writer, revert, tier evidence', () => {
     expect(html).toContain('Dropped under judge flag: 98%, 99%');
     expect(html).toMatch(/data-drop="judge"[^>]*>\(98-99%\)</);
     expect(html).toMatch(/data-drop="finding"[^>]*>1000</);
+  });
+});
+
+describe('why a card is in its status', () => {
+  const refused = 'the writer refused it: checks failed: sample reason';
+  const hist = (...entries: [string, string?][]) =>
+    entries.map(([status, note], i) => ({ status, at: `2026-10-02T1${i}:00:00Z`, note: note ?? null }));
+
+  it('shows the latest note on an invalid card with no failed check', () => {
+    const p = patch(ids(1), 'invalid', {
+      validator: { passed: true, checks: [{ name: 'specs', passed: true }, { name: 'judge', passed: true }] },
+      history: hist(['proposed'], ['approved'], ['invalid', refused]),
+    });
+    expect(statusReason(p)).toBe(refused);
+    const html = card(p);
+    expect(html).toContain(`Why invalid: ${refused}`);
+    expect(html).toContain('<details open=""');
+    expect(html).toContain('data-writer-entry="true"');
+  });
+
+  it('stays quiet when the failed checks already explain it', () => {
+    const p = patch(ids(1), 'invalid', { history: hist(['proposed'], ['invalid', 'checks failed']) });
+    expect(statusReason(p)).toBeNull();
+    expect(card(p)).not.toContain('data-status-reason');
+  });
+
+  it('keeps a superseded refusal in a closed history, highlighted', () => {
+    const p = patch(ids(1), 'verified', {
+      history: hist(['approved'], ['invalid', refused], ['approved', 'back to approved'], ['applied'], ['verified']),
+    });
+    expect(statusReason(p)).toBeNull();
+    const html = card(p);
+    expect(html).not.toContain('data-status-reason');
+    expect(html).not.toContain('<details open=""');
+    expect(html).toContain('data-writer-entry="true"');
   });
 });
 
