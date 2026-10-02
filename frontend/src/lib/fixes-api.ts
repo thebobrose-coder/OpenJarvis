@@ -1,7 +1,7 @@
 /**
  * Catalog fixes: Hermes's proposed product-copy fixes and the operator's
  * decisions on them (hq/contracts/openjarvis-hermes.md v1.3 §2, "Catalog
- * fixes"). The feed is proxied like the other ecom feeds; the decision POSTs
+ * fixes", through v1.3.2). The feed is proxied like the other ecom feeds; the decision POSTs
  * go to /api/commerce/fixes, where the backend adds the operator token. The
  * token never reaches this code. In P1 nothing is written to Shopify.
  */
@@ -78,11 +78,19 @@ export interface Patch {
   history: { status: string; at: string; note?: string | null }[];
   applied: { at: string; snapshot_id: string } | null;
   verified: { at: string; by: string } | null;
+  /** v1.3.2 (0011 A6): the operator approved this over a judge flag. */
+  judge_overridden?: boolean;
+  /** v1.3.2 (A7): the specs check dropped a figure under a judge flag, so
+   * this patch is never auto-applied and stays out of class approvals. */
+  review_only?: boolean;
 }
 
 export interface ClassStats extends FixClass {
+  /** v1.3.2 (A8): single, unedited, non-override approvals only. */
   streak: number;
   approvals: number;
+  /** v1.3.2 (A8): approvals through "Approve these N"; never in the streak. */
+  bulk_approvals?: number;
   edits: number;
   rejects: number;
   reverts: number;
@@ -126,6 +134,52 @@ export function actionsFor(status: FixStatus): FixAction[] {
 
 export const isWaiting = (s: FixStatus) => s === 'proposed' || s === 'invalid';
 
+/** An invalid patch whose only failed check is the judge: the operator may
+ * approve it over the judge (v1.3.2, 0011 A6). The deterministic checks stay
+ * binding, so any other failed check rules it out. */
+export function judgeOnlyInvalid(patch: Pick<Patch, 'status' | 'validator' | 'judge'>): boolean {
+  if (patch.status !== 'invalid') return false;
+  const failed = patch.validator.checks.filter((c) => !c.passed);
+  if (failed.length) return failed.every((c) => c.name === 'judge');
+  return patch.judge?.verdict === 'finding';
+}
+
+/** The specs check's figures, by why they were dropped (0011 A4, A7):
+ * `finding` ones a linked finding quotes, `judge` ones under a judge flag,
+ * `unexempt` ones the check failed on. */
+export interface SpecDrops {
+  finding: string[];
+  judge: string[];
+  unexempt: string[];
+}
+
+const figures = (list: string) =>
+  list
+    .split(',')
+    .map((f) => f.trim())
+    .filter(Boolean);
+
+export function specDrops(patch: Pick<Patch, 'validator'>): SpecDrops {
+  const out: SpecDrops = { finding: [], judge: [], unexempt: [] };
+  const detail = patch.validator.checks.find((c) => c.name === 'specs')?.detail ?? '';
+  for (const m of detail.matchAll(/dropped(?: under (judge flag|finding [^:;]*))?:\s*([^;]*)/g)) {
+    const kind = !m[1] ? 'unexempt' : m[1] === 'judge flag' ? 'judge' : 'finding';
+    out[kind].push(...figures(m[2]));
+  }
+  return out;
+}
+
+/** The bridge's approve-class refusal reasons (v1.3.1, plus v1.3.3's
+ * `review_only`), in the operator's words. */
+export const REFUSAL_REASON: Record<string, string> = {
+  unknown: 'not in the feed',
+  class: 'not in this class',
+  status: 'already decided or still recording',
+  changed: 'changed since shown',
+  store_unavailable: 'store unavailable',
+  review_only: 'review only: approve it on its own',
+};
+
 export interface FixRequest {
   path: string;
   body?: unknown;
@@ -143,12 +197,19 @@ const cleanNote = (note?: string) => {
 export function fixRequest(
   action: FixAction,
   patch: Pick<Patch, 'id' | 'patch_sha256'>,
-  opts: { note?: string; changes?: { field: string; after: string }[] } = {},
+  opts: { note?: string; changes?: { field: string; after: string }[]; overJudge?: boolean } = {},
 ): FixRequest {
   const path = `/api/commerce/fixes/${patch.id}/${action}`;
   switch (action) {
     case 'approve':
-      return { path, body: { patch_sha256: patch.patch_sha256, ...cleanNote(opts.note) } };
+      return {
+        path,
+        body: {
+          patch_sha256: patch.patch_sha256,
+          ...(opts.overJudge ? { over_judge: true } : {}),
+          ...cleanNote(opts.note),
+        },
+      };
     case 'edit':
       return {
         path,

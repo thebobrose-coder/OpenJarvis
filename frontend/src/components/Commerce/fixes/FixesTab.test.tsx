@@ -5,6 +5,8 @@ import {
   actionsFor,
   approveClassRequest,
   fixRequest,
+  judgeOnlyInvalid,
+  specDrops,
   type CatalogFixes,
   type FixStatus,
   type Patch,
@@ -14,8 +16,19 @@ import type { FeedStates } from '../../../hooks/useCommerceData';
 import { CommerceView, type FixesProps } from '../CommerceView';
 import { ALL_STORES } from '../format';
 import { DiffBody } from './FieldDiff';
-import { FixesTab, P1_BANNER, classApprovable, groupPatches, sortPatches } from './FixesTab';
-import { PatchCard } from './PatchCard';
+import {
+  BULK_NO_STREAK,
+  FixesTab,
+  P1_BANNER,
+  STREAK_EXPLAINED,
+  classApprovable,
+  classConfirmText,
+  classReviewOnly,
+  groupPatches,
+  refusalText,
+  sortPatches,
+} from './FixesTab';
+import { PatchCard, REVIEW_ONLY_TITLE, type CardPanel } from './PatchCard';
 import { diffWords, droppedNumbers, htmlToText } from './diff';
 
 // Neutral fixtures only: this repo is public.
@@ -75,13 +88,30 @@ function feed(patches: Patch[], over: Partial<CatalogFixes> = {}): CatalogFixes 
   };
 }
 
-function card(p: Patch) {
+// An invalid patch that also failed a deterministic check.
+const specsFailed = (p: Patch): Patch => ({
+  ...p,
+  validator: {
+    passed: false,
+    checks: [{ name: 'specs', passed: false, detail: 'dropped: 1000 lm' }, ...p.validator.checks.slice(1)],
+  },
+});
+
+const flagged = {
+  model: 'judge-model',
+  judge_version: '1',
+  verdict: 'finding' as const,
+  quote: 'rated at 1000 lm',
+  reason: 'rule 4: unverified rating',
+};
+
+function card(p: Patch, panel: CardPanel = null) {
   return renderToStaticMarkup(
     <PatchCard
       patch={p}
       storeName="Alpha"
       focused={false}
-      panel={null}
+      panel={panel}
       onPanel={() => {}}
       onFocus={() => {}}
       onDecide={() => {}}
@@ -142,12 +172,87 @@ describe('PatchCard', () => {
     expect(html).toContain('Sample Light');
   });
 
-  it('offers only Edit on an invalid patch, and shows why it failed', () => {
-    const html = card(patch(ids(1), 'invalid'));
+  it('offers only Edit on an invalid patch that failed a deterministic check, and shows why', () => {
+    const html = card(specsFailed(patch(ids(1), 'invalid')));
     expect(html).toContain('data-actions="edit"');
     expect(html).not.toContain('Approve');
     expect(html).not.toContain('Reject');
     expect(html).toContain('claim remains');
+    expect(html).toContain('dropped: 1000 lm');
+  });
+
+  it('offers "Approve over judge" only on judge-only invalid patches, with the flag beside it', () => {
+    const judgeOnly = patch(ids(1), 'invalid', { judge: flagged });
+    expect(judgeOnlyInvalid(judgeOnly)).toBe(true);
+    const html = card(judgeOnly);
+    expect(html).toContain('Approve over judge');
+    expect(html).toContain('Edit');
+    expect(html).toContain('data-judge-flag');
+    expect(html).toContain('“rated at 1000 lm”');
+    expect(html).toContain('rule 4: unverified rating');
+    for (const p of [
+      specsFailed(judgeOnly),
+      patch(ids(2), 'proposed', { judge: flagged }),
+      patch(ids(3), 'approved', { judge: flagged }),
+    ]) {
+      expect(judgeOnlyInvalid(p)).toBe(false);
+      expect(card(p)).not.toContain('Approve over judge');
+    }
+  });
+
+  it('confirms an approval over the judge inline, showing the flag', () => {
+    const html = card(patch(ids(1), 'invalid', { judge: flagged }), 'over-judge');
+    expect(html).toContain('Confirm: approve over judge');
+    expect(html).toContain('“rated at 1000 lm”');
+    expect(html).not.toContain('data-actions');
+  });
+
+  it('shows "approved over judge" and "review only" as chips, not errors', () => {
+    const over = card(
+      patch(ids(1), 'approved', {
+        judge: flagged,
+        judge_overridden: true,
+        edited: true,
+        validator: {
+          passed: false,
+          checks: [
+            { name: 'specs', passed: true },
+            { name: 'judge', passed: false, detail: 'claim remains' },
+          ],
+        },
+      }),
+    );
+    expect(over).toContain('approved over judge');
+    expect(over).not.toContain('claim remains</li>');
+    const review = card(patch(ids(2), 'proposed', { review_only: true }));
+    expect(review).toContain('review only: never auto-applied');
+    expect(review).toContain(REVIEW_ONLY_TITLE);
+    expect(card(patch(ids(3), 'proposed'))).not.toContain('review only');
+  });
+
+  it('boxes figures dropped under a judge flag in the diff', () => {
+    const p = patch(ids(1), 'proposed', {
+      review_only: true,
+      changes: [
+        {
+          field: 'descriptionHtml',
+          before: '<p>Rated 99% and 1000 lm.</p>',
+          before_sha256: 'b'.repeat(64),
+          after: '<p>Rated 1000 lm.</p>',
+        },
+      ],
+      validator: {
+        passed: true,
+        checks: [
+          { name: 'specs', passed: true, detail: `ok: dropped under finding ${'f'.repeat(32)}: 5 W; dropped under judge flag: 99%` },
+        ],
+      },
+    });
+    expect(specDrops(p)).toEqual({ finding: ['5 W'], judge: ['99%'], unexempt: [] });
+    expect(specDrops(specsFailed(p))).toEqual({ finding: [], judge: [], unexempt: ['1000 lm'] });
+    const html = card(p);
+    expect(html).toMatch(/data-drop="judge"[^>]*>99%</);
+    expect(html).toContain('dashed');
   });
 
   it('offers Revert only for applied, verified and failed-verify', () => {
@@ -212,6 +317,34 @@ describe('decisions', () => {
     expect(fixRequest('reject', p).body).toEqual({});
   });
 
+  it('"Approve over judge" sends over_judge: true with the displayed hash', () => {
+    const p = patch(ids(7), 'invalid', { judge: flagged });
+    expect(fixRequest('approve', p, { overJudge: true }).body).toEqual({ patch_sha256: p.patch_sha256, over_judge: true });
+    expect(fixRequest('approve', p).body).not.toHaveProperty('over_judge');
+  });
+
+  it('a class approval leaves review-only fixes out and says how many', () => {
+    const g = groupPatches(
+      sortPatches([
+        patch(ids(1), 'proposed'),
+        patch(ids(2), 'proposed', { review_only: true }),
+        patch(ids(3), 'proposed', { review_only: true }),
+      ]),
+    )[0];
+    expect(classApprovable(g, {}).map((p) => p.id)).toEqual([ids(1)]);
+    expect(classReviewOnly(g, {})).toBe(2);
+    expect(classConfirmText(2)).toBe(`${BULK_NO_STREAK} 2 review-only fixes need a single approval.`);
+    expect(classConfirmText(1)).toContain('1 review-only fix needs a single approval.');
+    expect(classConfirmText(0)).toBe('These approvals won’t count toward auto-apply.');
+    expect(tab(feed(g.patches))).toContain('Approve these 1');
+  });
+
+  it('shows a review_only refusal like the other refusal reasons', () => {
+    expect(refusalText({ id: ids(2), reason: 'review_only' })).toBe('000000 (review only: approve it on its own)');
+    expect(refusalText({ id: ids(2), reason: 'changed' })).toBe('000000 (changed since shown)');
+    expect(refusalText({ id: ids(2), reason: 'new_reason' })).toBe('000000 (new_reason)');
+  });
+
   it('a class approval lists exactly the visible proposed patches with their hashes', () => {
     const g = groupPatches(sortPatches([patch(ids(1), 'proposed'), patch(ids(2), 'invalid'), patch(ids(3), 'proposed')]))[0];
     const list = classApprovable(g, { [ids(3)]: { action: 'approve', at: 0, fromStatus: 'proposed', fromSha: '' } });
@@ -260,6 +393,16 @@ describe('FixesTab', () => {
     expect(sorted.map((p) => p.status)).toEqual(['proposed', 'invalid', 'approved', 'rejected']);
   });
 
+  it('puts waiting review-only fixes first within their class', () => {
+    const sorted = sortPatches([
+      patch(ids(1), 'proposed'),
+      patch(ids(2), 'approved', { review_only: true }),
+      patch(ids(3), 'invalid', { review_only: true }),
+      patch(ids(4), 'proposed', { review_only: true }),
+    ]);
+    expect(sorted.map((p) => p.id)).toEqual([ids(3), ids(4), ids(1), ids(2)]);
+  });
+
   it('shows the P1 banner, the writer state and a class group with its count', () => {
     const html = tab(feed([patch(ids(1), 'proposed'), patch(ids(2), 'proposed'), patch(ids(3), 'invalid')]));
     expect(html).toContain(P1_BANNER);
@@ -289,6 +432,8 @@ describe('FixesTab', () => {
       }),
     );
     expect(html).toContain('Eligible for auto-apply. That switch is an operator config change, not available here.');
+    expect(html).toContain(STREAK_EXPLAINED);
+    expect(html).toContain('>Bulk<');
     expect(html).not.toMatch(/set tier|promote|tier 1/i);
   });
 

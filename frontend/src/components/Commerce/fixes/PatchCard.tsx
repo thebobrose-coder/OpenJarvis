@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Pencil, RotateCcw, X } from 'lucide-react';
-import { actionsFor, type FixAction, type FixStatus, type Patch } from '../../../lib/fixes-api';
+import { Check, Pencil, RotateCcw, ShieldAlert, X } from 'lucide-react';
+import { actionsFor, judgeOnlyInvalid, specDrops, type FixAction, type FixStatus, type Patch } from '../../../lib/fixes-api';
 import type { PendingFix } from '../../../hooks/useCatalogFixes';
 import { Chip, ExtIcon, ExtLink, SmallButton, type Tone } from '../../shared/ui';
 import { shortDateTime } from '../format';
@@ -25,9 +25,12 @@ const PENDING_LABEL: Record<FixAction, string> = {
   revert: 'revert requested',
 };
 
-export type CardPanel = 'edit' | 'reject' | 'revert' | null;
+export type CardPanel = 'edit' | 'reject' | 'revert' | 'over-judge' | null;
 
-export type DecideOpts = { note?: string; changes?: { field: string; after: string }[] };
+export type DecideOpts = { note?: string; changes?: { field: string; after: string }[]; overJudge?: boolean };
+
+export const REVIEW_ONLY_TITLE =
+  'A judge flag allowed a spec to be dropped from this fix, so it is never auto-applied and is approved one at a time.';
 
 const textareaStyle: React.CSSProperties = {
   background: 'var(--color-bg)',
@@ -68,6 +71,15 @@ function NoteConfirm({
       </SmallButton>
       <SmallButton onClick={onCancel}>Cancel</SmallButton>
     </div>
+  );
+}
+
+/** The judge's flag, shown where the operator decides to override it. */
+function JudgeFlag({ judge }: { judge: NonNullable<Patch['judge']> }) {
+  return (
+    <span className="text-[11.5px]" data-judge-flag style={{ color: 'var(--color-warning)' }}>
+      Judge: {judge.quote && <span className="italic">“{judge.quote}”</span>} {judge.reason}
+    </span>
   );
 }
 
@@ -174,8 +186,15 @@ export function PatchCard({
   }, [focused]);
 
   const actions = pending ? [] : actionsFor(patch.status);
-  const failed = patch.validator.checks.filter((c) => !c.passed);
+  const overJudge = !pending && judgeOnlyInvalid(patch);
+  const overridden = !!patch.judge_overridden;
+  // An approval over the judge is the operator's call, not an error (A6).
+  // With Approve over judge offered, the flag shows beside that button instead.
+  const failed = patch.validator.checks.filter(
+    (c) => !c.passed && !((overridden || overJudge) && c.name === 'judge'),
+  );
   const judge = patch.judge;
+  const drops = specDrops(patch);
 
   return (
     <article
@@ -194,6 +213,16 @@ export function PatchCard({
         <Chip tone={STATUS_TONE[patch.status] ?? 'neutral'}>{patch.status}</Chip>
         {pending && <Chip tone="muted">{PENDING_LABEL[pending.action]} · recording…</Chip>}
         {patch.edited && <Chip tone="neutral" title="The operator's text replaced the model's">edited</Chip>}
+        {overridden && (
+          <Chip tone="neutral" title="The operator approved this over the judge's flag">
+            approved over judge
+          </Chip>
+        )}
+        {patch.review_only && (
+          <Chip tone="warning" title={REVIEW_ONLY_TITLE}>
+            review only: never auto-applied
+          </Chip>
+        )}
         <span className="text-[13px] font-medium" style={{ color: 'var(--color-text)' }}>
           <ExtLink url={patch.admin_url} title="Open in Shopify admin">
             {patch.product_title}
@@ -226,7 +255,11 @@ export function PatchCard({
           </button>
         ))}
         {patch.validator.checks.map((c) => (
-          <Chip key={c.name} tone={c.passed ? 'success' : 'error'} title={c.detail}>
+          <Chip
+            key={c.name}
+            tone={c.passed ? 'success' : overridden && c.name === 'judge' ? 'warning' : 'error'}
+            title={c.detail}
+          >
             {c.passed ? '✓' : '✗'} {c.name}
           </Chip>
         ))}
@@ -251,14 +284,14 @@ export function PatchCard({
             ))}
         </ul>
       )}
-      {judge?.verdict === 'finding' && (judge.quote || judge.reason) && (
+      {judge?.verdict === 'finding' && (judge.quote || judge.reason) && !overJudge && (
         <p className="text-[11.5px]" style={{ color: 'var(--color-warning)' }}>
           Judge: {judge.quote && <span className="italic">“{judge.quote}”</span>} {judge.reason}
         </p>
       )}
 
       {patch.changes.map((c) => (
-        <FieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} />
+        <FieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} drops={drops} />
       ))}
 
       {patch.note && (
@@ -281,6 +314,16 @@ export function PatchCard({
           onConfirm={(note) => onDecide('reject', { note })}
           onCancel={() => onPanel(null)}
         />
+      ) : panel === 'over-judge' && overJudge && judge ? (
+        <div className="flex flex-col gap-1.5">
+          <JudgeFlag judge={judge} />
+          <NoteConfirm
+            label="Confirm: approve over judge"
+            tone="warning"
+            onConfirm={(note) => onDecide('approve', { note, overJudge: true })}
+            onCancel={() => onPanel(null)}
+          />
+        </div>
       ) : panel === 'revert' && actions.includes('revert') ? (
         <NoteConfirm
           label="Revert"
@@ -300,6 +343,18 @@ export function PatchCard({
               <SmallButton onClick={() => onPanel('edit')} title="Edit, then approve (e)">
                 <Pencil size={11} /> Edit
               </SmallButton>
+            )}
+            {overJudge && (
+              <>
+                <SmallButton
+                  tone="warning"
+                  onClick={() => onPanel('over-judge')}
+                  title="Every deterministic check passed; only the judge flagged it. No keyboard shortcut."
+                >
+                  <ShieldAlert size={11} /> Approve over judge
+                </SmallButton>
+                {judge && <JudgeFlag judge={judge} />}
+              </>
             )}
             {actions.includes('reject') && (
               <SmallButton onClick={() => onPanel('reject')} title="Reject; final (r)">

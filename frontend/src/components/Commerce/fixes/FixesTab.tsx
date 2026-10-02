@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCheck, Pause, Play, Wrench, X } from 'lucide-react';
 import {
   FIX_STATUSES,
+  REFUSAL_REASON,
   isWaiting,
   type CatalogFixes,
   type ClassStats,
@@ -21,11 +22,15 @@ export const P1_BANNER = 'Proposals only. Decisions are recorded; nothing is wri
 
 const ORDER: Record<string, number> = { proposed: 0, invalid: 1 };
 
-/** Proposed first, then invalid, then the rest by most recently decided. */
+// A waiting review-only fix needs a single approval, so it leads (v1.3.2 A7).
+const rank = (p: Patch) => (p.review_only && isWaiting(p.status) ? -1 : (ORDER[p.status] ?? 2));
+
+/** Waiting review-only fixes first, then proposed, then invalid, then the
+ * rest by most recently decided. */
 export function sortPatches(patches: Patch[]): Patch[] {
   return [...patches].sort((a, b) => {
-    const oa = ORDER[a.status] ?? 2;
-    const ob = ORDER[b.status] ?? 2;
+    const oa = rank(a);
+    const ob = rank(b);
     if (oa !== ob) return oa - ob;
     if (oa === 2) return (b.decided_at ?? '').localeCompare(a.decided_at ?? '');
     return a.created_at.localeCompare(b.created_at);
@@ -52,10 +57,31 @@ export function groupPatches(sorted: Patch[]): FixGroup[] {
   return [...groups.values()];
 }
 
-/** The class approval: only the visible, proposed, not-yet-decided patches. */
+const openProposed = (group: FixGroup, pending: Record<string, PendingFix>) =>
+  group.patches.filter((p) => p.status === 'proposed' && !pending[p.id]);
+
+/** The class approval: only the visible, proposed, not-yet-decided patches.
+ * Review-only ones need a single approval each (v1.3.2 A7), so stay out. */
 export function classApprovable(group: FixGroup, pending: Record<string, PendingFix>): Patch[] {
-  return group.patches.filter((p) => p.status === 'proposed' && !pending[p.id]);
+  return openProposed(group, pending).filter((p) => !p.review_only);
 }
+
+/** Proposed review-only fixes the class approval leaves out. */
+export const classReviewOnly = (group: FixGroup, pending: Record<string, PendingFix>) =>
+  openProposed(group, pending).filter((p) => p.review_only).length;
+
+export const BULK_NO_STREAK = 'These approvals won’t count toward auto-apply.';
+export const STREAK_EXPLAINED = 'Counts only fixes approved one at a time, unedited.';
+
+/** What the class-approval confirm says beside its button. */
+export function classConfirmText(reviewOnly: number): string {
+  if (!reviewOnly) return BULK_NO_STREAK;
+  const n = reviewOnly === 1 ? '1 review-only fix needs' : `${reviewOnly} review-only fixes need`;
+  return `${BULK_NO_STREAK} ${n} a single approval.`;
+}
+
+export const refusalText = (r: { id: string; reason: string }) =>
+  `${r.id.slice(0, 6)} (${REFUSAL_REASON[r.reason] ?? r.reason})`;
 
 export const waitingCount = (feed: CatalogFixes | null) =>
   feed ? (feed.counts.proposed ?? 0) + (feed.counts.invalid ?? 0) : 0;
@@ -107,14 +133,17 @@ function ClassPanel({ classes, storeNames }: { classes: ClassStats[]; storeNames
   return (
     <DashboardPanel icon={CheckCheck} title="Fix classes" tag="Read-only" size="full">
       {classes.length === 0 ? (
-        <Quiet>No class history yet. Streaks start with the first decisions.</Quiet>
+        <Quiet>No fix classes yet.</Quiet>
       ) : (
         <div className="overflow-x-auto">
+          <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
+            Streak: {STREAK_EXPLAINED} Bulk: approvals through “Approve these N”, which don’t count toward it.
+          </p>
           <table className="w-full text-[12px]">
             <thead>
               <tr className="text-left" style={{ color: 'var(--color-text-tertiary)' }}>
-                {['Store', 'Rule', 'Field', 'Streak', 'Approvals', 'Edits', 'Rejects', 'Reverts', 'Tier', ''].map((h) => (
-                  <th key={h} className="font-normal pr-3 pb-1">
+                {['Store', 'Rule', 'Field', 'Streak', 'Bulk', 'Approvals', 'Edits', 'Rejects', 'Reverts', 'Tier', ''].map((h) => (
+                  <th key={h} className="font-normal pr-3 pb-1" title={h === 'Streak' ? STREAK_EXPLAINED : undefined}>
                     {h}
                   </th>
                 ))}
@@ -127,6 +156,7 @@ function ClassPanel({ classes, storeNames }: { classes: ClassStats[]; storeNames
                   <td className="pr-3">{ruleLabel(c.rule)}</td>
                   <td className="pr-3">{c.field}</td>
                   <td className="pr-3 tabular-nums">{num(c.streak)}</td>
+                  <td className="pr-3 tabular-nums">{num(c.bulk_approvals ?? 0)}</td>
                   <td className="pr-3 tabular-nums">{num(c.approvals)}</td>
                   <td className="pr-3 tabular-nums">{num(c.edits)}</td>
                   <td className="pr-3 tabular-nums">{num(c.rejects)}</td>
@@ -311,6 +341,7 @@ export function FixesTab({
             ) : (
               groups.map((g) => {
                 const approvable = classApprovable(g, pending);
+                const reviewOnly = classReviewOnly(g, pending);
                 const result = classResults[g.key];
                 return (
                   <section key={g.key} className="flex flex-col gap-2.5">
@@ -326,11 +357,16 @@ export function FixesTab({
                               <CheckCheck size={11} /> Confirm: approve these {approvable.length}
                             </SmallButton>
                             <SmallButton onClick={() => setConfirmClass(null)}>Cancel</SmallButton>
+                            <span className="text-[11px]" role="note" style={{ color: 'var(--color-text-secondary)' }}>
+                              {classConfirmText(reviewOnly)}
+                            </span>
                           </>
                         ) : (
                           <SmallButton
                             onClick={() => setConfirmClass(g.key)}
-                            title="Approves exactly the listed proposed fixes, each as displayed. Not a tier change."
+                            title={`Approves exactly the listed proposed fixes, each as displayed. Not a tier change.${
+                              reviewOnly ? ` Leaves out ${reviewOnly} review-only.` : ''
+                            }`}
                           >
                             <CheckCheck size={11} /> Approve these {approvable.length}
                           </SmallButton>
@@ -340,7 +376,7 @@ export function FixesTab({
                       <p className="text-[11.5px]" role="status" style={{ color: 'var(--color-text-secondary)' }}>
                         Approved {result.approved.length}
                         {result.refused.length > 0 &&
-                          `; refused ${result.refused.length}: ${result.refused.map((r) => `${r.id.slice(0, 6)} (${r.reason})`).join(', ')}`}
+                          `; refused ${result.refused.length}: ${result.refused.map(refusalText).join(', ')}`}
                       </p>
                     )}
                     {g.patches.map((p) => (

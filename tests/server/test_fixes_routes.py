@@ -71,6 +71,36 @@ def test_approve_sends_the_displayed_hash_with_the_token():
     assert json.loads(seen[0].content) == {"patch_sha256": _SHA}
 
 
+def test_approve_over_judge_forwards_the_flag():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(
+            f"/api/commerce/fixes/{_ID}/approve",
+            json={"patch_sha256": _SHA, "over_judge": True, "note": "spec is right"},
+        )
+    assert resp.status_code == 202
+    assert json.loads(seen[0].content) == {
+        "patch_sha256": _SHA,
+        "over_judge": True,
+        "note": "spec is right",
+    }
+
+
+def test_approve_class_review_only_refusal_passes_through():
+    reply = {"approved": [], "refused": [{"id": _ID, "reason": "review_only"}]}
+    client, patcher, _ = _client(lambda req: httpx.Response(202, json=reply))
+    body = {
+        "store": "alpha",
+        "rule": "4",
+        "field": "descriptionHtml",
+        "patches": [{"id": _ID, "patch_sha256": _SHA}],
+    }
+    with patcher:
+        resp = client.post("/api/commerce/fixes/approve-class", json=body)
+    assert resp.status_code == 202
+    assert resp.json() == reply
+
+
 @pytest.mark.parametrize(
     "status,body",
     [

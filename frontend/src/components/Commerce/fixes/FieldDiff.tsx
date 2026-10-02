@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Chip, Segmented } from '../../shared/ui';
-import { NUMERIC, diffWords, droppedNumbers, htmlToText, type DiffOp } from './diff';
+import type { SpecDrops } from '../../../lib/fixes-api';
+import { NUMERIC, diffWords, droppedNumbers, htmlToText, normNum, type DiffOp } from './diff';
 
 type Mode = 'text' | 'html';
 
@@ -21,22 +22,44 @@ const STYLE: Record<DiffOp['type'], React.CSSProperties> = {
   },
 };
 
-/** Changed words that carry a figure get a box, so a dropped spec shows. */
-function withFigures(text: string, type: DiffOp['type']): ReactNode {
+/** Why the specs check let a figure go (0011 A4, A7), by normalized figure. */
+type DropMarks = Map<string, 'finding' | 'judge'>;
+
+export function dropMarks(drops?: SpecDrops): DropMarks {
+  const marks: DropMarks = new Map();
+  for (const f of drops?.finding ?? []) marks.set(normNum(f), 'finding');
+  for (const f of drops?.judge ?? []) marks.set(normNum(f), 'judge');
+  return marks;
+}
+
+const DROP_TITLE = {
+  finding: 'Dropped because a linked finding quotes it',
+  judge: 'Dropped under a judge flag: this fix is review-only',
+};
+
+/** Changed words that carry a figure get a box, so a dropped spec shows.
+ * A figure dropped under a judge flag gets a dashed box and says so. */
+function withFigures(text: string, type: DiffOp['type'], marks: DropMarks): ReactNode {
   if (type === 'eq' || !NUMERIC.test(text)) return text;
-  return text.split(/(\s+)/).map((t, i) =>
-    NUMERIC.test(t) ? (
+  return text.split(/(\s+)/).map((t, i) => {
+    if (!NUMERIC.test(t)) return t;
+    const why = type === 'del' ? marks.get(normNum(t)) : undefined;
+    return (
       <strong
         key={i}
         className="rounded px-0.5"
-        style={{ outline: `1.5px solid ${type === 'del' ? 'var(--color-error)' : 'var(--color-success)'}` }}
+        data-drop={why}
+        title={why && DROP_TITLE[why]}
+        style={{
+          outline: `1.5px ${why === 'judge' ? 'dashed' : 'solid'} ${
+            why === 'judge' ? 'var(--color-warning)' : type === 'del' ? 'var(--color-error)' : 'var(--color-success)'
+          }`,
+        }}
       >
         {t}
       </strong>
-    ) : (
-      t
-    ),
-  );
+    );
+  });
 }
 
 function Folded({ text }: { text: string }) {
@@ -63,7 +86,18 @@ function Folded({ text }: { text: string }) {
 }
 
 /** Before vs after as one inline word diff. Text is never rendered as HTML. */
-export function DiffBody({ before, after, mode }: { before: string; after: string; mode: Mode }) {
+export function DiffBody({
+  before,
+  after,
+  mode,
+  drops,
+}: {
+  before: string;
+  after: string;
+  mode: Mode;
+  drops?: SpecDrops;
+}) {
+  const marks = useMemo(() => dropMarks(drops), [drops]);
   const ops = useMemo(
     () => (mode === 'text' ? diffWords(htmlToText(before), htmlToText(after)) : diffWords(before, after)),
     [before, after, mode],
@@ -85,7 +119,7 @@ export function DiffBody({ before, after, mode }: { before: string; after: strin
             <Folded key={i} text={op.text} />
           ) : (
             <span key={i} style={STYLE[op.type]}>
-              {withFigures(op.text, op.type)}
+              {withFigures(op.text, op.type, marks)}
             </span>
           ),
         )
@@ -113,11 +147,13 @@ export function FieldDiff({
   before,
   after,
   rationale,
+  drops,
 }: {
   field: string;
   before: string;
   after: string;
   rationale?: string;
+  drops?: SpecDrops;
 }) {
   const isHtml = field === 'descriptionHtml';
   const [mode, setMode] = useState<Mode>('text');
@@ -147,7 +183,7 @@ export function FieldDiff({
           {rationale}
         </p>
       )}
-      <DiffBody before={before} after={after} mode={isHtml ? mode : 'html'} />
+      <DiffBody before={before} after={after} mode={isHtml ? mode : 'html'} drops={drops} />
     </div>
   );
 }

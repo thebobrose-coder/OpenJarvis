@@ -210,7 +210,7 @@ function absorbWhitespace(ops: DiffOp[]): DiffOp[] {
 /** A token carrying a figure: a digit, possibly with a unit or separators. */
 export const NUMERIC = /\d/;
 
-const normNum = (t: string) => t.replace(/^[^\w]+|[^\w%°″"]+$/g, '').replace(/(\d),(?=\d{3}\b)/g, '$1').toLowerCase();
+export const normNum = (t: string) => t.replace(/^[^\w]+|[^\w%°″"]+$/g, '').replace(/(\d),(?=\d{3}\b)/g, '$1').toLowerCase();
 
 /** Figures in `before` that appear nowhere in `after` -- a dropped spec is
  * the main way a rewrite goes wrong, so these are called out. */

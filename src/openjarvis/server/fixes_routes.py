@@ -1,5 +1,5 @@
 """FastAPI routes for the Commerce page's Fixes tab -- the operator's
-decisions on Hermes's catalog fixes (hq/contracts/openjarvis-hermes.md v1.3
+decisions on Hermes's catalog fixes (hq/contracts/openjarvis-hermes.md v1.3.2
 §2, "Catalog fixes").
 
 The feed itself (`catalog_fixes`) is read through `/api/commerce/<feed>`
@@ -57,6 +57,9 @@ class NoteBody(BaseModel):
 
 class ApproveBody(NoteBody):
     patch_sha256: str
+    # v1.3.2 (0011 A6): approve an invalid patch whose only failed check is
+    # the judge. The bridge refuses it (409 status) on any other patch.
+    over_judge: bool = False
 
 
 class EditChange(BaseModel):
@@ -140,9 +143,12 @@ async def approve(fix_id: str, body: ApproveBody) -> JSONResponse:
     """Approve exactly the patch the operator saw (its displayed hash)."""
     _check_id(fix_id)
     _check_sha(body.patch_sha256)
+    payload: dict = {"patch_sha256": body.patch_sha256}
+    if body.over_judge:
+        payload["over_judge"] = True
     return await _post(
         f"/fixes/{fix_id}/approve",
-        _with_note({"patch_sha256": body.patch_sha256}, body.note),
+        _with_note(payload, body.note),
         _operator_headers(),
     )
 
