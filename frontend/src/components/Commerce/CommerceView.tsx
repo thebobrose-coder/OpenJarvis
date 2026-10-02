@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { Decision, RefreshTarget } from '../../lib/commerce-api';
 import type { FeedStates, PendingDecision, RefreshStatus } from '../../hooks/useCommerceData';
@@ -10,6 +11,28 @@ import { KpiStrip } from './KpiStrip';
 import { ProductsTable } from './ProductsTable';
 import { RecommendationsQueue } from './RecommendationsQueue';
 import { SeoHealthPanel } from './SeoHealthPanel';
+import { Segmented } from '../shared/ui';
+import type { CatalogFixesState } from '../../hooks/useCatalogFixes';
+import { FixesTab, waitingCount } from './fixes/FixesTab';
+
+export type CommerceTab = 'overview' | 'fixes';
+
+/** What the Fixes tab needs from useCatalogFixes. */
+export type FixesProps = Pick<
+  CatalogFixesState,
+  | 'data'
+  | 'loading'
+  | 'error'
+  | 'pending'
+  | 'cardNotes'
+  | 'paused'
+  | 'pausePending'
+  | 'decide'
+  | 'approveClass'
+  | 'setPaused'
+  | 'notice'
+  | 'clearNotice'
+>;
 
 export interface CommerceViewProps {
   feeds: FeedStates;
@@ -21,12 +44,16 @@ export interface CommerceViewProps {
   onDecide: (id: string, decision: Decision, note: string) => void;
   notice?: string | null;
   onClearNotice?: () => void;
+  /** Catalog fixes (contract v1.3); without it the page has no Fixes tab. */
+  fixes?: FixesProps;
+  initialTab?: CommerceTab;
 }
 
 /**
- * The Commerce page, top to bottom: header, KPIs, today's briefing, the
- * recommendations queue with its ledger, products, ads, SEO health and
- * compliance. Pure: everything comes in through props (see CommercePage).
+ * The Commerce page. Overview, top to bottom: header, KPIs, today's
+ * briefing, the recommendations queue with its ledger, products, ads, SEO
+ * health and compliance. Fixes: Hermes's catalog fixes to review. Pure:
+ * everything comes in through props (see CommercePage).
  */
 export function CommerceView({
   feeds,
@@ -38,7 +65,10 @@ export function CommerceView({
   onDecide,
   notice,
   onClearNotice,
+  fixes,
+  initialTab = 'overview',
 }: CommerceViewProps) {
+  const [tab, setTab] = useState<CommerceTab>(fixes ? initialTab : 'overview');
   const daily = feeds.ecom_daily.data;
   // Stores and their names come from ecom_daily; other feeds fall back to
   // their own lists if it hasn't run.
@@ -52,6 +82,15 @@ export function CommerceView({
     (feeds.ecom_products.data?.stores ?? []).flatMap((s) => s.products.map((p) => [p.id, p.title])),
   );
   const dailyState = feeds.ecom_daily;
+  const ledger = feeds.ecom_recommendations.data;
+  const recTitles = Object.fromEntries(
+    [...(ledger?.open ?? []), ...(ledger?.recent_decided ?? [])].map((i) => [i.id, i.title]),
+  );
+  const openRec = (id: string) => {
+    setTab('overview');
+    window.setTimeout(() => document.getElementById(`rec-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+  };
+  const waiting = waitingCount(fixes?.data ?? null);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -79,64 +118,101 @@ export function CommerceView({
         </div>
       )}
 
-      <div className="grid grid-cols-12 gap-4 mb-4">
-        <KpiStrip stores={selectedDaily} loading={dailyState.loading} error={dailyState.error} />
-      </div>
+      {fixes && (
+        <div className="mb-4">
+          <Segmented
+            ariaLabel="Commerce view"
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: 'overview', label: 'Overview' },
+              { value: 'fixes', label: waiting ? `Fixes (${waiting})` : 'Fixes' },
+            ]}
+          />
+        </div>
+      )}
 
-      <div className="grid grid-cols-12 gap-4 mb-4">
-        <BriefingPanel
-          briefing={feeds.ecom_briefing.data}
+      {tab === 'fixes' && fixes ? (
+        <FixesTab
+          feed={fixes.data}
+          loading={fixes.loading}
+          error={fixes.error}
+          pending={fixes.pending}
+          cardNotes={fixes.cardNotes}
+          paused={fixes.paused}
+          pausePending={fixes.pausePending}
           selectedStore={selectedStore}
           storeNames={storeNames}
-          refreshStatus={refreshStatus}
-          onRefresh={onRefresh}
-          loading={feeds.ecom_briefing.loading}
-          error={feeds.ecom_briefing.error}
+          recTitles={recTitles}
+          onDecide={fixes.decide}
+          onApproveClass={fixes.approveClass}
+          onPause={(p) => void fixes.setPaused(p)}
+          onOpenRec={openRec}
+          notice={fixes.notice}
+          onClearNotice={fixes.clearNotice}
         />
-      </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-12 gap-4 mb-4">
+            <KpiStrip stores={selectedDaily} loading={dailyState.loading} error={dailyState.error} />
+          </div>
 
-      <div className="grid grid-cols-12 gap-4 mb-4">
-        <RecommendationsQueue
-          ledger={feeds.ecom_recommendations.data}
-          pending={pending}
-          selectedStore={selectedStore}
-          onSelectStore={onSelectStore}
-          stores={storeRefs}
-          storeNames={storeNames}
-          productTitles={productTitles}
-          onDecide={onDecide}
-          loading={feeds.ecom_recommendations.loading}
-          error={feeds.ecom_recommendations.error}
-        />
-      </div>
+          <div className="grid grid-cols-12 gap-4 mb-4">
+            <BriefingPanel
+              briefing={feeds.ecom_briefing.data}
+              selectedStore={selectedStore}
+              storeNames={storeNames}
+              refreshStatus={refreshStatus}
+              onRefresh={onRefresh}
+              loading={feeds.ecom_briefing.loading}
+              error={feeds.ecom_briefing.error}
+            />
+          </div>
 
-      <div className="grid grid-cols-12 gap-4 mb-4">
-        <ProductsTable
-          products={feeds.ecom_products.data}
-          selectedStore={selectedStore}
-          currencyBySlug={currencyBySlug}
-          loading={feeds.ecom_products.loading}
-          error={feeds.ecom_products.error}
-        />
-      </div>
+          <div className="grid grid-cols-12 gap-4 mb-4">
+            <RecommendationsQueue
+              ledger={feeds.ecom_recommendations.data}
+              pending={pending}
+              selectedStore={selectedStore}
+              onSelectStore={onSelectStore}
+              stores={storeRefs}
+              storeNames={storeNames}
+              productTitles={productTitles}
+              onDecide={onDecide}
+              loading={feeds.ecom_recommendations.loading}
+              error={feeds.ecom_recommendations.error}
+            />
+          </div>
 
-      <div className="grid grid-cols-12 gap-4 mb-4">
-        <AdsPanel stores={selectedDaily} loading={dailyState.loading} error={dailyState.error} />
-        <SeoHealthPanel
-          seo={feeds.ecom_seo_health.data}
-          selectedStore={selectedStore}
-          loading={feeds.ecom_seo_health.loading}
-          error={feeds.ecom_seo_health.error}
-        />
-      </div>
+          <div className="grid grid-cols-12 gap-4 mb-4">
+            <ProductsTable
+              products={feeds.ecom_products.data}
+              selectedStore={selectedStore}
+              currencyBySlug={currencyBySlug}
+              loading={feeds.ecom_products.loading}
+              error={feeds.ecom_products.error}
+            />
+          </div>
 
-      <div className="grid grid-cols-12 gap-4 mb-10">
-        <CompliancePanel
-          findings={feeds.compliance_findings.data}
-          loading={feeds.compliance_findings.loading}
-          error={feeds.compliance_findings.error}
-        />
-      </div>
+          <div className="grid grid-cols-12 gap-4 mb-4">
+            <AdsPanel stores={selectedDaily} loading={dailyState.loading} error={dailyState.error} />
+            <SeoHealthPanel
+              seo={feeds.ecom_seo_health.data}
+              selectedStore={selectedStore}
+              loading={feeds.ecom_seo_health.loading}
+              error={feeds.ecom_seo_health.error}
+            />
+          </div>
+
+          <div className="grid grid-cols-12 gap-4 mb-10">
+            <CompliancePanel
+              findings={feeds.compliance_findings.data}
+              loading={feeds.compliance_findings.loading}
+              error={feeds.compliance_findings.error}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

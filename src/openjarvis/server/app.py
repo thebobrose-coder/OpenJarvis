@@ -24,6 +24,7 @@ from openjarvis.server.weather_routes import weather_router
 from openjarvis.server.hermes_router import hermes_usage_router
 from openjarvis.server.store_performance_routes import store_performance_router
 from openjarvis.server.commerce_routes import commerce_router
+from openjarvis.server.fixes_routes import fixes_router
 from openjarvis.server.bizdev_routes import bizdev_router
 from openjarvis.server.content_routes import content_router
 from openjarvis.server.voice_routes import voice_router
@@ -522,6 +523,7 @@ def create_app(
     app.include_router(day_ahead_router)
     app.include_router(weather_router)
     app.include_router(store_performance_router)
+    app.include_router(fixes_router)
     app.include_router(commerce_router)
     app.include_router(bizdev_router)
     app.include_router(content_router)

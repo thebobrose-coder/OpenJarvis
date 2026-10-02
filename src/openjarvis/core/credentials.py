@@ -63,8 +63,9 @@ TOOL_CREDENTIALS: dict[str, list[str]] = {
     "xmpp": ["XMPP_JID", "XMPP_PASSWORD"],
     "feishu": ["FEISHU_APP_ID", "FEISHU_APP_SECRET"],
     "nostr": ["NOSTR_PRIVATE_KEY"],
-    # Bearer for the local Hermes agent API (chat router pass-through).
-    "hermes": ["HERMES_API_KEY"],
+    # Bearer for the local Hermes agent API (chat router pass-through), and
+    # the path of the operator token file for the Commerce Fixes decisions.
+    "hermes": ["HERMES_API_KEY", "HERMES_FIX_TOKEN_FILE"],
 }
 
 
@@ -76,6 +77,7 @@ TOOL_CREDENTIALS: dict[str, list[str]] = {
 # and both listed keys only raise limits or result quality.
 OPTIONAL_TOOL_CREDENTIALS: dict[str, frozenset[str]] = {
     "web_search": frozenset({"TAVILY_API_KEY", "YOUDOTCOM_API_KEY"}),
+    "hermes": frozenset({"HERMES_FIX_TOKEN_FILE"}),
 }
 
 

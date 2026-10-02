@@ -40,6 +40,7 @@ FEEDS = frozenset(
         "ecom_briefing",
         "ecom_recommendations",
         "compliance_findings",
+        "catalog_fixes",  # v1.3; its decision routes are in fixes_routes.py
     }
 )
 # Refresh flags the bridge accepts for the ecom feeds (v0.6.1): the three
@@ -81,11 +82,15 @@ def _shape(payload: dict, age_seconds: int, stale: bool) -> dict:
     }
 
 
-async def _post(path: str, body: Any = None) -> JSONResponse:
+async def _post(
+    path: str, body: Any = None, headers: Optional[dict[str, str]] = None
+) -> JSONResponse:
     """POST to the bridge and pass its status and JSON body through."""
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
-            resp = await client.post(f"{HERMES_BRIDGE_URL}{path}", json=body)
+            resp = await client.post(
+                f"{HERMES_BRIDGE_URL}{path}", json=body, headers=headers
+            )
         try:
             content = resp.json()
         except ValueError:

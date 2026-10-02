@@ -112,6 +112,7 @@ export function RecommendationCard({
 
   return (
     <article
+      id={`rec-${item.id}`}
       className="flex flex-col gap-2 rounded-lg p-3"
       style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle, var(--color-border))' }}
     >
@@ -203,7 +204,7 @@ function RecentlyDecided({
         ) : (
           <ul className="flex flex-col gap-2">
             {items.map((i) => (
-              <li key={i.id} className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }}>
+              <li key={i.id} id={`rec-${i.id}`} className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }}>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Chip tone={STATUS_TONE[i.status] ?? 'neutral'}>{i.status}</Chip>
                   <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
