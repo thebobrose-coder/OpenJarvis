@@ -255,6 +255,16 @@ describe('PatchCard', () => {
     expect(html).toContain('dashed');
   });
 
+  it('boxes a dropped range when the specs check lists its ends', () => {
+    const p = patch(ids(1), 'proposed', {
+      changes: [
+        { field: 'descriptionHtml', before: '<p>Rated (98-99%) and 1000 lm.</p>', before_sha256: 'b'.repeat(64), after: '<p>Rated 1000 lm.</p>' },
+      ],
+      validator: { passed: true, checks: [{ name: 'specs', passed: true, detail: 'ok: dropped under judge flag: 98%, 99%' }] },
+    });
+    expect(card(p)).toMatch(/data-drop="judge"[^>]*>\(98-99%\)</);
+  });
+
   it('offers Revert only for applied, verified and failed-verify', () => {
     for (const s of FIX_STATUSES) {
       expect(card(patch(ids(1), s)).includes('Revert')).toBe(['applied', 'verified', 'failed-verify'].includes(s));

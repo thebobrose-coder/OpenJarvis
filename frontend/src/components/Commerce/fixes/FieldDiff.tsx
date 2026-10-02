@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Chip, Segmented } from '../../shared/ui';
 import type { SpecDrops } from '../../../lib/fixes-api';
-import { NUMERIC, diffWords, droppedNumbers, htmlToText, normNum, type DiffOp } from './diff';
+import { NUMERIC, diffWords, droppedNumbers, figureKeys, htmlToText, normNum, type DiffOp } from './diff';
 
 type Mode = 'text' | 'html';
 
@@ -43,7 +43,7 @@ function withFigures(text: string, type: DiffOp['type'], marks: DropMarks): Reac
   if (type === 'eq' || !NUMERIC.test(text)) return text;
   return text.split(/(\s+)/).map((t, i) => {
     if (!NUMERIC.test(t)) return t;
-    const why = type === 'del' ? marks.get(normNum(t)) : undefined;
+    const why = type === 'del' ? figureKeys(t).map((k) => marks.get(k)).find(Boolean) : undefined;
     return (
       <strong
         key={i}

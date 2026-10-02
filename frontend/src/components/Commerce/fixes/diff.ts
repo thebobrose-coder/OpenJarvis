@@ -212,6 +212,14 @@ export const NUMERIC = /\d/;
 
 export const normNum = (t: string) => t.replace(/^[^\w]+|[^\w%°″"]+$/g, '').replace(/(\d),(?=\d{3}\b)/g, '$1').toLowerCase();
 
+/** The figures one token can stand for. A range like "98-99%" counts as
+ * both ends with the shared unit, as the specs check lists them. */
+export function figureKeys(t: string): string[] {
+  const n = normNum(t);
+  const range = n.match(/^(\d[\d.]*)[-–](\d[\d.]*)(.*)$/);
+  return range ? [n, range[1] + range[3], range[2] + range[3]] : [n];
+}
+
 /** Figures in `before` that appear nowhere in `after` -- a dropped spec is
  * the main way a rewrite goes wrong, so these are called out. */
 export function droppedNumbers(before: string, after: string): string[] {
