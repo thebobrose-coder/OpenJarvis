@@ -56,8 +56,8 @@ no OpenJarvis agent, tools, system prompt, or memory. The `hermes` engine is
 
 - `origin` is thebobrose-coder/OpenJarvis (public). `upstream` is open-jarvis/OpenJarvis.
 - Commits: `type(scope): summary`. Never force-push `main`.
-- Upstream sync: policy per D1 of the 2026-10-03 housekeeping brief (recommended: merge
-  monthly). Procedure: `git fetch upstream`; branch `sync/upstream-<date>`;
+- Upstream sync: merge `upstream/main` monthly per hq 0013. Procedure: `git fetch upstream`;
+  branch `sync/upstream-<date>`;
   `git merge upstream/main`; keep `frontend/tsconfig.tsbuildinfo` deleted; regenerate
   lockfiles (`uv sync --inexact`, `npm install`); full tests and frontend build; stop.
   `main` fast-forwards only after the operator closes the desktop app; they reopen it after.
