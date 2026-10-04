@@ -197,7 +197,9 @@ def test_local_prefix_routes_local():
 
 
 def test_confident_hermes_classification():
-    decision, _ = _decide("how are my stores doing today?", route="hermes", confidence=0.9)
+    decision, _ = _decide(
+        "how are my stores doing today?", route="hermes", confidence=0.9
+    )
     assert (decision.target, decision.reason) == ("hermes", "classifier")
 
 
@@ -480,7 +482,9 @@ def test_auto_local_turn_uses_normal_path_with_local_model(monkeypatch):
     resp = client.post(
         "/v1/chat/completions",
         json={"model": hr.AUTO_MODEL_ID,
-              "messages": [{"role": "user", "content": "local, capital of Australia?"}]},
+              "messages": [
+                  {"role": "user", "content": "local, capital of Australia?"}
+              ]},
     )
     body = resp.json()
     assert body["choices"][0]["message"]["content"] == "Canberra"

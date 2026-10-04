@@ -77,7 +77,8 @@ class DigestStore:
             )
         if "category" not in existing:
             self._conn.execute(
-                "ALTER TABLE digests ADD COLUMN category TEXT NOT NULL DEFAULT 'general'"
+                "ALTER TABLE digests ADD COLUMN category TEXT "
+                "NOT NULL DEFAULT 'general'"
             )
 
     def save(self, artifact: DigestArtifact) -> None:
@@ -168,7 +169,9 @@ class DigestStore:
             return None
         return self._row_to_artifact(row)
 
-    def history(self, limit: int = 10, category: str = "general") -> List[DigestArtifact]:
+    def history(
+        self, limit: int = 10, category: str = "general"
+    ) -> List[DigestArtifact]:
         """Return the N most recent digests for `category`."""
         rows = self._conn.execute(
             "SELECT text, audio_path, sections, sources_used,"

@@ -67,7 +67,9 @@ def _client(handler):
         kwargs["transport"] = httpx.MockTransport(handler)
         return real_client(*args, **kwargs)
 
-    return TestClient(app), patch.object(bnr.httpx, "AsyncClient", side_effect=fake_client)
+    return TestClient(app), patch.object(
+        bnr.httpx, "AsyncClient", side_effect=fake_client
+    )
 
 
 def _down(req):

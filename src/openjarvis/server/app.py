@@ -15,23 +15,23 @@ from fastapi.staticfiles import StaticFiles
 
 from openjarvis.server.analytics_routes import router as analytics_router
 from openjarvis.server.api_routes import include_all_routes
+from openjarvis.server.bizdev_routes import bizdev_router
+from openjarvis.server.breaking_news_routes import create_breaking_news_router
+from openjarvis.server.commerce_routes import commerce_router
 from openjarvis.server.comparison import comparison_router
 from openjarvis.server.connectors_router import create_connectors_router
+from openjarvis.server.content_routes import content_router
 from openjarvis.server.dashboard import dashboard_router
 from openjarvis.server.day_ahead_routes import day_ahead_router
 from openjarvis.server.digest_routes import create_digest_router
-from openjarvis.server.breaking_news_routes import create_breaking_news_router
-from openjarvis.server.weather_routes import weather_router
-from openjarvis.server.hermes_router import hermes_usage_router
-from openjarvis.server.store_performance_routes import store_performance_router
-from openjarvis.server.commerce_routes import commerce_router
 from openjarvis.server.fixes_routes import fixes_router
-from openjarvis.server.bizdev_routes import bizdev_router
-from openjarvis.server.content_routes import content_router
-from openjarvis.server.voice_routes import voice_router
+from openjarvis.server.hermes_router import hermes_usage_router
 from openjarvis.server.research_router import router as research_router
 from openjarvis.server.routes import router
+from openjarvis.server.store_performance_routes import store_performance_router
 from openjarvis.server.upload_router import router as upload_router
+from openjarvis.server.voice_routes import voice_router
+from openjarvis.server.weather_routes import weather_router
 
 logger = logging.getLogger(__name__)
 _MANAGED_SHUTDOWN_GRACE_SECONDS = 0.25

@@ -176,7 +176,9 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     return await _chat_completions_local(request_body, request)
 
 
-async def _chat_completions_local(request_body: ChatCompletionRequest, request: Request):
+async def _chat_completions_local(
+    request_body: ChatCompletionRequest, request: Request
+):
     """The normal (non-Hermes) chat path."""
     engine = request.app.state.engine
     agent = getattr(request.app.state, "agent", None)

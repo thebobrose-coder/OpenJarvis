@@ -8,7 +8,11 @@ from typing import Any
 
 import uvicorn
 
-from openjarvis.cli.daemon_cmd import LAUNCH_TOKEN_ENV, clear_server_state, record_server_state
+from openjarvis.cli.daemon_cmd import (
+    LAUNCH_TOKEN_ENV,
+    clear_server_state,
+    record_server_state,
+)
 
 
 class DaemonServer(uvicorn.Server):
