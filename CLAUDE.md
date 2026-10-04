@@ -49,7 +49,7 @@ no OpenJarvis agent, tools, system prompt, or memory. The `hermes` engine is
 - Frontend (`cd frontend`): `npx vitest run`, `npx tsc --noEmit -p .`, `npm run build`
   (writes `src/openjarvis/server/static/`, which the live server serves). Component tests
   use `renderToStaticMarkup`: keep pages as a pure `*View` plus a thin hook page.
-- Desktop rebuild: `npx tauri build -- --no-bundle` in `frontend/`, then relaunch the exe.
+- Desktop rebuild: `npx tauri build --no-bundle` in `frontend/`, then relaunch the exe.
   Never use the NSIS/MSI installer: it installs vanilla upstream.
 
 ## Git
