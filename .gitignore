@@ -67,6 +67,9 @@ site/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+# tsc -b incremental cache; rewritten by every build, never source
+frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
 
 # Desktop
 desktop/node_modules/
@@ -135,3 +138,7 @@ oj-debug.*.json
 # Private business/ops planning docs — this repo is a public fork, never
 # commit revenue/store/vendor strategy here.
 BUSINESS_ROADMAP.md
+
+# Fork: the root CLAUDE.md is the repo's shared rules, not per-developer notes.
+# Upstream ignores CLAUDE.md above; re-include only the root one (.claude/ stays ignored).
+!/CLAUDE.md
