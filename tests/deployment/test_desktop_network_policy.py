@@ -28,6 +28,14 @@ def test_desktop_csp_allows_remote_api_servers() -> None:
     assert {"http:", "https:", "ws:", "wss:"} <= connect_sources
 
 
+def test_desktop_csp_allows_local_synthesized_audio() -> None:
+    """Read-aloud plays a blob URL inside the Tauri webview (#1038)."""
+    media_sources = _csp_sources("media-src")
+
+    assert {"'self'", "blob:"} <= media_sources
+    assert media_sources.isdisjoint({"http:", "https:", "*"})
+
+
 def test_macos_webview_allows_user_configured_http_servers() -> None:
     """CSP alone cannot override App Transport Security for public hosts."""
     info = plistlib.loads(MACOS_INFO_PLIST.read_bytes())
@@ -42,9 +50,15 @@ def test_local_build_does_not_require_updater_signing_key() -> None:
     assert config["bundle"]["createUpdaterArtifacts"] is False
 
 
-def test_release_workflow_explicitly_enables_updater_artifacts() -> None:
-    """Signed releases must still publish updater signatures and latest.json."""
+def test_release_workflow_passes_updater_config_to_tauri() -> None:
+    """The CLI and action must read the release override to sign updater artifacts."""
     workflow = DESKTOP_WORKFLOW.read_text(encoding="utf-8")
 
-    assert '"createUpdaterArtifacts":true' in workflow
+    assert "createUpdaterArtifacts: true" in workflow
+    assert "externalBin: ['binaries/ollama']" in workflow
+    assert (
+        "args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json"
+        in workflow
+    )
+    assert "TAURI_CONFIG:" not in workflow
     assert "uploadUpdaterJson: true" in workflow

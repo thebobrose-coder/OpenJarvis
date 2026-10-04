@@ -98,18 +98,17 @@ BUILTIN_MODELS: List[ModelSpec] = [
         },
     ),
     # -----------------------------------------------------------------------
-    # Local models — Qwen3.5 (MoE)
+    # Local models — Qwen3.5 (dense and MoE)
     # -----------------------------------------------------------------------
     ModelSpec(
         model_id="qwen3.5:0.8b",
         name="Qwen3.5 0.8B",
         parameter_count_b=0.8,
-        active_parameter_count_b=0.15,
         context_length=131072,
         supported_engines=("ollama", "vllm", "llamacpp", "sglang", "mlx"),
         provider="alibaba",
         metadata={
-            "architecture": "moe",
+            "architecture": "dense",
             "hf_repo": "Qwen/Qwen3.5-0.8B",
             "mlx_repo": "mlx-community/Qwen3.5-0.8B-OptiQ-4bit",
         },
@@ -118,12 +117,11 @@ BUILTIN_MODELS: List[ModelSpec] = [
         model_id="qwen3.5:2b",
         name="Qwen3.5 2B",
         parameter_count_b=2.0,
-        active_parameter_count_b=0.4,
         context_length=131072,
         supported_engines=("ollama", "vllm", "llamacpp", "sglang", "mlx"),
         provider="alibaba",
         metadata={
-            "architecture": "moe",
+            "architecture": "dense",
             "hf_repo": "Qwen/Qwen3.5-2B",
             "mlx_repo": "mlx-community/Qwen3.5-2B-OptiQ-4bit",
         },
@@ -132,12 +130,11 @@ BUILTIN_MODELS: List[ModelSpec] = [
         model_id="qwen3.5:9b",
         name="Qwen3.5 9B",
         parameter_count_b=9.0,
-        active_parameter_count_b=1.5,
         context_length=131072,
         supported_engines=("ollama", "vllm", "llamacpp", "sglang", "mlx"),
         provider="alibaba",
         metadata={
-            "architecture": "moe",
+            "architecture": "dense",
             "hf_repo": "Qwen/Qwen3.5-9B",
             "gguf_file": "qwen3.5-9b-q4_k_m.gguf",
             "mlx_repo": "mlx-community/Qwen3.5-9B-MLX-4bit",
@@ -147,13 +144,12 @@ BUILTIN_MODELS: List[ModelSpec] = [
         model_id="qwen3.5:27b",
         name="Qwen3.5 27B",
         parameter_count_b=27.0,
-        active_parameter_count_b=3.0,
         context_length=131072,
         min_vram_gb=16.0,
         supported_engines=("ollama", "vllm", "llamacpp", "sglang", "mlx"),
         provider="alibaba",
         metadata={
-            "architecture": "moe",
+            "architecture": "dense",
             "hf_repo": "Qwen/Qwen3.5-27B",
             "gguf_file": "qwen3.5-27b-q4_k_m.gguf",
             "mlx_repo": "mlx-community/Qwen3.5-27B-4bit-DWQ",
@@ -295,19 +291,18 @@ BUILTIN_MODELS: List[ModelSpec] = [
         },
     ),
     # -----------------------------------------------------------------------
-    # Local models — Qwen3.5 (MoE, Gated DeltaNet + sparse MoE)
+    # Local models — Qwen3.5 (4B dense, plus MoE variants)
     # -----------------------------------------------------------------------
     ModelSpec(
         model_id="qwen3.5:4b",
         name="Qwen3.5 4B",
         parameter_count_b=4.0,
-        active_parameter_count_b=0.5,
         context_length=262144,
         min_vram_gb=3.0,
         supported_engines=("ollama", "vllm", "sglang", "llamacpp", "mlx"),
         provider="alibaba",
         metadata={
-            "architecture": "moe",
+            "architecture": "dense",
             "hf_repo": "Qwen/Qwen3.5-4B",
             "gguf_file": "qwen3.5-4b-q4_k_m.gguf",
             "mlx_repo": "mlx-community/Qwen3.5-4B-OptiQ-4bit",
@@ -950,6 +945,134 @@ BUILTIN_MODELS: List[ModelSpec] = [
             "pricing_input": 0.60,
             "pricing_output": 2.40,
             "url": "https://platform.minimax.io/docs/api-reference/api-overview",
+        },
+    ),
+    # -----------------------------------------------------------------------
+    # Cloud models — Atlas Cloud (OpenAI-compatible aggregator)
+    #
+    # IDs carry the "atlascloud/" routing prefix the cloud engine dispatches
+    # on. Context lengths and prices are the gateway's own, read from
+    # GET https://api.atlascloud.ai/v1/models (context_length, and
+    # pricing.prompt / pricing.completion in USD per token).
+    # -----------------------------------------------------------------------
+    ModelSpec(
+        model_id="atlascloud/openai/gpt-4.1-mini",
+        name="GPT-4.1 Mini (Atlas Cloud)",
+        parameter_count_b=0.0,
+        context_length=1_047_576,
+        supported_engines=("cloud",),
+        provider="atlascloud",
+        requires_api_key=True,
+        metadata={
+            "architecture": "proprietary",
+            "pricing_input": 0.4,
+            "pricing_output": 1.6,
+            "url": "https://www.atlascloud.ai/models",
+        },
+    ),
+    ModelSpec(
+        model_id="atlascloud/openai/gpt-5.4-mini",
+        name="GPT-5.4 Mini (Atlas Cloud)",
+        parameter_count_b=0.0,
+        context_length=400_000,
+        supported_engines=("cloud",),
+        provider="atlascloud",
+        requires_api_key=True,
+        metadata={
+            "architecture": "proprietary",
+            "pricing_input": 0.75,
+            "pricing_output": 4.5,
+            "url": "https://www.atlascloud.ai/models",
+        },
+    ),
+    ModelSpec(
+        model_id="atlascloud/deepseek-ai/deepseek-v3.2",
+        name="DeepSeek V3.2 (Atlas Cloud)",
+        parameter_count_b=0.0,
+        context_length=163_840,
+        supported_engines=("cloud",),
+        provider="atlascloud",
+        requires_api_key=True,
+        metadata={
+            "architecture": "moe",
+            "pricing_input": 0.26,
+            "pricing_output": 0.38,
+            "url": "https://www.atlascloud.ai/models",
+        },
+    ),
+    ModelSpec(
+        model_id="atlascloud/Qwen/Qwen3-235B-A22B-Instruct-2507",
+        name="Qwen3 235B A22B Instruct (Atlas Cloud)",
+        parameter_count_b=0.0,
+        context_length=131_072,
+        supported_engines=("cloud",),
+        provider="atlascloud",
+        requires_api_key=True,
+        metadata={
+            "architecture": "moe",
+            "pricing_input": 0.2,
+            "pricing_output": 0.88,
+            "url": "https://www.atlascloud.ai/models",
+        },
+    ),
+    ModelSpec(
+        model_id="atlascloud/qwen/qwen3.5-35b-a3b",
+        name="Qwen3.5 35B A3B (Atlas Cloud)",
+        parameter_count_b=0.0,
+        context_length=262_144,
+        supported_engines=("cloud",),
+        provider="atlascloud",
+        requires_api_key=True,
+        metadata={
+            "architecture": "moe",
+            "pricing_input": 0.225,
+            "pricing_output": 1.8,
+            "url": "https://www.atlascloud.ai/models",
+        },
+    ),
+    ModelSpec(
+        model_id="atlascloud/zai-org/GLM-4.6",
+        name="GLM-4.6 (Atlas Cloud)",
+        parameter_count_b=0.0,
+        context_length=202_752,
+        supported_engines=("cloud",),
+        provider="atlascloud",
+        requires_api_key=True,
+        metadata={
+            "architecture": "moe",
+            "pricing_input": 0.6,
+            "pricing_output": 2.2,
+            "url": "https://www.atlascloud.ai/models",
+        },
+    ),
+    ModelSpec(
+        model_id="atlascloud/moonshotai/kimi-k2.5",
+        name="Kimi K2.5 (Atlas Cloud)",
+        parameter_count_b=0.0,
+        context_length=262_144,
+        supported_engines=("cloud",),
+        provider="atlascloud",
+        requires_api_key=True,
+        metadata={
+            "architecture": "moe",
+            "pricing_input": 0.49,
+            "pricing_output": 2.5,
+            "url": "https://www.atlascloud.ai/models",
+        },
+    ),
+    ModelSpec(
+        model_id="atlascloud/minimaxai/minimax-m2.5",
+        name="MiniMax M2.5 (Atlas Cloud)",
+        parameter_count_b=0.0,
+        context_length=196_608,
+        supported_engines=("cloud",),
+        provider="atlascloud",
+        requires_api_key=True,
+        metadata={
+            "architecture": "moe",
+            "pricing_input": 0.295,
+            "pricing_output": 1.2,
+            "url": "https://www.atlascloud.ai/models",
         },
     ),
     # -----------------------------------------------------------------------

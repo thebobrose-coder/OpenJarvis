@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Palette,
   Globe,
@@ -22,6 +22,7 @@ import { useAppStore, type ThemeMode } from '../lib/store';
 import {
   checkHealth,
   fetchSpeechHealth,
+  fetchTtsHealth,
   getMemoryStats,
   getInferenceSource,
   setInferenceSource,
@@ -34,6 +35,7 @@ import {
   isTauri,
   type HermesUsage,
   type InferenceSource,
+  type MemoryStats,
 } from '../lib/api';
 import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Desktop/UpdateChecker';
 
@@ -250,14 +252,64 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between py-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-      <div>
+      <div className="min-w-0">
         <div className="text-sm" style={{ color: 'var(--color-text)' }}>{label}</div>
         {description && (
-          <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{description}</div>
+          <div className="text-xs mt-0.5 break-words" style={{ color: 'var(--color-text-tertiary)' }}>{description}</div>
         )}
       </div>
       <div>{children}</div>
     </div>
+  );
+}
+
+type MemoryStatus =
+  | { kind: 'loading' }
+  | { kind: 'ready'; stats: MemoryStats }
+  | { kind: 'error'; message: string };
+
+export function MemoryStatusRow({
+  status,
+  onRetry,
+}: {
+  status: MemoryStatus;
+  onRetry: () => void;
+}) {
+  const stats = status.kind === 'ready' ? status.stats : null;
+  const description = status.kind === 'error'
+    ? status.message
+    : status.kind === 'loading'
+      ? 'Checking memory backend...'
+      : stats?.backend === 'none'
+        ? 'Memory is not configured'
+        : `${stats?.backend} backend — ${stats?.entries} entries`;
+  const label = status.kind === 'loading'
+    ? 'Checking...'
+    : stats?.backend === 'none'
+      ? 'Not configured'
+      : stats
+        ? `${stats.entries} entries`
+        : 'Unavailable';
+
+  return (
+    <SettingRow label="Memory status" description={description}>
+      <div className="flex items-center gap-2">
+        <Brain size={14} style={{ color: stats && stats.backend !== 'none' ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }} />
+        <span className="text-xs whitespace-nowrap" style={{ color: 'var(--color-text-secondary)' }}>
+          {label}
+        </span>
+        {status.kind === 'error' && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="text-xs underline cursor-pointer whitespace-nowrap"
+            style={{ color: 'var(--color-accent)' }}
+          >
+            Retry
+          </button>
+        )}
+      </div>
+    </SettingRow>
   );
 }
 
@@ -274,6 +326,7 @@ export function SettingsPage() {
   const serverInfo = useAppStore((s) => s.serverInfo);
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [speechBackendAvailable, setSpeechBackendAvailable] = useState<boolean | null>(null);
+  const [ttsBackend, setTtsBackend] = useState<{ available: boolean; backend?: string; voice_id?: string } | null>(null);
   const [saved, setSaved] = useState(false);
 
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(() => !isAutoUpdateDisabled());
@@ -297,7 +350,8 @@ export function SettingsPage() {
     }
   }, []);
 
-  const [memoryStats, setMemoryStats] = useState<{ entries: number; backend: string } | null>(null);
+  const [memoryStatus, setMemoryStatus] = useState<MemoryStatus>({ kind: 'loading' });
+  const memoryRequestId = useRef(0);
   const [memoryEnabled, setMemoryEnabled] = useState(() => {
     try { return localStorage.getItem('openjarvis-memory-enabled') !== 'false'; } catch { return true; }
   });
@@ -343,14 +397,42 @@ export function SettingsPage() {
     }
   }, [srcKind, customHost, customModel, customEngine, customKey]);
 
+  const refreshMemoryStatus = useCallback(async () => {
+    const requestId = ++memoryRequestId.current;
+    setMemoryStatus({ kind: 'loading' });
+    try {
+      const stats = await getMemoryStats();
+      if (requestId === memoryRequestId.current) {
+        setMemoryStatus({ kind: 'ready', stats });
+      }
+    } catch (error) {
+      if (requestId === memoryRequestId.current) {
+        setMemoryStatus({
+          kind: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshMemoryStatus();
+    const onFocus = () => { void refreshMemoryStatus(); };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      ++memoryRequestId.current;
+    };
+  }, [refreshMemoryStatus, settings.apiUrl]);
+
   useEffect(() => {
     checkHealth().then(setHealthy);
     fetchSpeechHealth()
       .then((h) => setSpeechBackendAvailable(h.available))
       .catch(() => setSpeechBackendAvailable(false));
-    getMemoryStats()
-      .then(setMemoryStats)
-      .catch(() => setMemoryStats(null));
+    fetchTtsHealth()
+      .then((h) => setTtsBackend(h))
+      .catch(() => setTtsBackend({ available: false }));
   }, []);
 
   const showSaved = () => {
@@ -580,6 +662,7 @@ export function SettingsPage() {
                 <CloudProviderStatus label="Anthropic" keyName="ANTHROPIC_API_KEY" />
                 <CloudProviderStatus label="Google" keyName="GEMINI_API_KEY" />
                 <CloudProviderStatus label="OpenRouter" keyName="OPENROUTER_API_KEY" />
+                <CloudProviderStatus label="Atlas Cloud" keyName="ATLASCLOUD_API_KEY" />
               </div>
             </SettingRow>
           </Section>
@@ -597,6 +680,9 @@ export function SettingsPage() {
             </SettingRow>
             <SettingRow label="OpenRouter" description="Multi-provider routing">
               <ApiKeyInput keyName="OPENROUTER_API_KEY" placeholder="sk-or-..." />
+            </SettingRow>
+            <SettingRow label="Atlas Cloud" description="Models routed through Atlas Cloud">
+              <ApiKeyInput keyName="ATLASCLOUD_API_KEY" placeholder="Atlas Cloud API key" />
             </SettingRow>
           </Section>
 
@@ -619,14 +705,7 @@ export function SettingsPage() {
 
           {/* Memory */}
           <Section title="Memory">
-            <SettingRow label="Memory status" description={memoryStats ? `${memoryStats.backend} backend — ${memoryStats.entries} entries` : 'Unable to reach memory service'}>
-              <div className="flex items-center gap-2">
-                <Brain size={14} style={{ color: memoryStats ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }} />
-                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                  {memoryStats ? `${memoryStats.entries} entries` : 'Unavailable'}
-                </span>
-              </div>
-            </SettingRow>
+            <MemoryStatusRow status={memoryStatus} onRetry={() => { void refreshMemoryStatus(); }} />
             <SettingRow label="Use memory context" description="Automatically inject relevant memories into conversations">
               <button
                 onClick={() => {
@@ -765,6 +844,58 @@ export function SettingsPage() {
                   }}
                 />
               </button>
+            </SettingRow>
+            <SettingRow label="Text-to-Speech" description="Show a read-aloud button on assistant replies">
+              <button
+                onClick={() => { updateSettings({ voiceOutputEnabled: !settings.voiceOutputEnabled }); showSaved(); }}
+                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer"
+                style={{
+                  background: settings.voiceOutputEnabled ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
+                }}
+              >
+                <span
+                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform bg-white"
+                  style={{
+                    transform: settings.voiceOutputEnabled ? 'translateX(20px)' : 'translateX(0)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  }}
+                />
+              </button>
+            </SettingRow>
+            <SettingRow label="Speak replies automatically" description="Read every assistant reply aloud as soon as it finishes">
+              <button
+                onClick={() => { updateSettings({ voiceAutoplay: !settings.voiceAutoplay }); showSaved(); }}
+                disabled={!settings.voiceOutputEnabled}
+                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer"
+                style={{
+                  background: settings.voiceAutoplay && settings.voiceOutputEnabled ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
+                  opacity: settings.voiceOutputEnabled ? 1 : 0.4,
+                  cursor: settings.voiceOutputEnabled ? 'pointer' : 'default',
+                }}
+              >
+                <span
+                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform bg-white"
+                  style={{
+                    transform: settings.voiceAutoplay && settings.voiceOutputEnabled ? 'translateX(20px)' : 'translateX(0)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  }}
+                />
+              </button>
+            </SettingRow>
+            <SettingRow label="Voice" description="Backend and voice used for spoken replies">
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{
+                    background: ttsBackend?.available ? 'var(--color-success)' : 'var(--color-text-tertiary)',
+                  }}
+                />
+                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  {ttsBackend === null ? 'Checking...'
+                    : ttsBackend.available ? `${ttsBackend.backend}${ttsBackend.voice_id ? ` / ${ttsBackend.voice_id}` : ''}`
+                    : 'Not configured'}
+                </span>
+              </div>
             </SettingRow>
             <SettingRow label="Backend status" description="Requires Whisper, Deepgram, or another speech backend">
               <div className="flex items-center gap-2">

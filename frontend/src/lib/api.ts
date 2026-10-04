@@ -320,7 +320,13 @@ export async function checkHealth(): Promise<boolean> {
       return false;
     }
   };
+  // In browser mode Vite serves the SPA on a different port than the API.
+  // Probe the configured API base first; the relative fallback supports
+  // production deployments where both are served from one origin.
+  const base = getBase().replace(/\/+$/, '');
+  if (base && await probe(`${base}/health`)) return true;
   if (await probe('/health')) return true;
+  if (base && await probe(`${base}/v1/connectors`)) return true;
   return probe('/v1/connectors');
 }
 
@@ -403,6 +409,43 @@ export async function transcribeAudio(audioBlob: Blob, filename = 'recording.web
     }
     throw new Error(detail || `Transcription failed: ${res.status}`);
   }
+  return res.json();
+}
+
+export interface TtsHealth {
+  available: boolean;
+  backend?: string;
+  voice_id?: string;
+  speed?: number;
+  reason?: string;
+}
+
+export async function synthesizeSpeech(
+  text: string,
+  opts: { voiceId?: string; speed?: number; signal?: AbortSignal } = {},
+): Promise<Blob> {
+  const res = await apiFetch(`/v1/speech/synthesize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice_id: opts.voiceId, speed: opts.speed }),
+    signal: opts.signal,
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = typeof body.detail === 'string' ? body.detail : '';
+    } catch {
+      // Keep the status-only message below when the body is not JSON.
+    }
+    throw new Error(detail || `Speech synthesis failed: ${res.status}`);
+  }
+  return res.blob();
+}
+
+export async function fetchTtsHealth(): Promise<TtsHealth> {
+  const res = await apiFetch(`/v1/speech/tts/health`);
+  if (!res.ok) return { available: false };
   return res.json();
 }
 
@@ -1380,8 +1423,16 @@ async function memoryErrorDetail(res: Response, fallback: string): Promise<strin
 }
 
 export async function getMemoryStats(): Promise<MemoryStats> {
-  const res = await apiFetch(`/v1/memory/stats`);
-  if (!res.ok) throw new Error('Failed to fetch memory stats');
+  let res: Response;
+  try {
+    res = await apiFetch(`/v1/memory/stats`);
+  } catch {
+    throw new Error('Could not reach the OpenJarvis API. Check the server status and API URL, then retry.');
+  }
+  if (!res.ok) {
+    const detail = await memoryErrorDetail(res, 'Memory status request failed');
+    throw new Error(`${detail} (HTTP ${res.status})`);
+  }
   return res.json();
 }
 

@@ -23,6 +23,12 @@ import tailwindcss from '@tailwindcss/vite';
 // an old worker keeps controlling the CURRENT page across its own
 // update cycle, so the failure window is exactly the rebuild-heavy,
 // fast-iteration use this app actually gets.
+// jarvis gui sets the proxy target without exposing an absolute API URL to the
+// browser, so requests stay on Vite's origin even on a custom frontend port.
+const apiTarget = process.env.OPENJARVIS_VITE_PROXY_TARGET
+  || process.env.VITE_API_URL
+  || 'http://localhost:8000';
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -59,12 +65,12 @@ export default defineConfig({
       // opens — no error, no close event, just silence — and every live agent
       // view sits empty in dev while working in a production build.
       '/v1': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: apiTarget,
         changeOrigin: true,
         ws: true,
       },
-      '/health': process.env.VITE_API_URL || 'http://localhost:8000',
-      '/api': process.env.VITE_API_URL || 'http://localhost:8000',
+      '/health': apiTarget,
+      '/api': apiTarget,
     },
   },
 });

@@ -64,6 +64,28 @@ def test_store_and_retrieve_basic(ks: KnowledgeStore) -> None:
     assert results[0].score > 0.0
 
 
+@pytest.mark.parametrize(
+    "query",
+    ["Alice's birthday", "When is Alice's birthday?", "Alice-birthday"],
+)
+def test_retrieve_accepts_plain_text_punctuation(
+    ks: KnowledgeStore, query: str
+) -> None:
+    """Natural queries should find matching content without FTS5 syntax rules."""
+    _store(ks, content="Alice's birthday is May 2", source="notes")
+
+    results = ks.retrieve(query)
+
+    assert any("birthday is May 2" in result.content for result in results)
+
+
+def test_retrieve_accepts_symbol_heavy_terms(ks: KnowledgeStore) -> None:
+    _store(ks, content="The C++ migration guide", source="notes")
+
+    assert ks.retrieve("C++")
+    assert ks.retrieve("++") == []
+
+
 def test_retrieve_filter_by_source(ks: KnowledgeStore) -> None:
     """retrieve() with source= returns only chunks from that source."""
     _store(ks, content="Email about project alpha", source="gmail", doc_type="email")
@@ -356,6 +378,39 @@ def test_retrieve_filter_by_until(ks: KnowledgeStore) -> None:
         assert ts_str <= cutoff.isoformat(), f"Got new doc in results: {ts_str}"
 
     assert len(results) >= 1
+
+
+def test_retrieve_empty_string_filters_do_not_suppress_results(
+    ks: KnowledgeStore,
+) -> None:
+    """Empty or whitespace-only filter strings are ignored instead of matching
+    literal empty values.
+    """
+    _store(
+        ks,
+        content="Important deployment documentation for project alpha",
+        source="notion",
+        doc_type="doc",
+        author="alice@example.com",
+    )
+
+    results = ks.retrieve(
+        "deployment documentation",
+        source="",
+        doc_type="   ",
+        author="",
+        since="",
+        until=" ",
+    )
+    assert len(results) >= 1
+    assert results[0].metadata.get("source") == "notion"
+
+
+def test_retrieve_non_string_source_does_not_drop_filter(ks: KnowledgeStore) -> None:
+    """Unexpected filter types must not broaden a source-restricted query."""
+    _store(ks, content="Deployment notes for project alpha", source="notion")
+
+    assert ks.retrieve("deployment", source=42) == []  # type: ignore[arg-type]
 
 
 def test_memory_store_event_emitted(tmp_path: Path) -> None:
