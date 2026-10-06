@@ -1,17 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCheck, Pause, Play, Wrench, X } from 'lucide-react';
 import {
+  FIX_SOURCES,
   FIX_STATUSES,
   type AutofixPolicy,
   REFUSAL_REASON,
+  charCount,
+  foundryCopyLabel,
   isWaiting,
   needsOperator,
+  patchSource,
   type CatalogFixes,
   type ClassAction,
   type ClassStats,
   type FixAction,
   type FixClass,
+  type FixSource,
   type FixStatus,
+  type FixerRun,
+  type FixerSeoRun,
   type Patch,
 } from '../../../lib/fixes-api';
 import type { ClassResult, PendingFix } from '../../../hooks/useCatalogFixes';
@@ -145,8 +152,84 @@ export function classConfirmNotes(group: FixGroup, pending: Record<string, Pendi
   return notes;
 }
 
-export const ELIGIBILITY_RULE =
-  'Suggest auto-apply when: 20 single approvals in a row, 20 fixes applied and verified, and no revert or failed verification since the streak began.';
+/** The A14 sentence with the class's own threshold (v1.5 `suggest_at`). */
+export const eligibilityRule = (n: number) =>
+  `Suggest auto-apply when: ${n} single approvals in a row, ${n} fixes applied and verified, and no revert or failed verification since the streak began.`;
+export const ELIGIBILITY_RULE = eligibilityRule(20);
+
+/** A class's threshold: the feed's `suggest_at`, else 5 for `seo:foundry`
+ * and 20 otherwise (contract v1.5, A16 D1). */
+export const suggestAt = (c: Pick<ClassStats, 'suggest_at' | 'rule'>) =>
+  c.suggest_at ?? (c.rule === 'seo:foundry' ? 5 : 20);
+
+/** The class's progress toward the suggestion: "1 of 5 in a row · 1 of 5 verified". */
+export function progressText(c: ClassStats): string {
+  const n = suggestAt(c);
+  return `${num(c.streak)} of ${n} in a row · ${num(c.verified ?? 0)} of ${n} verified`;
+}
+
+/** The panel's sentence: one threshold when every class shares it, else
+ * the highest one with the lower ones named by rule. */
+export function panelRule(classes: ClassStats[]): string {
+  const ns = [...new Set(classes.map(suggestAt))].sort((a, b) => b - a);
+  if (ns.length <= 1) return eligibilityRule(ns[0] ?? 20);
+  const lower = ns.slice(1).map((n) => {
+    const rules = [...new Set(classes.filter((c) => suggestAt(c) === n).map((c) => ruleLabel(c.rule)))];
+    return `${n} for ${rules.join(', ')}`;
+  });
+  return `${eligibilityRule(ns[0])} The threshold is ${lower.join('; ')}.`;
+}
+
+/** The fixer's last run in a line; v1.5 adds the SEO pass as detail. */
+export function runSummary(run: FixerRun): string {
+  const parts = [`Fixer ran ${shortDateTime(run.run_at)}`];
+  if (run.proposed != null) parts.push(`${num(run.proposed)} proposed${run.invalid ? `, ${num(run.invalid)} invalid` : ''}`);
+  if (run.left_for_next_run) parts.push(`${num(run.left_for_next_run)} left for the next run`);
+  return parts.join(' · ');
+}
+
+const seoItemCount = (seo: FixerSeoRun) =>
+  Object.values(seo.items ?? {}).reduce((n, byRule) => n + Object.values(byRule).reduce((a, b) => a + b, 0), 0);
+
+function RunLine({ run, storeNames }: { run: FixerRun; storeNames: Record<string, string> }) {
+  const seo = run.seo;
+  if (!seo) return <span data-run-line>{runSummary(run)}</span>;
+  const name = (s: string) => storeNames[s] ?? s;
+  return (
+    <details data-run-line>
+      <summary className="cursor-pointer">
+        {runSummary(run)} · SEO: {num(seoItemCount(seo))} items
+      </summary>
+      <ul className="mt-1 flex flex-col gap-0.5" data-run-seo style={{ color: 'var(--color-text-tertiary)' }}>
+        {Object.entries(seo.items ?? {}).map(([store, byRule]) => (
+          <li key={store}>
+            {name(store)}:{' '}
+            {Object.entries(byRule)
+              .map(([rule, n]) => `${num(n)} ${rule}`)
+              .join(', ')}
+          </li>
+        ))}
+        {(seo.in_stock != null || seo.out_of_stock != null) && (
+          <li>
+            In stock {num(seo.in_stock ?? 0)} · out of stock {num(seo.out_of_stock ?? 0)}
+          </li>
+        )}
+        {seo.compliance_first != null && <li>Held behind a compliance finding: {num(seo.compliance_first)}</li>}
+        {Object.entries(seo.copy_files ?? {}).map(([store, f]) => (
+          <li key={store}>
+            {name(store)}: {foundryCopyLabel(f)}
+            {f.items != null ? ` · ${num(f.items)} items` : ''}
+          </li>
+        ))}
+        {Object.entries(seo.title_suffix ?? {}).map(([store, s]) => (
+          <li key={store}>
+            {name(store)} title suffix: “{s}” ({charCount(s)} characters)
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
 
 /** The writer line in the header (v1.3.3). */
 export function writerLine(w: CatalogFixes['writer']): string {
@@ -229,7 +312,27 @@ export const refusalText = (r: { id: string; reason: string }) =>
 export const waitingCount = (feed: CatalogFixes | null) =>
   feed ? (feed.counts.proposed ?? 0) + (feed.counts.invalid ?? 0) + (feed.counts.confirm ?? 0) : 0;
 
-type StatusFilter = 'all' | 'waiting' | FixStatus;
+export type StatusFilter = 'all' | 'waiting' | FixStatus;
+export type SourceFilter = 'all' | FixSource;
+
+export interface FixFilter {
+  store: string;
+  cls: string;
+  status: StatusFilter;
+  source: SourceFilter;
+}
+
+/** The patches the filters leave visible. v1.5 adds `source`, so the
+ * operator can review the seo queue on its own. */
+export function visiblePatches(patches: Patch[], f: FixFilter): Patch[] {
+  return patches.filter(
+    (p) =>
+      (f.store === ALL_STORES || p.store === f.store) &&
+      (f.cls === 'all' || classKey(p.fix_class) === f.cls) &&
+      (f.status === 'all' || (f.status === 'waiting' ? needsOperator(p.status) : p.status === f.status)) &&
+      (f.source === 'all' || patchSource(p) === f.source),
+  );
+}
 
 /** What a key does on the focused card: a approve and r reject a proposal,
  * e edits a waiting fix, c confirms a P1 approval. Approve over judge has
@@ -281,6 +384,7 @@ function FixesHeader({
           {t}
         </span>
       ))}
+      {feed.last_fixer_run && <RunLine run={feed.last_fixer_run} storeNames={storeNames} />}
       <FeedFreshness ageSeconds={feed.age_seconds} stale={feed.stale} staleAfterSeconds={26 * 3600} label="Fixes" />
     </div>
   );
@@ -331,7 +435,7 @@ export function TierControl({
           <SmallButton
             disabled={busy || !c.eligible}
             onClick={() => setAsking(true)}
-            title={c.eligible ? 'Let the writer apply this class’s fixes without asking' : ELIGIBILITY_RULE}
+            title={c.eligible ? 'Let the writer apply this class’s fixes without asking' : eligibilityRule(suggestAt(c))}
           >
             Allow auto-apply
           </SmallButton>
@@ -372,7 +476,7 @@ function ClassPanel({
             Reverts are revert decisions; Applied to Reverted count the writer’s outcomes.
           </p>
           <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-            {ELIGIBILITY_RULE} Reverted and Failed verify are the all-time record.
+            {panelRule(classes)} Reverted and Failed verify are the all-time record.
           </p>
           <p className="text-[11px] mb-1.5" data-policy-line style={{ color: 'var(--color-text-secondary)' }}>
             {policyLine(policy)}
@@ -398,6 +502,7 @@ function ClassPanel({
                   'Tier',
                   'Policy tier',
                   'Auto applied',
+                  'Toward auto-apply',
                   '',
                 ].map((h) => (
                   <th key={h} className="font-normal pr-3 pb-1" title={h === 'Streak' ? STREAK_EXPLAINED : undefined}>
@@ -438,6 +543,9 @@ function ClassPanel({
                     <td className="pr-3 tabular-nums" data-tier={c.tier}>{c.tier}</td>
                     <td className="pr-3 tabular-nums" data-policy-tier={listed ? 1 : 0}>{listed ? 1 : 0}</td>
                     <td className="pr-3 tabular-nums">{num(c.auto_applied ?? 0)}</td>
+                    <td className="pr-3 tabular-nums whitespace-nowrap" data-progress={suggestAt(c)}>
+                      {progressText(c)}
+                    </td>
                     <td className="text-[11px]">
                       <span className="flex flex-col gap-1">
                         {c.demoted && (
@@ -516,6 +624,7 @@ export function FixesTab({
 }: FixesTabProps) {
   const [status, setStatus] = useState<StatusFilter>('all');
   const [cls, setCls] = useState('all');
+  const [source, setSource] = useState<SourceFilter>('all');
   const [focusId, setFocusId] = useState<string | null>(null);
   const [panel, setPanel] = useState<{ id: string; kind: CardPanel } | null>(null);
   const [classResults, setClassResults] = useState<Record<string, ClassResult>>({});
@@ -533,21 +642,25 @@ export function FixesTab({
     }));
   }, [patches, storeNames]);
 
+  const sourceOptions = useMemo(() => {
+    const counts = new Map<FixSource, number>();
+    for (const p of patches ?? []) counts.set(patchSource(p), (counts.get(patchSource(p)) ?? 0) + 1);
+    const out: { value: SourceFilter; label: string }[] = [{ value: 'all', label: 'All' }];
+    for (const s of FIX_SOURCES) if (counts.get(s)) out.push({ value: s, label: `${s} (${counts.get(s)})` });
+    return out;
+  }, [patches]);
+
   const groups = useMemo(() => {
-    const visible = (patches ?? []).filter(
-      (p) =>
-        (selectedStore === ALL_STORES || p.store === selectedStore) &&
-        (cls === 'all' || classKey(p.fix_class) === cls) &&
-        (status === 'all' || (status === 'waiting' ? needsOperator(p.status) : p.status === status)),
-    );
+    const visible = visiblePatches(patches ?? [], { store: selectedStore, cls, status, source });
     return groupPatches(sortPatches(visible, spotBlockers(classes, patches)));
-  }, [patches, classes, selectedStore, cls, status]);
+  }, [patches, classes, selectedStore, cls, status, source]);
   const titles = useMemo(() => new Map((patches ?? []).map((p) => [p.id, p.product_title])), [patches]);
 
   /** Show a card wherever the filters left it, and focus it. */
   const openCard = (id: string) => {
     setStatus('all');
     setCls('all');
+    setSource('all');
     setFocusId(id);
     setPanel(null);
   };
@@ -644,6 +757,7 @@ export function FixesTab({
             <div className="flex flex-wrap items-center gap-3">
               <Select label="Status" value={status} options={statusOptions} onChange={setStatus} />
               <Select label="Class" value={cls} options={[{ value: 'all', label: 'All' }, ...classOptions]} onChange={setCls} />
+              <Select label="Source" value={source} options={sourceOptions} onChange={setSource} />
               <span className="text-[11px] ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
                 j / k move · a approve · e edit · r reject or withdraw · c confirm
               </span>

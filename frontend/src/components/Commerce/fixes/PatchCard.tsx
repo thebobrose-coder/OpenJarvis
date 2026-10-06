@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, CheckCheck, Pencil, RotateCcw, ShieldAlert, X } from 'lucide-react';
 import {
+  SEO_ISSUE_WORDS,
+  SEO_RANGE,
+  SOURCE_TITLE,
   actionsFor,
   entryWhy,
+  foundryCopyLabel,
+  isSeoField,
   isWriterEntry,
   judgeOnlyInvalid,
+  patchSource,
+  seoVerifyText,
   specDrops,
   statusReason,
   type FixAction,
@@ -15,7 +22,7 @@ import {
 import type { PendingFix } from '../../../hooks/useCatalogFixes';
 import { Chip, ExtIcon, ExtLink, SmallButton, type Tone } from '../../shared/ui';
 import { shortDateTime } from '../format';
-import { DiffBody, DroppedFigures, FieldDiff } from './FieldDiff';
+import { CharCount, DiffBody, DroppedFigures, FieldDiff, SeoFieldDiff } from './FieldDiff';
 
 export const STATUS_TONE: Record<FixStatus, Tone> = {
   proposed: 'accent',
@@ -54,6 +61,18 @@ export type DecideOpts = { note?: string; changes?: { field: string; after: stri
 
 export const REVIEW_ONLY_TITLE =
   'A judge flag allowed a spec to be dropped from this fix, so it is never auto-applied and is approved one at a time.';
+
+/** v1.5: Reject on a Foundry-copy patch leaves the product to the fixer's
+ * reject-skip rule (the Hermes brief's "other choices"), so Edit is offered
+ * first. */
+export const FOUNDRY_REJECT_HINT =
+  'Rejecting Foundry’s text leaves this product skipped by the fixer: it won’t propose another fix for it. To change the words, use Edit instead; saving the edit approves your text.';
+
+/** The statuses on which the SEO audit's reading is shown (v1.5). */
+export const SEO_VERIFY_STATUSES = new Set<FixStatus>(['applied', 'verified', 'failed-verify']);
+
+const SEO_PROFILE_TITLE =
+  'Checked with the seo profile: an absolute length range, and figures may be dropped but none invented.';
 
 const textareaStyle: React.CSSProperties = {
   background: 'var(--color-bg)',
@@ -179,6 +198,11 @@ function Editor({
               {c.field}
             </span>
             <DroppedFigures before={c.before} after={drafts[c.field]} />
+            {isSeoField(c.field) && (
+              <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <CharCount text={drafts[c.field]} range={SEO_RANGE[c.field]} />
+              </span>
+            )}
           </div>
           <textarea
             ref={i === 0 ? first : undefined}
@@ -193,7 +217,11 @@ function Editor({
           <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
             Live diff against the current copy
           </span>
-          <DiffBody before={c.before} after={drafts[c.field]} mode={c.field === 'descriptionHtml' ? 'text' : 'html'} />
+          <DiffBody
+            before={c.before}
+            after={drafts[c.field]}
+            mode={c.field === 'descriptionHtml' ? 'text' : isSeoField(c.field) ? 'plain' : 'html'}
+          />
         </div>
       ))}
       <input
@@ -268,6 +296,11 @@ export function PatchCard({
   const judge = patch.judge;
   const drops = specDrops(patch);
   const reason = statusReason(patch);
+  // v1.5: where the patch came from, and the SEO audit's reading of it.
+  const source = patchSource(patch);
+  const foundry = !!patch.copy_source;
+  const seoProfile = patch.checks_profile === 'seo';
+  const seoVerify = patch.seo_verify && SEO_VERIFY_STATUSES.has(patch.status) ? patch.seo_verify : null;
 
   return (
     <article
@@ -328,6 +361,32 @@ export function PatchCard({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span data-source={source}>
+          <Chip tone={source === 'seo' ? 'accent' : 'muted'} title={SOURCE_TITLE[source]}>
+            {source}
+          </Chip>
+        </span>
+        {patch.checks_profile && patch.checks_profile !== 'standard' && (
+          <span data-checks-profile={patch.checks_profile}>
+            <Chip tone="neutral" title={SEO_PROFILE_TITLE}>
+              checks: {patch.checks_profile}
+            </Chip>
+          </span>
+        )}
+        {patch.copy_source && (
+          <span data-copy-source={patch.copy_source.source_commit}>
+            <Chip tone="neutral" title="Text from Foundry’s copy export, not a model call">
+              {foundryCopyLabel(patch.copy_source)}
+            </Chip>
+          </span>
+        )}
+        {(patch.addresses.seo_issues ?? []).map((code) => (
+          <span key={code} data-seo-issue={code}>
+            <Chip tone="muted" title={`SEO audit code ${code}`}>
+              {SEO_ISSUE_WORDS[code] ?? code}
+            </Chip>
+          </span>
+        ))}
         {patch.addresses.finding_ids.map((id) => (
           <Chip key={id} tone="muted" title={`Compliance finding ${id} (OpenJarvis has no per-finding view yet)`}>
             finding {id.slice(0, 8)}
@@ -390,9 +449,39 @@ export function PatchCard({
 
       <DropLines drops={drops} />
 
-      {patch.changes.map((c) => (
-        <FieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} drops={drops} />
-      ))}
+      {patch.changes.map((c) =>
+        isSeoField(c.field) ? (
+          <SeoFieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} ranged={seoProfile} />
+        ) : (
+          <FieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} drops={drops} />
+        ),
+      )}
+
+      {seoVerify && (
+        <div
+          className="flex flex-col gap-0.5 text-[11.5px]"
+          data-seo-verify={seoVerify.result}
+          data-page-cleared={seoVerify.page_cleared}
+        >
+          <span
+            style={{
+              color:
+                seoVerify.result === 'verified'
+                  ? 'var(--color-success)'
+                  : seoVerify.result === 'failed'
+                    ? 'var(--color-error)'
+                    : 'var(--color-warning)',
+            }}
+          >
+            {seoVerifyText(seoVerify)}
+          </span>
+          <span style={{ color: 'var(--color-text-tertiary)' }}>
+            SEO audit {shortDateTime(seoVerify.at)}
+            {seoVerify.by ? ` · by ${seoVerify.by}` : ''}
+            {seoVerify.detail ? ` · ${seoVerify.detail}` : ''}
+          </span>
+        </div>
+      )}
 
       {patch.note && (
         <p className="text-[11.5px] italic" style={{ color: 'var(--color-text-secondary)' }}>
@@ -416,6 +505,23 @@ export function PatchCard({
             </span>
             <NoteConfirm
               label="Reject"
+              tone="error"
+              onConfirm={(note) => onDecide('reject', { note })}
+              onCancel={() => onPanel(null)}
+            />
+          </div>
+        ) : foundry ? (
+          <div className="flex flex-col gap-1.5" data-foundry-reject>
+            <span className="text-[12px]" style={{ color: 'var(--color-warning)' }}>
+              {FOUNDRY_REJECT_HINT}
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <SmallButton tone="accent" onClick={() => onPanel('edit')} title="Edit, then approve (e)">
+                <Pencil size={11} /> Edit instead
+              </SmallButton>
+            </div>
+            <NoteConfirm
+              label="Reject anyway (final)"
               tone="error"
               onConfirm={(note) => onDecide('reject', { note })}
               onCancel={() => onPanel(null)}

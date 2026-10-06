@@ -206,6 +206,38 @@ logged or returned.
   "auto candidate" chips, and "read-back differs" when the writer's
   read-back didn't match.
 
+**Commerce Fixes tab: contract v1.5, the SEO meta patches** (0011 A16).
+Hermes's fixer now proposes `seo.title` / `seo.description` patches, most
+of them Foundry copy, which the tab used to show as HTML copy patches.
+- **Cards:** a `seo.*` change is shown as plain text, never HTML: Before and
+  After each with a character count against the seo profile's range (title
+  30 to 65, description 70 to 160; amber when outside it), an empty Before
+  reading "empty (Shopify shows the default)", and an inline word diff only
+  when Before has text. The editor counts characters live for these fields.
+- **Chips:** `source` (sentinel | rec | seo; inferred for older patches from
+  the linked findings), `checks: seo`, "Foundry copy <date>, <commit>" from
+  `copy_source`, and the audit codes the patch addresses, in words.
+- **Verification:** applied, verified and failed-verify seo patches show the
+  SEO audit's reading (`seo_verify`): verified; failed; "still applied, not
+  verified" when the page shows the copy but the audit still reports
+  `title_length` because the theme adds a suffix to the page title; or the
+  page not caught up yet.
+- **Reject on a Foundry-copy patch** says the product is then left skipped
+  by the fixer and offers "Edit instead" first; the final reject stays.
+- **Tier sentence:** the class panel reads each class's `suggest_at` (5 for
+  `seo:foundry`, 20 otherwise) instead of a literal 20, names a lower
+  threshold by rule when classes differ, and gains a "Toward auto-apply"
+  column ("1 of 5 in a row · 1 of 5 verified"). The tier control itself is
+  unchanged.
+- **Run line:** the header gains the fixer's last run, with the SEO pass
+  (items per store and class, in and out of stock, items held behind a
+  compliance finding, the copy files with their date and commit, and each
+  store's title suffix) in an expandable detail.
+- **Filters:** a Source filter beside Status and Class, so the seo queue can
+  be reviewed on its own.
+
+No backend change: the routes pass the feed through.
+
 **Business Development page** (`/bizdev`), generic by business line. A
 pipeline board for a Hermes prospect-research role
 (`GET /api/bizdev/{bd_pipeline|bd_stats|bd_prospects}`):

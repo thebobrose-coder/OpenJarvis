@@ -1,9 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Chip, Segmented } from '../../shared/ui';
-import type { SpecDrops } from '../../../lib/fixes-api';
+import { EMPTY_BEFORE, SEO_RANGE, charCount, type SpecDrops } from '../../../lib/fixes-api';
 import { NUMERIC, diffWords, droppedNumbers, figureKeys, htmlToText, normNum, type DiffOp } from './diff';
 
-type Mode = 'text' | 'html';
+/** `text`: the visible text of HTML; `html`: the source; `plain` (v1.5):
+ * the text as given, for `seo.*` fields, which are never HTML. */
+type Mode = 'text' | 'html' | 'plain';
 
 // An unchanged stretch longer than this many words is folded to its ends.
 const FOLD_WORDS = 60;
@@ -92,7 +94,8 @@ function Folded({ text }: { text: string }) {
   );
 }
 
-/** Before vs after as one inline word diff. Text is never rendered as HTML. */
+/** Before vs after as one inline word diff. Text is never rendered as HTML.
+ * The `plain` mode is for `seo.*` fields: the text as Hermes sent it. */
 export function DiffBody({
   before,
   after,
@@ -191,6 +194,84 @@ export function FieldDiff({
         </p>
       )}
       <DiffBody before={before} after={after} mode={isHtml ? mode : 'html'} drops={drops} />
+    </div>
+  );
+}
+
+/** v1.5 (0011 A16): one `seo.title` / `seo.description` change as plain
+ * text, never HTML, with a character count against the `seo` profile's
+ * range. An empty `before` means Shopify shows its default. */
+export function SeoFieldDiff({
+  field,
+  before,
+  after,
+  rationale,
+  ranged,
+}: {
+  field: string;
+  before: string;
+  after: string;
+  rationale?: string;
+  /** Show the range: the patch ran the `seo` check profile. */
+  ranged: boolean;
+}) {
+  const range = ranged ? SEO_RANGE[field] : undefined;
+  return (
+    <div className="flex flex-col gap-1.5" data-seo-field={field}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+          {field}
+        </span>
+        {range && (
+          <span className="text-[10.5px]" data-seo-range style={{ color: 'var(--color-text-tertiary)' }}>
+            {range.min} to {range.max} characters
+          </span>
+        )}
+      </div>
+      {rationale && (
+        <p className="text-[11.5px] italic" style={{ color: 'var(--color-text-tertiary)' }}>
+          {rationale}
+        </p>
+      )}
+      <SeoText label="Before" text={before} range={range} />
+      <SeoText label="After" text={after} range={range} />
+      {before && <DiffBody before={before} after={after} mode="plain" />}
+    </div>
+  );
+}
+
+/** The count beside a seo field's text, amber when outside the range. */
+export function CharCount({ text, range }: { text: string; range?: { min: number; max: number } }) {
+  const n = charCount(text);
+  const off = range && n > 0 ? (n < range.min ? 'short' : n > range.max ? 'long' : null) : null;
+  return (
+    <span
+      className="tabular-nums"
+      data-chars={n}
+      data-chars-off={off ?? undefined}
+      style={{ color: off ? 'var(--color-warning)' : undefined }}
+    >
+      {n} {n === 1 ? 'character' : 'characters'}
+      {off ? ` · too ${off}` : ''}
+    </span>
+  );
+}
+
+function SeoText({ label, text, range }: { label: string; text: string; range?: { min: number; max: number } }) {
+  return (
+    <div className="flex flex-col gap-0.5" data-seo-text={label.toLowerCase()}>
+      <div className="flex items-center gap-2 text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span>{label}</span>
+        {text ? <CharCount text={text} range={range} /> : <span data-chars={0}>{EMPTY_BEFORE}</span>}
+      </div>
+      {text && (
+        <div
+          className="text-[12.5px] leading-relaxed whitespace-pre-wrap break-words rounded-md p-2"
+          style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
+        >
+          {text}
+        </div>
+      )}
     </div>
   );
 }

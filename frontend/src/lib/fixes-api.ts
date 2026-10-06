@@ -1,7 +1,7 @@
 /**
  * Catalog fixes: Hermes's proposed product-copy fixes and the operator's
  * decisions on them (hq/contracts/openjarvis-hermes.md v1.3 §2, "Catalog
- * fixes", through v1.3.4 and the v1.4 tiers). The feed is proxied like the other ecom feeds; the
+ * fixes", through v1.3.4, the v1.4 tiers and the v1.5 SEO meta patches). The feed is proxied like the other ecom feeds; the
  * decision POSTs go to /api/commerce/fixes, where the backend adds the
  * operator token. The token never reaches this code. From P2 the writer
  * applies approved fixes once it is live.
@@ -41,6 +41,21 @@ export interface FixClass {
   field: string;
 }
 
+/** v1.5 (0011 A16): where a patch came from. */
+export type FixSource = 'sentinel' | 'rec' | 'seo';
+export const FIX_SOURCES: FixSource[] = ['sentinel', 'rec', 'seo'];
+
+/** v1.5: the SEO audit's latest reading of an applied `seo.*` patch (A16 D2). */
+export interface SeoVerify {
+  at: string;
+  by?: string;
+  /** `verified`, `failed`, `still` (the page shows the copy but the audit
+   * still reports a code) or `cache` (the page hasn't caught up). */
+  result: string;
+  detail?: string;
+  page_cleared?: boolean;
+}
+
 export interface FixChange {
   field: string;
   before: string;
@@ -63,7 +78,8 @@ export interface Patch {
   product_title: string;
   admin_url?: string;
   fix_class: FixClass;
-  addresses: { finding_ids: string[]; rec_ids: string[] };
+  /** v1.5: `seo_issues` are the audit codes a `seo` patch addresses. */
+  addresses: { finding_ids: string[]; rec_ids: string[]; seo_issues?: string[] };
   changes: FixChange[];
   validator: { passed: boolean; checks: ValidatorCheck[] };
   judge?: {
@@ -97,6 +113,18 @@ export interface Patch {
   confirmed?: { at: string; via: 'single' | 'class' } | null;
   /** v1.4: Hermes has handed it to the writer as a tier-1 candidate. */
   auto_candidate?: boolean;
+  /** v1.5 (A16): where the patch came from; older patches lack it, see
+   * `patchSource`. */
+  source?: FixSource;
+  /** v1.5: the check profile that ran. `seo` makes `length` an absolute
+   * range and lets `specs` drop figures. */
+  checks_profile?: 'standard' | 'seo';
+  /** v1.5: set on a Foundry-copy patch (rule `seo:foundry`), which had no
+   * model call. */
+  copy_source?: { generated_at: string; source_commit: string } | null;
+  product_url?: string;
+  /** v1.5 (A16 D2): the SEO audit's latest reading, on applied seo patches. */
+  seo_verify?: SeoVerify | null;
 }
 
 export interface ClassStats extends FixClass {
@@ -122,6 +150,9 @@ export interface ClassStats extends FixClass {
   auto_applied?: number;
   /** v1.4 (A14): the first approval of the current streak; null at 0. */
   streak_since?: string | null;
+  /** v1.5 (A16 D1): the threshold `eligible` uses for the streak and the
+   * verified count: 5 for `seo:foundry`, 20 otherwise. See `suggestAt`. */
+  suggest_at?: number;
   /** v1.3.3 (A11): the writer's outcomes, as patch counts. */
   applied?: number;
   verified?: number;
@@ -158,6 +189,108 @@ export interface CatalogFixes extends FeedMeta {
   counts: Partial<Record<FixStatus, number>>;
   patches: Patch[];
   classes: ClassStats[];
+  /** The fixer's last run; v1.5 adds its `seo` block. */
+  last_fixer_run?: FixerRun | null;
+}
+
+/** v1.5: what the fixer's SEO pass did in its last run. */
+export interface FixerSeoRun {
+  /** Items held back because the product had a compliance finding this run. */
+  compliance_first?: number;
+  /** Items proposed, per store and class rule. */
+  items?: Record<string, Record<string, number>>;
+  in_stock?: number;
+  out_of_stock?: number;
+  /** Foundry's copy export per store. */
+  copy_files?: Record<string, { generated_at: string; source_commit: string; items?: number }>;
+  /** The theme's suffix on each store's page titles. */
+  title_suffix?: Record<string, string>;
+}
+
+export interface FixerRun {
+  run_at?: string;
+  duration_s?: number;
+  considered?: number;
+  attempted?: number;
+  proposed?: number;
+  invalid?: number;
+  stale_marked?: number;
+  model_calls?: number;
+  foundry_proposals?: number;
+  cost_usd?: number;
+  left_for_next_run?: number;
+  seo?: FixerSeoRun | null;
+}
+
+// -- v1.5: SEO meta patches (0011 A16) ----------------------------------------
+
+/** A patch's source. An older patch without the key is `sentinel` when it
+ * addresses a finding, else `rec` (contract v1.5). */
+export function patchSource(p: Pick<Patch, 'source' | 'addresses'>): FixSource {
+  if (p.source) return p.source;
+  return p.addresses.finding_ids.length > 0 ? 'sentinel' : 'rec';
+}
+
+export const SOURCE_TITLE: Record<FixSource, string> = {
+  sentinel: 'From a compliance finding',
+  rec: 'From a recommendation',
+  seo: 'From the SEO audit: meta description or SEO title',
+};
+
+export const isSeoField = (field: string) => field === 'seo.title' || field === 'seo.description';
+
+/** The `seo` check profile's length ranges, in characters (A16). */
+export const SEO_RANGE: Record<string, { min: number; max: number }> = {
+  'seo.title': { min: 30, max: 65 },
+  'seo.description': { min: 70, max: 160 },
+};
+
+/** Characters as Hermes counts them (code points, not UTF-16 units). */
+export const charCount = (s: string) => Array.from(s).length;
+
+export const EMPTY_BEFORE = 'empty (Shopify shows the default)';
+
+/** The copy_source chip: "Foundry copy <generated_at date>, <source_commit>". */
+export const foundryCopyLabel = (cs: { generated_at: string; source_commit: string }) =>
+  `Foundry copy ${cs.generated_at.slice(0, 10)}, ${cs.source_commit}`;
+
+/** The audit codes a seo patch addresses, in words. */
+export const SEO_ISSUE_WORDS: Record<string, string> = {
+  missing_meta_description: 'missing meta description',
+  meta_description_length: 'meta description length',
+  title_length: 'title length',
+};
+
+const codesIn = (detail: string) =>
+  [...detail.matchAll(/still reports ([a-z_]+(?:, [a-z_]+)*)/g)]
+    .flatMap((m) => m[1].split(', '))
+    .filter((c, i, all) => all.indexOf(c) === i);
+
+/** What the audit's reading of an applied seo patch means, plainly. A
+ * `still` reading is the theme-suffix case: the written title is in range,
+ * but the theme's suffix pushes the page title over it, so the audit still
+ * reports `title_length` and the patch stays applied. */
+export function seoVerifyText(v: SeoVerify): string {
+  const detail = v.detail ?? '';
+  const still = v.result === 'still' || (v.result !== 'verified' && v.result !== 'failed' && /still reports/.test(detail));
+  if (still) {
+    const codes = codesIn(detail).map((c) => SEO_ISSUE_WORDS[c] ?? c);
+    const what = codes.length ? codes.join(', ') : 'the issue';
+    const suffix = codes.includes('title length')
+      ? ' The theme adds a suffix to the page title, so the page title is still over the range.'
+      : '';
+    return `Still applied, not verified: the page shows the written copy, but the audit still reports ${what}.${suffix}`;
+  }
+  switch (v.result) {
+    case 'verified':
+      return 'Verified by the SEO audit: the page shows the written copy and the audit no longer reports the issue.';
+    case 'failed':
+      return 'Failed verification: the page shows a different value than was written.';
+    case 'cache':
+      return 'Still applied: the page still shows the copy from before the write. The audit checks it again next time.';
+    default:
+      return detail ? `${v.result}: ${detail}` : v.result;
+  }
 }
 
 /** v1.4: a fix the writer applied without asking, as the general digest
