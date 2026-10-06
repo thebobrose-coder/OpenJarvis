@@ -41,7 +41,7 @@ function sleeve(over: Partial<Sleeve> = {}): Sleeve {
     realized_hwm: '10100.00',
     drawdown_pct: '0.58',
     positions: [{ product: 'SAMPLE-A', side: 'long', size: '12', entry: '101.25', stop: '96.00', held_days: 3 }],
-    open_orders: [{ client_order_id: 'o-1', product_id: 'SAMPLE-B', side: 'buy', type: 'limit', base_size: '5', limit_price: '42.10', status: 'open', submitted_at: '2026-10-06T14:00:00Z' }],
+    open_orders: [{ id: 'o-1', product: 'SAMPLE-B', side: 'buy', type: 'limit', size: '5', limit: '42.10', status: 'open', submitted_at: '2026-10-06T14:00:00Z' }],
     ticks: {
       today: [
         { time: '09:45', kind: 'monitor', done: true, at: '2026-10-06T13:45:10Z' },
@@ -250,6 +250,11 @@ describe('TradingView (0014, read-only)', () => {
     expect(html).toContain('3 d');
     expect(html).toContain('data-open-orders');
     expect(html).toContain('buy 5 SAMPLE-B · limit @ 42.10 · open');
+    // The nightly report's names are accepted as fallbacks.
+    const report = renderToStaticMarkup(
+      <SleeveCard name="equities" sleeve={sleeve({ open_orders: [{ client_order_id: 'o-2', product_id: 'SAMPLE-C', side: 'sell', type: 'limit', base_size: '2', limit_price: '9.50', status: 'open' }] })} />,
+    );
+    expect(report).toContain('sell 2 SAMPLE-C · limit @ 9.50 · open');
     expect(html).toContain('data-tick="done"');
     expect(html).toContain('data-tick="due"');
     expect(html).toContain('09:45 ET');

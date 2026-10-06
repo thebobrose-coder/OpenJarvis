@@ -19,19 +19,29 @@ export interface Position {
   held_days?: number | null;
 }
 
-/** As the nightly report lists them; the status export may use the same keys. */
+/** As `status.json` lists them (`schemas/Status.json`: id, product, side,
+ * type, size, limit, status, submitted_at). The nightly report's
+ * `open_orders_now` names (client_order_id, product_id, base_size,
+ * limit_price) are accepted as fallbacks. */
 export interface OpenOrder {
+  id?: string;
   client_order_id?: string;
-  product_id?: string;
   product?: string;
+  product_id?: string;
   side: string;
   type?: string;
-  base_size?: string;
   size?: string | number;
+  base_size?: string;
+  limit?: string | null;
   limit_price?: string | null;
   status?: string;
   submitted_at?: string | null;
 }
+
+export const orderId = (o: OpenOrder) => o.id ?? o.client_order_id ?? null;
+export const orderProduct = (o: OpenOrder) => o.product ?? o.product_id ?? '—';
+export const orderSize = (o: OpenOrder) => (o.size != null ? String(o.size) : o.base_size ?? '—');
+export const orderLimit = (o: OpenOrder) => o.limit ?? o.limit_price ?? null;
 
 export interface TickToday {
   time: string;

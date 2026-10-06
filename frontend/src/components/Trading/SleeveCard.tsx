@@ -3,8 +3,11 @@ import {
   DRAWDOWN_LIMIT_PCT,
   drawdownPct,
   fmtMoney,
+  orderId,
+  orderLimit,
+  orderProduct,
+  orderSize,
   sleeveLabel,
-  type OpenOrder,
   type Sleeve,
   type TickToday,
 } from '../../lib/trading-api';
@@ -13,9 +16,6 @@ import { num, shortDateTime } from '../shared/format';
 import { Chip, Quiet, Tile } from '../shared/ui';
 import { HaltPill } from './TradingHeader';
 import { Meter } from './Meter';
-
-const orderProduct = (o: OpenOrder) => o.product ?? o.product_id ?? '—';
-const orderSize = (o: OpenOrder) => o.base_size ?? (o.size != null ? String(o.size) : '—');
 
 /** Equities: the day's fixed ticks, done or due, as a short timeline. */
 function TickTimeline({ ticks }: { ticks: TickToday[] }) {
@@ -123,10 +123,10 @@ export function SleeveCard({ name, sleeve, loading, error }: { name: string; sle
             ) : (
               <ul className="flex flex-col gap-0.5 text-[12px] tabular-nums" data-open-orders style={{ color: 'var(--color-text)' }}>
                 {orders.map((o, i) => (
-                  <li key={o.client_order_id ?? i}>
+                  <li key={orderId(o) ?? i}>
                     {o.side} {orderSize(o)} {orderProduct(o)}
                     {o.type ? ` · ${o.type}` : ''}
-                    {o.limit_price ? ` @ ${fmtMoney(o.limit_price)}` : ''}
+                    {orderLimit(o) ? ` @ ${fmtMoney(orderLimit(o))}` : ''}
                     {o.status ? ` · ${o.status}` : ''}
                     {o.submitted_at ? ` · ${shortDateTime(o.submitted_at)}` : ''}
                   </li>
