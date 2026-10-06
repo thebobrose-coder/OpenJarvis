@@ -20,7 +20,6 @@ import {
   Loader2,
   ScrollText,
   Database,
-  Newspaper,
   CandlestickChart,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
@@ -59,18 +58,17 @@ export function Sidebar() {
     navigate('/');
   };
 
-  // Ordered by the operator's organisation: conversation, the hub, then the
-  // business lines, then the machine.
+  // Chat and the hub first; the functional units alphabetical; then the
+  // admin items in rank. The Briefing page stays reachable at /briefing.
   const navItems = [
     { path: '/', icon: MessageSquare, label: 'Chat' },
     { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
     { path: '/bizdev', icon: Handshake, label: 'Business Dev' },
-    { path: '/trading', icon: CandlestickChart, label: 'Trading' },
     { path: '/commerce', icon: ShoppingBag, label: 'Commerce' },
     { path: '/content', icon: Sprout, label: 'Content' },
+    { path: '/trading', icon: CandlestickChart, label: 'Trading' },
     { path: '/agents', icon: Bot, label: 'Agents' },
     { path: '/data-sources', icon: Database, label: 'Data Sources' },
-    { path: '/briefing', icon: Newspaper, label: 'Briefing' },
     { path: '/logs', icon: ScrollText, label: 'Logs' },
     { path: '/settings', icon: Settings, label: 'Settings' },
     { path: '/get-started', icon: Rocket, label: 'Get Started' },

@@ -105,7 +105,7 @@ export function ListenPanel({ initial }: { initial?: VoiceQueue }) {
   }, [initial, load]);
 
   return (
-    <DashboardPanel icon={Headphones} title="Listen" tag={queue?.voice_name} size="full" loading={loading} error={error}>
+    <DashboardPanel icon={Headphones} title="Listen" tag={queue?.voice_name} size="half" loading={loading} error={error}>
       {queue && <ListenList queue={queue} />}
       {playError && (
         <p className="mt-2 text-[11px]" style={{ color: 'var(--color-warning)' }}>

@@ -45,6 +45,7 @@ SPEECH_FEEDS = frozenset(
         "bd_prospects",
         "bd_pipeline",
         "content_proposals",
+        "trading_status",
     }
 )
 _ITEM_FIELDS = (

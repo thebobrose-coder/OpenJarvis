@@ -104,6 +104,18 @@ def _worker_that_renders(voice_dir):
     return worker
 
 
+# -- feeds -------------------------------------------------------------------
+
+
+def test_trading_status_is_a_speech_feed():
+    """hq 0014 D5: the trading summary joins the Listen lineup once Hermes
+    puts a speech block on trading_status; the routes may prepare and play it."""
+    from openjarvis.server import voice_routes as vr
+
+    assert "trading_status" in vr.SPEECH_FEEDS
+    assert "trading_day" not in vr.SPEECH_FEEDS
+
+
 # -- audio -------------------------------------------------------------------
 
 

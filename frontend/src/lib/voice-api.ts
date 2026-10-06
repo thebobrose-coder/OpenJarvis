@@ -51,7 +51,8 @@ export type SpeechFeed =
   | 'compliance_findings'
   | 'bd_prospects'
   | 'bd_pipeline'
-  | 'content_proposals';
+  | 'content_proposals'
+  | 'trading_status';
 
 export const SOURCE_LABELS: Record<string, string> = {
   digest_general: 'Digest',
@@ -61,6 +62,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   bd_prospects: 'Business Development',
   bd_pipeline: 'Business Development',
   content_proposals: 'Content',
+  trading_status: 'Trading',
 };
 
 /** The expressive voice's name for its render, "fast" for Kokoro, null if not rendered. */

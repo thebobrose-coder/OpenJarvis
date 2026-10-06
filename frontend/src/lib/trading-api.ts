@@ -6,6 +6,7 @@
  * none may be added. Money is strings, as everywhere in the trader.
  */
 import type { FeedMeta } from './commerce-api';
+import type { SpeechBlock } from './voice-api';
 import { apiFetch } from './api';
 
 export type HaltState = 'NORMAL' | 'DEGRADED' | 'KILL' | (string & {});
@@ -90,6 +91,9 @@ export interface Sleeve {
 }
 
 export interface TradingStatus extends FeedMeta {
+  /** The spoken trading summary, when Hermes includes one (contract v1.1
+   * speech blocks; the Listen lineup and the panel's speaker use it). */
+  speech?: SpeechBlock[];
   schema?: number;
   /** The trader's own clock: when it wrote the export. */
   written_at?: string;
