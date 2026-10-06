@@ -1133,6 +1133,18 @@ class WeatherToolConfig:
 
 
 @dataclass(slots=True)
+class TradingConfig:
+    """The Trading view's machine-local settings (hq/decisions/0014).
+
+    ``page_url`` is the AWS approval page the view's "Open approval page"
+    link opens in the system browser. It is local to this machine, lives
+    only in ``~/.openjarvis/config.toml``, and is never served to a feed.
+    """
+
+    page_url: str = ""
+
+
+@dataclass(slots=True)
 class ToolsConfig:
     """Tools primitive settings — wraps storage and MCP configuration."""
 
@@ -1806,6 +1818,7 @@ class JarvisConfig:
     skills: SkillsConfig = field(default_factory=SkillsConfig)
     digest: DigestConfig = field(default_factory=DigestConfig)
     proactive: ProactiveConfig = field(default_factory=ProactiveConfig)
+    trading: TradingConfig = field(default_factory=TradingConfig)
     mining: Optional["MiningConfig"] = None
 
     @property
@@ -2121,6 +2134,7 @@ def load_config(path: Optional[Path] = None) -> JarvisConfig:
             "system_prompt",
             "compression",
             "skills",
+            "trading",
         )
         for section_name in top_sections:
             if section_name in data:
@@ -2311,6 +2325,11 @@ enabled = true
 # default_location = ""
 # units = "metric"             # metric or imperial
 # lang = "en"                  # OpenWeatherMap language code
+
+# Trading view (read-only): the approval page the "Open approval page" link
+# opens in the system browser. Machine-local; leave empty to disable the link.
+# [trading]
+# page_url = ""
 
 [server]
 # Loopback is safe for local use and works without API authentication.

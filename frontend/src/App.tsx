@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { CommercePage } from './pages/CommercePage';
 import { BizDevPage } from './pages/BizDevPage';
 import { ContentPage } from './pages/ContentPage';
+import { TradingPage } from './pages/TradingPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { GetStartedPage } from './pages/GetStartedPage';
 import { AgentsPage } from './pages/AgentsPage';
@@ -192,6 +193,7 @@ export default function App() {
           <Route path="commerce" element={<CommercePage />} />
           <Route path="bizdev" element={<BizDevPage />} />
           <Route path="content" element={<ContentPage />} />
+          <Route path="trading" element={<TradingPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="get-started" element={<GetStartedPage />} />
           <Route path="data-sources" element={<DataSourcesPage />} />

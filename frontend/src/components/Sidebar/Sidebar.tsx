@@ -21,6 +21,7 @@ import {
   ScrollText,
   Database,
   Newspaper,
+  CandlestickChart,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { LatestNewsPanel } from './LatestNewsPanel';
@@ -64,6 +65,7 @@ export function Sidebar() {
     { path: '/commerce', icon: ShoppingBag, label: 'Commerce' },
     { path: '/bizdev', icon: Handshake, label: 'Business Dev' },
     { path: '/content', icon: Sprout, label: 'Content' },
+    { path: '/trading', icon: CandlestickChart, label: 'Trading' },
     { path: '/data-sources', icon: Database, label: 'Data Sources' },
     { path: '/agents', icon: Bot, label: 'Agents' },
     { path: '/briefing', icon: Newspaper, label: 'Briefing' },

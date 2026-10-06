@@ -238,6 +238,41 @@ of them Foundry copy, which the tab used to show as HTML copy patches.
 
 No backend change: the routes pass the feed through.
 
+**Trading view** (`/trading`, hq decision 0014, contract v1.6). A read-only
+view of the x402 paper trader from two Hermes feeds, `trading_status` (the
+trader's own status export, every 5 minutes) and `trading_day` (the nightly
+report). **It shows and never acts:** there are no action buttons and no
+POST routes under `/api/trading`; the only outbound control is a link that
+opens the AWS approval page in the system browser.
+- **Header strip:** mode, per-sleeve halt-state pills (NORMAL, DEGRADED,
+  KILL with the cause and when; icon plus word, never color alone), the
+  heartbeat and its alarm, when the trader wrote its status, the feed age,
+  and the installed commit. A stale banner appears when Hermes flags the
+  status stale, when the feed is over 15 minutes old, or when the trader's
+  own `written_at` is.
+- **Kill switch:** the AWS flag and the local file as two indicators, each
+  with its clearing rule in one sentence (the flag on the approval page with
+  MFA; the file by the operator in WSL), the last cause, and "Open approval
+  page", disabled with a hint when no URL is configured.
+- **Sleeve cards:** equity, cash, realized equity and high-water mark;
+  drawdown against the 8% limit as a thin meter; positions; open orders;
+  today's ticks (equities: the fixed times, done or due; crypto: the
+  interval and the entry window); the last tick.
+- **x402 spend** against the daily cap, entry pool and exit reserve;
+  **Nightly:** last report, next run, last off-VHD copy.
+- **Equity curve:** one line per sleeve from the nightly reports, shown from
+  day one, realized equity as a dashed lighter line, with a legend and a
+  table view. History travels inside each `trading_day` document (`curve`);
+  without it the curve has the latest day only.
+- **Events** (the last 20 non-TICK, with type chips) and **alerts** of the
+  last 24 hours.
+
+Backend: `server/trading_routes.py`, `GET /api/trading/{trading_status |
+trading_day}` as the Business Development proxy (last-good cache, the
+stale flag merged with Hermes's own), and `GET /api/trading/config`
+reporting whether `[trading] page_url` is set in the machine-local
+`config.toml` and the URL for the link (https only). Nothing else.
+
 **Business Development page** (`/bizdev`), generic by business line. A
 pipeline board for a Hermes prospect-research role
 (`GET /api/bizdev/{bd_pipeline|bd_stats|bd_prospects}`):

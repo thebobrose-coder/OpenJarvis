@@ -113,6 +113,11 @@ steady_state_threshold = 0.05            # Coefficient of variation threshold fo
 enabled = true                            # Record traces for analysis
 db_path = "~/.openjarvis/traces.db"
 
+[trading]
+# The Trading view is read-only. page_url is the approval page its one link
+# opens in the system browser; it is machine-local and stays out of the repo.
+page_url = ""
+
 [server]
 # Bind to loopback by default so the API is not exposed to the local network.
 # To serve other devices on your LAN, set host = "0.0.0.0" AND set an API key
