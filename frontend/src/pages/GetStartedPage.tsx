@@ -17,6 +17,14 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { isTauri, checkHealth } from '../lib/api';
+import { fetchVoiceQueue } from '../lib/voice-api';
+
+/** The desktop welcome heading: the assistant's display name when the
+ * machine-local voice config has one, else the product name. The name is
+ * never a literal here: this is a public fork. */
+export const desktopTitle = (name?: string | null) => (name && name.trim() ? `I am ${name.trim()}.` : 'OpenJarvis Desktop');
+
+export const DESKTOP_TAGLINE = 'I am here to coordinate the complex and deliver the impossible. I AM the machine.';
 
 const GITHUB_BASE =
   'https://github.com/open-jarvis/OpenJarvis/releases/latest/download';
@@ -252,6 +260,18 @@ function HostedView() {
 // ---------------------------------------------------------------------------
 function DesktopView() {
   const navigate = useNavigate();
+  const [voiceName, setVoiceName] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetchVoiceQueue()
+      .then((q) => live && setVoiceName(q.voice_name ?? null))
+      .catch(() => {
+        /* no voice worker: the product name stays */
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   return (
     <>
@@ -263,14 +283,13 @@ function DesktopView() {
           <Sparkles size={32} />
         </div>
         <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-          OpenJarvis Desktop
+          {desktopTitle(voiceName)}
         </h1>
         <p
           className="text-sm mb-4 leading-relaxed max-w-md mx-auto"
           style={{ color: 'var(--color-text-secondary)' }}
         >
-          Your local AI is ready. Everything runs on your device &mdash; no
-          data leaves your machine.
+          {DESKTOP_TAGLINE}
         </p>
         <span
           className="inline-block text-[11px] font-mono px-2.5 py-1 rounded-full"

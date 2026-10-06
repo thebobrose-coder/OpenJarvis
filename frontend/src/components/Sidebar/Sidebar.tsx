@@ -59,15 +59,17 @@ export function Sidebar() {
     navigate('/');
   };
 
+  // Ordered by the operator's organisation: conversation, the hub, then the
+  // business lines, then the machine.
   const navItems = [
     { path: '/', icon: MessageSquare, label: 'Chat' },
     { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
-    { path: '/commerce', icon: ShoppingBag, label: 'Commerce' },
     { path: '/bizdev', icon: Handshake, label: 'Business Dev' },
-    { path: '/content', icon: Sprout, label: 'Content' },
     { path: '/trading', icon: CandlestickChart, label: 'Trading' },
-    { path: '/data-sources', icon: Database, label: 'Data Sources' },
+    { path: '/commerce', icon: ShoppingBag, label: 'Commerce' },
+    { path: '/content', icon: Sprout, label: 'Content' },
     { path: '/agents', icon: Bot, label: 'Agents' },
+    { path: '/data-sources', icon: Database, label: 'Data Sources' },
     { path: '/briefing', icon: Newspaper, label: 'Briefing' },
     { path: '/logs', icon: ScrollText, label: 'Logs' },
     { path: '/settings', icon: Settings, label: 'Settings' },

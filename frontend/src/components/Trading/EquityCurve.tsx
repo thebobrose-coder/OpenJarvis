@@ -71,7 +71,7 @@ export function EquityCurve({ day, loading, error }: { day: TradingDay | null; l
       icon={TrendingUp}
       title="Equity curve"
       tag={rows.length ? `${rows.length} of ${CURVE_DAYS} days` : `${CURVE_DAYS} days`}
-      size="wide"
+      size="full"
       loading={loading}
       error={error}
       actions={
