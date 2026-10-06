@@ -9,6 +9,10 @@ import {
 } from '../lib/api';
 import { useAppStore } from '../lib/store';
 import { isEmbedOnlyModel } from '../lib/model-capabilities';
+import { assistantTitle, readDisplayName } from '../lib/display-name';
+
+/** The startup tagline while the engine, model and server come up. */
+export const STARTUP_TAGLINE = 'Currently bringing agents online and confirming API and MCP accessibility...';
 import { InferenceRecoveryButton, InferenceSourceSetup } from './InferenceSourceSetup';
 
 const STEPS = [
@@ -174,14 +178,10 @@ export function SetupScreen({ onReady }: { onReady: () => void }) {
             <Cpu size={32} />
           </div>
           <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>
-            OpenJarvis
+            {assistantTitle(readDisplayName())}
           </h1>
           <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            {!statusChecked
-              ? 'Checking your saved setup...'
-              : status?.source === 'custom'
-                ? 'Connecting to your AI server...'
-                : 'Setting up your local AI...'}
+            {STARTUP_TAGLINE}
           </p>
         </div>
 

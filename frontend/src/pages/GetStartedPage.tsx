@@ -18,11 +18,12 @@ import {
 } from 'lucide-react';
 import { isTauri, checkHealth } from '../lib/api';
 import { fetchVoiceQueue } from '../lib/voice-api';
+import { assistantTitle, readDisplayName, rememberDisplayName } from '../lib/display-name';
 
 /** The desktop welcome heading: the assistant's display name when the
  * machine-local voice config has one, else the product name. The name is
  * never a literal here: this is a public fork. */
-export const desktopTitle = (name?: string | null) => (name && name.trim() ? `I am ${name.trim()}.` : 'OpenJarvis Desktop');
+export const desktopTitle = (name?: string | null) => assistantTitle(name, 'OpenJarvis Desktop');
 
 export const DESKTOP_TAGLINE = 'I am here to coordinate the complex and deliver the impossible. I AM the machine.';
 
@@ -260,11 +261,14 @@ function HostedView() {
 // ---------------------------------------------------------------------------
 function DesktopView() {
   const navigate = useNavigate();
-  const [voiceName, setVoiceName] = useState<string | null>(null);
+  const [voiceName, setVoiceName] = useState<string | null>(() => readDisplayName());
   useEffect(() => {
     let live = true;
     fetchVoiceQueue()
-      .then((q) => live && setVoiceName(q.voice_name ?? null))
+      .then((q) => {
+        rememberDisplayName(q.voice_name);
+        if (live && q.voice_name) setVoiceName(q.voice_name);
+      })
       .catch(() => {
         /* no voice worker: the product name stays */
       });

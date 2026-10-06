@@ -3,6 +3,7 @@ import { Check, Headphones, Loader2, Pause, Play } from 'lucide-react';
 import { DashboardPanel } from './DashboardPanel';
 import { useVoicePlayer, type PlayRequest } from '../../lib/VoicePlayer';
 import { SOURCE_LABELS, fetchVoiceQueue, laneBadge, type VoiceQueue, type VoiceQueueItem } from '../../lib/voice-api';
+import { rememberDisplayName } from '../../lib/display-name';
 import { Chip, Quiet, SmallButton } from '../shared/ui';
 
 const REFRESH_MS = 60_000;
@@ -88,7 +89,9 @@ export function ListenPanel({ initial }: { initial?: VoiceQueue }) {
 
   const load = useCallback(async () => {
     try {
-      setQueue(await fetchVoiceQueue());
+      const q = await fetchVoiceQueue();
+      rememberDisplayName(q.voice_name);
+      setQueue(q);
       setError(null);
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load.');
