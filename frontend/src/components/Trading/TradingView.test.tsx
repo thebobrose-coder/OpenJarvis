@@ -286,6 +286,8 @@ describe('TradingView (0014, read-only)', () => {
     expect(html).toContain('data-meter-tone="accent"');
     const near = view(status({ x402: { day: '2026-10-06', payments: 250, total_usdc: '2.50', daily_cap_usdc: '3.00', under_cap: true } }));
     expect(near).toContain('data-meter="spend" data-meter-ratio="0.833" data-meter-tone="warning"');
+    const exact = view(status({ x402: { day: '2026-10-06', payments: 240, total_usdc: '2.400000', daily_cap_usdc: '3.00', under_cap: true } }));
+    expect(exact).toContain('data-meter="spend" data-meter-ratio="0.800" data-meter-tone="warning"');
   });
 
   it('the equity curve shows from day one, with a legend and a table view', () => {

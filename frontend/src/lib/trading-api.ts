@@ -183,9 +183,11 @@ export const OVER_CAP = 'Over the daily cap: the trader stops paying for data un
  * summary: error over the cap, warning from 80 % of it, accent otherwise. */
 export function spendTone(x: TradingStatus['x402']): 'accent' | 'warning' | 'error' {
   if (x?.under_cap === false) return 'error';
+  // Integer micro-USDC (the trader's six places), so exactly 80 % is 80 %.
   const total = money(x?.total_usdc);
-  const cap = money(x?.daily_cap_usdc) ?? 0;
-  return total != null && cap > 0 && total / cap >= 0.8 ? 'warning' : 'accent';
+  const cap = money(x?.daily_cap_usdc);
+  if (total == null || cap == null || cap <= 0) return 'accent';
+  return Math.round(total * 1e6) * 5 >= Math.round(cap * 1e6) * 4 ? 'warning' : 'accent';
 }
 
 /** "10,000.00"; "—" when missing. */

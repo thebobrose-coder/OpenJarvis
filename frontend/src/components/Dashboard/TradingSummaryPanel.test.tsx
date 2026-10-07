@@ -93,6 +93,19 @@ describe('Trading Summary (Dashboard)', () => {
     expect(spendTone(status().x402)).toBe('accent');
   });
 
+  it('spendTone compares in micro-USDC: exactly 80 % of the cap is amber', () => {
+    const x = (total_usdc: string, daily_cap_usdc = '3.00', under_cap?: boolean) => ({ payments: 1, total_usdc, daily_cap_usdc, under_cap });
+    expect(spendTone(x('2.40'))).toBe('warning');
+    expect(spendTone(x('2.400000'))).toBe('warning');
+    expect(spendTone(x('2.399999'))).toBe('accent');
+    expect(spendTone(x('0.30'))).toBe('accent');
+    expect(spendTone(x('3.10', '3.00', false))).toBe('error');
+    expect(spendTone(x('1.00', '0'))).toBe('accent');
+    expect(spendTone(x(''))).toBe('accent');
+    expect(spendTone(undefined)).toBe('accent');
+    expect(view(status({ x402: x('2.40') }))).toContain('data-meter-tone="warning"');
+  });
+
   it('says spend is not reported, at the top and without a meter, when the status has no x402 block', () => {
     const html = view(status({ x402: undefined }));
     expect(html).toContain('x402 spend not reported');
