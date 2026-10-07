@@ -488,6 +488,7 @@ function ClassPanel({
                   'Store',
                   'Rule',
                   'Field',
+                  'Auto-apply',
                   'Streak',
                   'Bulk',
                   'Approvals',
@@ -503,7 +504,6 @@ function ClassPanel({
                   'Policy tier',
                   'Auto applied',
                   'Toward auto-apply',
-                  '',
                 ].map((h) => (
                   <th key={h} className="font-normal pr-3 pb-1" title={h === 'Streak' ? STREAK_EXPLAINED : undefined}>
                     {h}
@@ -520,6 +520,25 @@ function ClassPanel({
                     <td className="pr-3 py-0.5">{storeNames[c.store] ?? c.store}</td>
                     <td className="pr-3">{ruleLabel(c.rule)}</td>
                     <td className="pr-3">{c.field}</td>
+                    <td className="pr-3 py-0.5 text-[11px] align-top min-w-[16rem] max-w-[18rem]" data-auto-apply>
+                      <span className="flex flex-col gap-1">
+                        {c.demoted && (
+                          <span data-demoted style={{ color: 'var(--color-warning)' }}>
+                            {demotedNote(c.demoted)}
+                          </span>
+                        )}
+                        {c.eligible && <span style={{ color: 'var(--color-success)' }}>Eligible for auto-apply</span>}
+                        {onSetTier && (
+                          <TierControl
+                            c={c}
+                            label={label}
+                            listed={listed}
+                            busy={tierPending === classKey(c)}
+                            onSetTier={onSetTier}
+                          />
+                        )}
+                      </span>
+                    </td>
                     <td className="pr-3 tabular-nums">
                       {num(c.streak)}
                       {c.streak_since && (
@@ -544,26 +563,7 @@ function ClassPanel({
                     <td className="pr-3 tabular-nums" data-policy-tier={listed ? 1 : 0}>{listed ? 1 : 0}</td>
                     <td className="pr-3 tabular-nums">{num(c.auto_applied ?? 0)}</td>
                     <td className="pr-3 tabular-nums whitespace-nowrap" data-progress={suggestAt(c)}>
-                      {progressText(c)}
-                    </td>
-                    <td className="text-[11px]">
-                      <span className="flex flex-col gap-1">
-                        {c.demoted && (
-                          <span data-demoted style={{ color: 'var(--color-warning)' }}>
-                            {demotedNote(c.demoted)}
-                          </span>
-                        )}
-                        {c.eligible && <span style={{ color: 'var(--color-success)' }}>Eligible for auto-apply</span>}
-                        {onSetTier && (
-                          <TierControl
-                            c={c}
-                            label={label}
-                            listed={listed}
-                            busy={tierPending === classKey(c)}
-                            onSetTier={onSetTier}
-                          />
-                        )}
-                      </span>
+                      {c.eligible ? 'Eligible: see Auto-apply' : progressText(c)}
                     </td>
                   </tr>
                 );

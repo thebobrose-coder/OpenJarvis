@@ -329,6 +329,17 @@ describe('tier control (v1.4, A13/A14)', () => {
     expect(allow(off)?.[2]).toContain('disabled=""');
   });
 
+  it('the control sits beside the class name, before Streak, with no blank trailing column', () => {
+    const html = tab(feed([], { classes: [eligible] }), { policy, onSetTier: async () => true });
+    const headers = [...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+    expect(headers.slice(0, 5)).toEqual(['Store', 'Rule', 'Field', 'Auto-apply', 'Streak']);
+    expect(headers).not.toContain('');
+    const row = html.slice(html.indexOf('data-class='), html.indexOf('</tr>', html.indexOf('data-class=')));
+    expect(row.indexOf('data-tier-allow')).toBeGreaterThan(-1);
+    expect(row.indexOf('data-tier-allow')).toBeLessThan(row.indexOf('>22<'));
+    expect(row).toContain('Eligible: see Auto-apply');
+  });
+
   it('the inline confirm names the class and the caps', () => {
     const html = renderToStaticMarkup(
       <TierControl c={eligible} label="Alpha · rule 4 · descriptionHtml" listed={false} busy={false} onSetTier={async () => true} startAsking />,
