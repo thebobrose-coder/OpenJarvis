@@ -46,6 +46,8 @@ no OpenJarvis agent, tools, system prompt, or memory. The `hermes` engine is
   `--inexact`: a plain `uv run` strips the dev and desktop extras the running app needs.
   The full suite has a known Windows FAILED baseline; diff the list, don't chase the count.
 - Lint: `uvx ruff check`, `uvx ruff format`. No Prettier or ESLint: keep hand formatting.
+- Before pushing `main`: `uv run --inexact --extra dev ruff format --check src/ tests/` and
+  `uv run --inexact --extra dev ruff check src/ tests/` (CI runs both, with its pinned ruff).
 - Frontend (`cd frontend`): `npx vitest run`, `npx tsc --noEmit -p .`, `npm run build`
   (writes `src/openjarvis/server/static/`, which the live server serves). Component tests
   use `renderToStaticMarkup`: keep pages as a pure `*View` plus a thin hook page.
@@ -60,6 +62,8 @@ no OpenJarvis agent, tools, system prompt, or memory. The `hermes` engine is
   branch `sync/upstream-<date>`;
   `git merge upstream/main`; keep `frontend/tsconfig.tsbuildinfo` deleted; regenerate
   lockfiles (`uv sync --inexact`, `npm install`); full tests and frontend build; stop.
+  Then `gh workflow list --all`: a new upstream workflow starts active on the fork (that is
+  how `security-sast` arrived); review it and disable it if it is release machinery.
   `main` fast-forwards only after the operator closes the desktop app; they reopen it after.
 - Public fork: no store, persona, prospect, account, or key data in code, tests, fixtures,
   or commit messages. Scan the added lines and the whole tree before every push.
