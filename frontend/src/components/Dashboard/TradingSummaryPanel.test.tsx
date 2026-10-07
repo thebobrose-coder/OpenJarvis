@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { Sleeve, TradingStatus } from '../../lib/trading-api';
+import { OVER_CAP, spendTone, type Sleeve, type TradingStatus } from '../../lib/trading-api';
 import { SOURCE_LABELS } from '../../lib/voice-api';
 import { ORDER_EVENT_TYPES, TradingSummaryView } from './TradingSummaryPanel';
 
@@ -62,10 +62,42 @@ describe('Trading Summary (Dashboard)', () => {
     // The newest order-activity event wins; the DEGRADED_CLEARED event is not order activity.
     expect(html).toContain('>HITL<');
     expect(html).not.toContain('DEGRADED_CLEARED');
-    expect(html).toContain('x402 today: 3 payments, 0.03 of 3.00 USDC');
+    expect(html).toContain('x402 today: 3 payments');
+    expect(html).toContain('0.03 of 3.00 USDC');
     expect(html).toContain('Trading view');
     expect(html).not.toContain('data-trading-warnings');
     expect(ORDER_EVENT_TYPES.has('FILL')).toBe(true);
+  });
+
+  it('shows today’s spend as a meter above the sleeves, and not in the footer', () => {
+    const html = view(status());
+    expect(html).toContain('data-meter="summary-spend" data-meter-ratio="0.010" data-meter-tone="accent"');
+    expect(html.indexOf('data-meter="summary-spend"')).toBeLessThan(html.indexOf('data-trading-sleeves'));
+    expect(html.indexOf('data-summary-spend')).toBeLessThan(html.indexOf('data-trading-sleeves'));
+    const footer = html.slice(html.indexOf('data-summary-footer'));
+    expect(footer).toContain('Trading view');
+    expect(footer).not.toContain('x402');
+    expect(footer).not.toContain('USDC');
+  });
+
+  it('colours the spend meter like the Trading page: amber from 80 %, red with the sentence over the cap', () => {
+    const near = { day: '2026-10-06', payments: 250, total_usdc: '2.50', daily_cap_usdc: '3.00' };
+    expect(view(status({ x402: near }))).toContain('data-meter="summary-spend" data-meter-ratio="0.833" data-meter-tone="warning"');
+    expect(view(status({ x402: near }))).not.toContain(OVER_CAP);
+    const over = { day: '2026-10-06', payments: 400, total_usdc: '3.10', daily_cap_usdc: '3.00', under_cap: false };
+    const html = view(status({ x402: over }));
+    expect(html).toContain('data-meter-tone="error"');
+    expect(html).toContain(OVER_CAP);
+    expect(spendTone(over)).toBe('error');
+    expect(spendTone(near)).toBe('warning');
+    expect(spendTone(status().x402)).toBe('accent');
+  });
+
+  it('says spend is not reported, at the top and without a meter, when the status has no x402 block', () => {
+    const html = view(status({ x402: undefined }));
+    expect(html).toContain('x402 spend not reported');
+    expect(html).not.toContain('data-meter="summary-spend"');
+    expect(html.indexOf('x402 spend not reported')).toBeLessThan(html.indexOf('data-trading-sleeves'));
   });
 
   it('warns on KILL with the cause and where it is cleared, on a heartbeat alarm, and on a stale status', () => {

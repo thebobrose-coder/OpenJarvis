@@ -7,13 +7,17 @@ import {
   fmtUsdc,
   killCause,
   killWhen,
+  money,
+  OVER_CAP,
   recentEvents,
   sleeveLabel,
   sleeveNames,
+  spendTone,
   staleness,
   type TradingStatus,
 } from '../../lib/trading-api';
 import { firstBlock } from '../../lib/voice-api';
+import { Meter } from '../Trading/Meter';
 import { HaltPill } from '../Trading/TradingHeader';
 import { shortDateTime } from '../shared/format';
 import { Chip, Quiet, SmallButton } from '../shared/ui';
@@ -32,8 +36,9 @@ export const ORDER_EVENT_TYPES = new Set(['PROPOSAL', 'GATE', 'HITL', 'FILL', 'O
 export const NO_STATUS = 'No trading status yet. The trader publishes it every 5 minutes.';
 
 /** The top line of the x402 paper trader for the Dashboard: halt state and
- * equity per sleeve, open positions, the latest order activity, today's
- * spend, and the stale or KILL warnings. Read-only; the link opens /trading. */
+ * today's x402
+ * spend against the cap, equity per sleeve, open positions, the latest order
+ * activity, and the stale or KILL warnings. Read-only; the link opens /trading. */
 export function TradingSummaryView({ status, now, onOpen }: { status: TradingStatus; now: number; onOpen?: () => void }) {
   const stale = staleness(status, now);
   const sleeves = sleeveNames(status);
@@ -59,6 +64,28 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
             </li>
           )}
         </ul>
+      )}
+
+      {status.x402 ? (
+        <div className="flex flex-col gap-1" data-summary-spend>
+          <Meter
+            testId="summary-spend"
+            value={money(status.x402.total_usdc)}
+            limit={money(status.x402.daily_cap_usdc) ?? 0}
+            tone={spendTone(status.x402)}
+            label={`x402 today: ${status.x402.payments} payment${status.x402.payments === 1 ? '' : 's'}`}
+            detail={`${fmtUsdc(status.x402.total_usdc)} of ${fmtUsdc(status.x402.daily_cap_usdc)} USDC`}
+          />
+          {status.x402.under_cap === false && (
+            <p className="text-[11px]" role="status" style={{ color: 'var(--color-error)' }}>
+              {OVER_CAP}
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-[11px]" data-summary-spend style={{ color: 'var(--color-text-secondary)' }}>
+          x402 spend not reported
+        </p>
       )}
 
       {sleeves.length === 0 ? (
@@ -124,18 +151,13 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-        <span className="text-[11px] tabular-nums" data-summary-spend style={{ color: 'var(--color-text-tertiary)' }}>
-          {status.x402
-            ? `x402 today: ${status.x402.payments} payment${status.x402.payments === 1 ? '' : 's'}, ${fmtUsdc(status.x402.total_usdc)} of ${fmtUsdc(status.x402.daily_cap_usdc)} USDC`
-            : 'x402 spend not reported'}
-        </span>
-        {onOpen && (
+      {onOpen && (
+        <div className="flex justify-end pt-1" data-summary-footer>
           <SmallButton onClick={onOpen} title="The full Trading view">
             Trading view <ArrowRight size={11} />
           </SmallButton>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

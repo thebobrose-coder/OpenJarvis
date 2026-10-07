@@ -281,7 +281,11 @@ describe('TradingView (0014, read-only)', () => {
     expect(html).toContain('2026-10-05');
     expect(html).toContain('none yet');
     const over = view(status({ x402: { day: '2026-10-06', payments: 400, total_usdc: '3.10', daily_cap_usdc: '3.00', under_cap: false } }));
-    expect(over).toContain('Over the daily cap');
+    expect(over).toContain('Over the daily cap: the trader stops paying for data until tomorrow.');
+    expect(over).toContain('data-meter="spend" data-meter-ratio="1.000" data-meter-tone="error"');
+    expect(html).toContain('data-meter-tone="accent"');
+    const near = view(status({ x402: { day: '2026-10-06', payments: 250, total_usdc: '2.50', daily_cap_usdc: '3.00', under_cap: true } }));
+    expect(near).toContain('data-meter="spend" data-meter-ratio="0.833" data-meter-tone="warning"');
   });
 
   it('the equity curve shows from day one, with a legend and a table view', () => {

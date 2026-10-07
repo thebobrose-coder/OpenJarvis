@@ -1,5 +1,5 @@
 import { CalendarClock, Wallet } from 'lucide-react';
-import { fmtUsdc, money, type TradingStatus } from '../../lib/trading-api';
+import { fmtUsdc, money, OVER_CAP, spendTone, type TradingStatus } from '../../lib/trading-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num, shortDateTime } from '../shared/format';
 import { Quiet, Tile } from '../shared/ui';
@@ -10,7 +10,6 @@ export function SpendCard({ status, loading, error }: { status: TradingStatus | 
   const x = status?.x402;
   const total = money(x?.total_usdc);
   const cap = money(x?.daily_cap_usdc) ?? 0;
-  const over = x?.under_cap === false;
   return (
     <DashboardPanel icon={Wallet} title="x402 spend" tag={x?.day ?? 'Today'} size="third" loading={loading} error={error}>
       {!x ? (
@@ -21,13 +20,13 @@ export function SpendCard({ status, loading, error }: { status: TradingStatus | 
             testId="spend"
             value={total}
             limit={cap}
-            tone={over ? 'error' : total != null && cap > 0 && total / cap >= 0.8 ? 'warning' : 'accent'}
+            tone={spendTone(x)}
             label={`${num(x.payments)} payment${x.payments === 1 ? '' : 's'} today`}
             detail={`${fmtUsdc(x.total_usdc)} of ${fmtUsdc(x.daily_cap_usdc)} USDC`}
           />
-          {over && (
+          {x.under_cap === false && (
             <p className="text-[11.5px]" role="status" style={{ color: 'var(--color-error)' }}>
-              Over the daily cap: the trader stops paying for data until tomorrow.
+              {OVER_CAP}
             </p>
           )}
           <div className="grid grid-cols-2 gap-2">

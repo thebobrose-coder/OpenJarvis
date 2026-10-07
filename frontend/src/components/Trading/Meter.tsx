@@ -31,7 +31,7 @@ export function Meter({
           ? 'var(--color-success)'
           : 'var(--color-accent)';
   return (
-    <div className="flex flex-col gap-1" data-meter={testId} data-meter-ratio={ratio.toFixed(3)}>
+    <div className="flex flex-col gap-1" data-meter={testId} data-meter-ratio={ratio.toFixed(3)} data-meter-tone={tone}>
       <div className="flex items-baseline justify-between gap-2 text-[11px]">
         <span style={{ color: 'var(--color-text-secondary)' }}>{label}</span>
         {detail && (

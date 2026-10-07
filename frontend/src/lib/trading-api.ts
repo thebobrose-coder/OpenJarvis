@@ -177,6 +177,17 @@ export function money(s: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export const OVER_CAP = 'Over the daily cap: the trader stops paying for data until tomorrow.';
+
+/** The spend meter's tone, shared by the Trading page and the Dashboard
+ * summary: error over the cap, warning from 80 % of it, accent otherwise. */
+export function spendTone(x: TradingStatus['x402']): 'accent' | 'warning' | 'error' {
+  if (x?.under_cap === false) return 'error';
+  const total = money(x?.total_usdc);
+  const cap = money(x?.daily_cap_usdc) ?? 0;
+  return total != null && cap > 0 && total / cap >= 0.8 ? 'warning' : 'accent';
+}
+
 /** "10,000.00"; "—" when missing. */
 export function fmtMoney(s: string | number | null | undefined, digits = 2): string {
   const n = money(s);
