@@ -198,7 +198,9 @@ class TestAPIServerRoundtrip:
         resp = client.get("/v1/models")
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["data"]) == 1
+        # Fork: the chat router lists "auto" and "hermes-agent" first.
+        ids = [m["id"] for m in data["data"]]
+        assert ids == ["auto", "hermes-agent", "test-model"]
 
 
 class TestEventBusFullFlow:

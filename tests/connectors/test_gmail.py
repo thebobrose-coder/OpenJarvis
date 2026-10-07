@@ -112,7 +112,9 @@ def test_auth_url_returns_string(connector) -> None:
     url = connector.auth_url()
     assert isinstance(url, str)
     assert url.startswith("https://accounts.google.com/o/oauth2/v2/auth")
-    assert "gmail.modify" in url
+    # Fork: Google scopes narrowed to read-only (connectors/oauth.py).
+    assert "gmail.readonly" in url
+    assert "gmail.modify" not in url
 
 
 # ---------------------------------------------------------------------------
