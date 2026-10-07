@@ -274,7 +274,7 @@ def _shape(category: str, payload: dict, audio_path: Path | None, stale: bool) -
 
 
 def _voice_used(payload: dict, audio_path: Path | None) -> str | None:
-    """"expressive" or "bm_george" when the audio is the voice worker's render."""
+    """ "expressive" or "bm_george" when the audio is the voice worker's render."""
     from openjarvis.voice_worker import paths as voice_paths
 
     block = _speech_block(payload)

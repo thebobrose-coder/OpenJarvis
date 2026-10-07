@@ -142,9 +142,7 @@ def create_breaking_news_router() -> APIRouter:
             pass
 
         if _cache is None:
-            raise HTTPException(
-                status_code=503, detail="Hermes alert feed unavailable"
-            )
+            raise HTTPException(status_code=503, detail="Hermes alert feed unavailable")
         return _shape(_cache, await _ensure_audio(_cache), True)
 
     @router.get("/audio")

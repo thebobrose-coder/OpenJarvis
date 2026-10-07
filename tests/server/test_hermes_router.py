@@ -65,8 +65,16 @@ def _classifier(route: str, confidence: float):
     return classify
 
 
-def _decide(text, *, route="local", confidence=0.9, last_route=None, cap=100,
-            key=True, usage=None):
+def _decide(
+    text,
+    *,
+    route="local",
+    confidence=0.9,
+    last_route=None,
+    cap=100,
+    key=True,
+    usage=None,
+):
     return asyncio.run(
         hr.decide_route(
             text,
@@ -206,7 +214,9 @@ def test_confident_hermes_classification():
 def test_confident_local_classification():
     decision, _ = _decide("capital of Australia?", route="local", confidence=0.95)
     assert (decision.target, decision.reason, decision.hint) == (
-        "local", "classifier", None
+        "local",
+        "classifier",
+        None,
     )
 
 
@@ -219,12 +229,14 @@ def test_low_confidence_goes_local_with_hint(route):
 
 
 def test_sticky_stays_with_hermes_unless_confident_local():
-    decision, _ = _decide("and the second one?", route="local", confidence=0.5,
-                          last_route="hermes")
+    decision, _ = _decide(
+        "and the second one?", route="local", confidence=0.5, last_route="hermes"
+    )
     assert (decision.target, decision.reason) == ("hermes", "sticky")
 
-    decision, _ = _decide("tell me a joke", route="local", confidence=0.9,
-                          last_route="hermes")
+    decision, _ = _decide(
+        "tell me a joke", route="local", confidence=0.9, last_route="hermes"
+    )
     assert (decision.target, decision.reason) == ("local", "classifier")
 
 
@@ -233,8 +245,14 @@ def test_classifier_failure_goes_local():
         raise httpx.ConnectError("ollama down")
 
     decision, _ = asyncio.run(
-        hr.decide_route("how are my stores?", last_route=None, classify=broken,
-                        usage=hr.get_usage(), cap=100, key_available=True)
+        hr.decide_route(
+            "how are my stores?",
+            last_route=None,
+            classify=broken,
+            usage=hr.get_usage(),
+            cap=100,
+            key_available=True,
+        )
     )
     assert (decision.target, decision.reason) == ("local", "classifier_error")
 
@@ -256,8 +274,9 @@ def test_cap_blocks_auto_and_notices_once(tmp_path):
     second, _ = _decide("and my watchlist?", route="hermes", cap=3, usage=usage)
     assert (second.target, second.reason, second.notice) == ("local", "cap", None)
 
-    sticky, _ = _decide("and?", route="local", confidence=0.3, last_route="hermes",
-                        cap=3, usage=usage)
+    sticky, _ = _decide(
+        "and?", route="local", confidence=0.3, last_route="hermes", cap=3, usage=usage
+    )
     assert sticky.target == "local"
 
     # Explicit prefix still reaches Hermes past the cap.
@@ -383,9 +402,17 @@ def test_no_store_names_hardcoded_in_router():
 _CONVERSATION = [
     {"role": "system", "content": "You are OpenJarvis. SECRET SYSTEM PROMPT"},
     {"role": "user", "content": "hi"},
-    {"role": "assistant", "content": "hello",
-     "tool_calls": [{"id": "t1", "type": "function",
-                     "function": {"name": "shell_exec", "arguments": "{}"}}]},
+    {
+        "role": "assistant",
+        "content": "hello",
+        "tool_calls": [
+            {
+                "id": "t1",
+                "type": "function",
+                "function": {"name": "shell_exec", "arguments": "{}"},
+            }
+        ],
+    },
     {"role": "tool", "content": "tool output", "tool_call_id": "t1"},
     {"role": "user", "content": "Hermes, which stores do I have?"},
 ]
@@ -419,8 +446,12 @@ def test_hermes_stream_is_pure_passthrough(monkeypatch, model):
 
     resp = client.post(
         "/v1/chat/completions",
-        json={"model": model, "messages": _CONVERSATION, "tools": _TOOLS,
-              "stream": True},
+        json={
+            "model": model,
+            "messages": _CONVERSATION,
+            "tools": _TOOLS,
+            "stream": True,
+        },
     )
     assert resp.status_code == 200
     events = _sse_events(resp.text)
@@ -448,8 +479,7 @@ def test_hermes_nonstream_is_pure_passthrough(monkeypatch):
 
     resp = client.post(
         "/v1/chat/completions",
-        json={"model": hr.HERMES_MODEL_ID, "messages": _CONVERSATION,
-              "tools": _TOOLS},
+        json={"model": hr.HERMES_MODEL_ID, "messages": _CONVERSATION, "tools": _TOOLS},
     )
     body = resp.json()
     assert body["choices"][0]["message"]["content"] == "two stores"
@@ -462,8 +492,10 @@ def test_hermes_without_key_explains_and_sends_nothing(monkeypatch):
     client, *_ = _app(monkeypatch, fake)
     resp = client.post(
         "/v1/chat/completions",
-        json={"model": hr.HERMES_MODEL_ID,
-              "messages": [{"role": "user", "content": "hi"}]},
+        json={
+            "model": hr.HERMES_MODEL_ID,
+            "messages": [{"role": "user", "content": "hi"}],
+        },
     )
     assert "HERMES_API_KEY" in resp.json()["choices"][0]["message"]["content"]
     assert fake.calls == []
@@ -481,10 +513,10 @@ def test_auto_local_turn_uses_normal_path_with_local_model(monkeypatch):
 
     resp = client.post(
         "/v1/chat/completions",
-        json={"model": hr.AUTO_MODEL_ID,
-              "messages": [
-                  {"role": "user", "content": "local, capital of Australia?"}
-              ]},
+        json={
+            "model": hr.AUTO_MODEL_ID,
+            "messages": [{"role": "user", "content": "local, capital of Australia?"}],
+        },
     )
     body = resp.json()
     assert body["choices"][0]["message"]["content"] == "Canberra"
@@ -534,8 +566,9 @@ def test_hermes_engine_bearer_and_progress_events():
     def handler(request: httpx.Request) -> httpx.Response:
         seen["auth"] = request.headers.get("authorization")
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, text=sse,
-                              headers={"content-type": "text/event-stream"})
+        return httpx.Response(
+            200, text=sse, headers={"content-type": "text/event-stream"}
+        )
 
     engine = hr.make_hermes_engine(None, hr.hermes_api_key())
     assert isinstance(engine, HermesEngine)
@@ -703,9 +736,7 @@ def test_prefix_beats_briefing_rule(monkeypatch, text, target):
 
     monkeypatch.setattr(digest_routes, "_load_today", load_today)
     fake = _FakeHermesEngine()
-    client, _, agent, _, _ = _app(
-        monkeypatch, fake, classify=_classifier("local", 0.9)
-    )
+    client, _, agent, _, _ = _app(monkeypatch, fake, classify=_classifier("local", 0.9))
     agent.run.return_value = AgentResult(content="Morning!", turns=1)
 
     body = _chat(client, text).json()

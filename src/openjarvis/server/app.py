@@ -531,6 +531,7 @@ def create_app(
             task = getattr(app.state, "digest_audio_warmup", None)
             if task is not None:
                 task.cancel()
+
     app.include_router(day_ahead_router)
     app.include_router(weather_router)
     app.include_router(store_performance_router)
