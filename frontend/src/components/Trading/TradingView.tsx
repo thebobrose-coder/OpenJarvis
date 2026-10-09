@@ -48,7 +48,7 @@ export function TradingView({ status, day, config, now }: TradingViewProps) {
           </div>
         ) : (
           (sleeves.length ? sleeves : ['equities', 'crypto']).map((name) => (
-            <SleeveCard key={name} name={name} sleeve={s?.sleeves?.[name] ?? null} loading={loading} error={error} />
+            <SleeveCard key={name} name={name} sleeve={s?.sleeves?.[name] ?? null} loading={loading} error={error} now={now} />
           ))
         )}
       </div>

@@ -12,6 +12,7 @@ import {
   type TickToday,
 } from '../../lib/trading-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
+import { formatAge } from '../Dashboard/FeedFreshness';
 import { num, shortDateTime } from '../shared/format';
 import { Chip, Quiet, Tile } from '../shared/ui';
 import { HaltPill } from './TradingHeader';
@@ -40,9 +41,35 @@ function TickTimeline({ ticks }: { ticks: TickToday[] }) {
   );
 }
 
-/** One sleeve: the money tiles, the drawdown against the 8% limit, positions,
- * open orders, today's ticks and the last tick. Read-only. */
-export function SleeveCard({ name, sleeve, loading, error }: { name: string; sleeve: Sleeve | null; loading?: boolean; error?: string | null }) {
+/** The Mark cell's hover: the print's own time and age ("as of 14:30 CT · 5 h
+ * ago"), with the date when it isn't today's. A mark restored at boot keeps its
+ * old time, so the age tells a stale price from a fresh one. */
+export function markAsOf(markAt: string | null | undefined, now: number): string | undefined {
+  if (!markAt) return undefined;
+  const d = new Date(markAt);
+  if (Number.isNaN(d.getTime())) return undefined;
+  // 'shortGeneric' ("CT", not "CDT") is ES2022; the lib here is ES2020.
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'shortGeneric' } as Intl.DateTimeFormatOptions);
+  const sameDay = d.toDateString() === new Date(now).toDateString();
+  const date = sameDay ? '' : `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, `;
+  return `as of ${date}${time} · ${formatAge(Math.max(0, now - d.getTime()) / 1000)}`;
+}
+
+/** One sleeve: the money tiles, the drawdown against the 8% limit, positions
+ * with their marks, open orders, today's ticks and the last tick. Read-only. */
+export function SleeveCard({
+  name,
+  sleeve,
+  loading,
+  error,
+  now = Date.now(),
+}: {
+  name: string;
+  sleeve: Sleeve | null;
+  loading?: boolean;
+  error?: string | null;
+  now?: number;
+}) {
   const Icon = name === 'crypto' ? Coins : Briefcase;
   const dd = sleeve ? drawdownPct(sleeve) : null;
   const ddTone = dd == null ? 'accent' : dd >= DRAWDOWN_LIMIT_PCT ? 'error' : dd >= DRAWDOWN_LIMIT_PCT / 2 ? 'warning' : 'accent';
@@ -91,7 +118,7 @@ export function SleeveCard({ name, sleeve, loading, error }: { name: string; sle
               <table className="w-full text-[12px] tabular-nums" data-positions>
                 <thead>
                   <tr className="text-left" style={{ color: 'var(--color-text-tertiary)' }}>
-                    {['Product', 'Side', 'Size', 'Entry', 'Stop', 'Held'].map((h) => (
+                    {['Product', 'Side', 'Size', 'Entry', 'Mark', 'Stop', 'Held'].map((h) => (
                       <th key={h} className="font-normal pr-3 pb-1">
                         {h}
                       </th>
@@ -105,6 +132,9 @@ export function SleeveCard({ name, sleeve, loading, error }: { name: string; sle
                       <td className="pr-3">{p.side}</td>
                       <td className="pr-3">{String(p.size)}</td>
                       <td className="pr-3">{fmtMoney(p.entry)}</td>
+                      <td className="pr-3" title={p.mark != null ? markAsOf(p.mark_at, now) : undefined} data-mark>
+                        {fmtMoney(p.mark)}
+                      </td>
                       <td className="pr-3">{p.stop ? fmtMoney(p.stop) : '—'}</td>
                       <td className="pr-3">{p.held_days != null ? `${num(p.held_days)} d` : '—'}</td>
                     </tr>

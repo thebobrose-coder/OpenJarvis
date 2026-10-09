@@ -20,7 +20,7 @@ import { EquityCurve } from './EquityCurve';
 import { EventsPanel, eventTone } from './EventsPanel';
 import { AWS_FLAG_RULE, KillCard, LOCAL_FILE_RULE, NO_URL_HINT } from './KillCard';
 import { Meter } from './Meter';
-import { SleeveCard } from './SleeveCard';
+import { SleeveCard, markAsOf } from './SleeveCard';
 import { NightlyCard, SpendCard } from './SpendCard';
 import { STALE_BANNER, TradingHeader } from './TradingHeader';
 import { NO_SLEEVES, NO_STATUS_YET, TradingView } from './TradingView';
@@ -262,6 +262,26 @@ describe('TradingView (0014, read-only)', () => {
     // Crypto: interval and entry window instead of fixed times.
     expect(html).toContain('data-tick-interval');
     expect(html).toContain('Every 5 min · entry window 00:00-00:15Z · entry done 2026-10-06');
+  });
+
+  it('positions carry a Mark column between Entry and Stop, with the print’s time on hover (v1.7.2)', () => {
+    const card = (positions: Sleeve['positions']) => renderToStaticMarkup(<SleeveCard name="equities" sleeve={sleeve({ positions })} now={NOW} />);
+    const base = { product: 'SAMPLE-A', side: 'LONG', size: '4', entry: '101.25', stop: '96.00', held_days: 1 };
+    const marked = card([{ ...base, mark: '108.42', mark_at: '2026-10-06T12:00:00Z' }]);
+    expect([...marked.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])).toEqual(['Product', 'Side', 'Size', 'Entry', 'Mark', 'Stop', 'Held']);
+    expect(marked).toMatch(/<td class="pr-3" title="as of \d{2}:00 [^"]+ · 5 h ago" data-mark="true">108\.42<\/td>/);
+    // A null mark, and an older file with neither key: a dash and no hover.
+    for (const html of [card([{ ...base, mark: null, mark_at: null }]), card([base])]) {
+      expect(html).toMatch(/<td class="pr-3" data-mark="true">—<\/td>/);
+    }
+    // Crypto with nothing held keeps its empty line.
+    expect(renderToStaticMarkup(<SleeveCard name="crypto" sleeve={sleeve({ positions: [] })} now={NOW} />)).toContain('No open positions.');
+  });
+
+  it('a mark from an earlier day names the date in its hover', () => {
+    expect(markAsOf('2026-10-05T12:30:00Z', NOW)).toMatch(/^as of Oct 5, \d{2}:30 \S+ · 28 h ago$/);
+    expect(markAsOf(null, NOW)).toBeUndefined();
+    expect(markAsOf('not a time', NOW)).toBeUndefined();
   });
 
   it('the drawdown meter turns red at the limit', () => {

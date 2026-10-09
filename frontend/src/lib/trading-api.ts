@@ -16,6 +16,10 @@ export interface Position {
   side: string;
   size: string | number;
   entry: string;
+  /** Contract v1.7.2: the last print the trader holds (null when it has none),
+   * and that print's own time; older files carry neither key. */
+  mark?: string | null;
+  mark_at?: string | null;
   stop?: string | null;
   held_days?: number | null;
 }
