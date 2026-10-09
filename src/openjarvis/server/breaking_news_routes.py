@@ -12,6 +12,10 @@ Alerts are sparse by design -- the bridge 404s until the first one fires,
 which maps to the same "no alerts yet" 404 as before. The last good alert is
 kept in memory, so a Hermes restart degrades to a stale-flagged copy rather
 than an empty sidebar item.
+
+`/recent` (contract v1.7) passes through `/panels/breaking_alerts/recent`, the
+last N hours of alerts newest first, for the sidebar's list. It never
+synthesizes audio: only the newest alert (the root route) is spoken.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ import re
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 logger = logging.getLogger(__name__)
@@ -32,6 +36,9 @@ HERMES_BREAKING_URL = os.environ.get(
     "HERMES_BREAKING_URL", "http://127.0.0.1:8643/panels/breaking_alerts"
 )
 _TIMEOUT_S = 10.0
+# Bridge limits for /recent (contract v1.7); out-of-range values are clamped.
+_HOURS_RANGE = (1, 72)
+_LIMIT_RANGE = (1, 10)
 
 _AUDIO_MEDIA_TYPES = {
     ".mp3": "audio/mpeg",
@@ -46,6 +53,8 @@ _AUDIO_MEDIA_TYPES = {
 _cache: dict | None = None
 _audio: dict = {"generated_at": None, "path": None}
 _audio_lock = asyncio.Lock()
+# Last good /recent rows, per (hours, limit).
+_recent_cache: dict[tuple[int, int], list[dict]] = {}
 
 
 def _synthesize(headline: str, summary: str, generated_at: str) -> Path | None:
@@ -118,6 +127,35 @@ def _shape(payload: dict, audio_path: Path | None, stale: bool) -> dict:
     }
 
 
+def _clamp(value: int, bounds: tuple[int, int]) -> int:
+    return max(bounds[0], min(bounds[1], value))
+
+
+def _kind(data: dict) -> str:
+    """Contract v1.7: a row without `kind` is `news`, or `trading` by source."""
+    kind = data.get("kind")
+    if kind:
+        return kind
+    return "trading" if data.get("source") == "trading" else "news"
+
+
+def _shape_recent(row: dict) -> dict:
+    data = row["data"]
+    return {
+        "headline": data["headline"],
+        "summary": data.get("summary", ""),
+        "url": data.get("url", ""),
+        "alerted_at": row["generated_at"],
+        "severity": data.get("severity"),
+        "tickers": data.get("tickers") or [],
+        "why": data.get("why", ""),
+        "source": data.get("source", ""),
+        "kind": _kind(data),
+        "event_id": data.get("event_id"),
+        "level": data.get("level"),
+    }
+
+
 def create_breaking_news_router() -> APIRouter:
     router = APIRouter(prefix="/api/breaking-news", tags=["breaking-news"])
 
@@ -144,6 +182,33 @@ def create_breaking_news_router() -> APIRouter:
         if _cache is None:
             raise HTTPException(status_code=503, detail="Hermes alert feed unavailable")
         return _shape(_cache, await _ensure_audio(_cache), True)
+
+    @router.get("/recent")
+    async def get_recent_alerts(hours: int = Query(24), limit: int = Query(3)):
+        """Alerts from the last `hours` (1-72), newest first, at most `limit` (1-10)."""
+        hours = _clamp(hours, _HOURS_RANGE)
+        limit = _clamp(limit, _LIMIT_RANGE)
+        key = (hours, limit)
+
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+                resp = await client.get(
+                    f"{HERMES_BREAKING_URL}/recent",
+                    params={"hours": hours, "limit": limit},
+                )
+            if resp.status_code == 404:
+                # No alerts yet (or a bridge without the route): an empty list.
+                return {"alerts": [], "stale": False}
+            if resp.status_code == 200:
+                alerts = [_shape_recent(r) for r in resp.json()["rows"]]
+                _recent_cache[key] = alerts
+                return {"alerts": alerts, "stale": False}
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            pass
+
+        if key not in _recent_cache:
+            raise HTTPException(status_code=503, detail="Hermes alert feed unavailable")
+        return {"alerts": _recent_cache[key], "stale": True}
 
     @router.get("/audio")
     async def get_latest_alert_audio():

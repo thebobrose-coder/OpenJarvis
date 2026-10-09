@@ -825,11 +825,32 @@ export interface BreakingNewsAlert {
   alerted_at: string;
   audio_available: boolean;
   audio_path: string | null;
-  // Hermes alert feed extras (2026-09-25 proxy).
-  severity?: number | null;
+  // Hermes alert feed extras (2026-09-25 proxy). Trading rows send the
+  // string "high" (contract v1.6).
+  severity?: number | string | null;
   tickers?: string[];
   why?: string;
   stale?: boolean;
+  // Contract v1.7, on /api/breaking-news/recent rows only.
+  source?: string;
+  kind?: AlertKind;
+  event_id?: string | null;
+  /** The source's own scale: PAGER `red`, GDACS `orange`, NWS `Extreme`, NHC `warning`. */
+  level?: string | null;
+}
+
+export type AlertKind = 'hazard' | 'official' | 'news' | 'trading';
+
+export interface RecentBreakingNews {
+  alerts: BreakingNewsAlert[];
+  stale: boolean;
+}
+
+/** The last `hours` of alerts, newest first (contract v1.7). No audio. */
+export async function fetchRecentBreakingNews(hours = 24, limit = 3): Promise<RecentBreakingNews> {
+  const res = await apiFetch(`/api/breaking-news/recent?hours=${hours}&limit=${limit}`);
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
 }
 
 export async function fetchBreakingNews(): Promise<BreakingNewsAlert | null> {

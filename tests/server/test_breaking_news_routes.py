@@ -40,6 +40,7 @@ def _payload(generated_at: str = "2026-09-25T19:15:07Z") -> dict:
 @pytest.fixture(autouse=True)
 def _reset(tmp_path, monkeypatch):
     bnr._cache = None
+    bnr._recent_cache.clear()
     bnr._audio.update(generated_at=None, path=None)
     calls: list[tuple] = []
 
@@ -217,6 +218,149 @@ def test_synthesize_uses_digest_voice_and_per_alert_file(tmp_path, monkeypatch):
     assert path.exists()
     assert not (path.parent / "digest.mp3").exists()
     assert not (path.parent / "breaking-old.mp3").exists()
+
+
+# --- /recent (contract v1.7) ---------------------------------------------
+
+_HAZARD = {
+    **_DATA,
+    "headline": "M7.1 earthquake, Example Region (PAGER red)",
+    "source": "USGS",
+    "kind": "hazard",
+    "event_id": "usgs:example1",
+    "level": "red",
+    "severity": 10,
+    "tickers": [],
+}
+_TRADING = {
+    **_DATA,
+    "headline": "Trader status stale",
+    "source": "trading",
+    "severity": "high",
+}
+
+
+def _recent(*datas: dict) -> dict:
+    stamps = ["2026-10-09T19:20:18Z", "2026-10-09T15:00:00Z", "2026-10-09T09:00:00Z"]
+    return {
+        "feed": "breaking_alerts",
+        "rows": [
+            {
+                "generated_at": stamps[i],
+                "age_seconds": 60,
+                "source_role": "news-monitor",
+                "data": dict(d),
+            }
+            for i, d in enumerate(datas)
+        ],
+    }
+
+
+def test_recent_passes_v17_keys_through_and_defaults_kind(_reset):
+    seen = []
+
+    def handler(req):
+        seen.append(req.url)
+        return httpx.Response(200, json=_recent(_HAZARD, _TRADING, _DATA))
+
+    client, patcher = _client(handler)
+    with patcher:
+        resp = client.get("/api/breaking-news/recent")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["stale"] is False
+    hazard, trading, news = body["alerts"]
+    assert hazard["kind"] == "hazard"
+    assert hazard["event_id"] == "usgs:example1"
+    assert hazard["level"] == "red"
+    assert hazard["source"] == "USGS"
+    assert hazard["alerted_at"] == "2026-10-09T19:20:18Z"
+    assert trading["kind"] == "trading" and trading["severity"] == "high"
+    assert news["kind"] == "news" and news["level"] is None and news["event_id"] is None
+    # No audio for the list: nothing synthesized, no audio keys.
+    assert _reset == []
+    assert "audio_path" not in hazard
+    assert seen[0].path == "/panels/breaking_alerts/recent"
+    assert dict(seen[0].params) == {"hours": "24", "limit": "3"}
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("", {"hours": "24", "limit": "3"}),
+        ("?hours=0&limit=0", {"hours": "1", "limit": "1"}),
+        ("?hours=500&limit=99", {"hours": "72", "limit": "10"}),
+        ("?hours=48&limit=5", {"hours": "48", "limit": "5"}),
+    ],
+)
+def test_recent_clamps_hours_and_limit(query, expected):
+    seen = []
+
+    def handler(req):
+        seen.append(dict(req.url.params))
+        return httpx.Response(200, json=_recent())
+
+    client, patcher = _client(handler)
+    with patcher:
+        assert client.get(f"/api/breaking-news/recent{query}").status_code == 200
+
+    assert seen == [expected]
+
+
+def test_recent_bridge_down_serves_last_good_as_stale():
+    up, patcher = _client(lambda r: httpx.Response(200, json=_recent(_HAZARD)))
+    with patcher:
+        assert up.get("/api/breaking-news/recent").json()["stale"] is False
+
+    client, patcher = _client(_down)
+    with patcher:
+        resp = client.get("/api/breaking-news/recent")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["stale"] is True
+    assert [a["headline"] for a in body["alerts"]] == [_HAZARD["headline"]]
+
+
+def test_recent_bridge_down_without_cache_returns_503():
+    client, patcher = _client(_down)
+    with patcher:
+        assert client.get("/api/breaking-news/recent").status_code == 503
+
+
+def test_recent_bridge_404_is_an_empty_list():
+    client, patcher = _client(
+        lambda r: httpx.Response(404, json={"error": "no data yet"})
+    )
+    with patcher:
+        resp = client.get("/api/breaking-news/recent")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"alerts": [], "stale": False}
+
+
+def test_latest_route_unchanged_by_v17_keys(_reset):
+    """`/api/breaking-news` keeps its shape (and speaks) with v1.7 rows."""
+    payload = _payload()
+    payload["data"] = dict(_HAZARD)
+    client, patcher = _client(lambda r: httpx.Response(200, json=payload))
+    with patcher:
+        body = client.get("/api/breaking-news").json()
+
+    assert set(body) == {
+        "headline",
+        "summary",
+        "url",
+        "alerted_at",
+        "audio_available",
+        "audio_path",
+        "severity",
+        "tickers",
+        "why",
+        "stale",
+    }
+    assert len(_reset) == 1
 
 
 def test_route_no_longer_uses_alert_store():

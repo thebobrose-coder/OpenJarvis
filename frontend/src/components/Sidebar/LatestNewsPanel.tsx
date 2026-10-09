@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { Pause, Play } from 'lucide-react';
 import { isTauri } from '../../lib/api';
+import { selectBreaking } from '../../lib/breaking-list';
 import { useBreakingNews } from '../../hooks/useBreakingNews';
+import { BreakingListView } from './BreakingListView';
 import { useDailyBriefAudio } from '../../lib/DailyBriefAudioContext';
 import { listConnectors } from '../../lib/connectors-api';
 import { useAppStore } from '../../lib/store';
@@ -25,6 +27,10 @@ async function openExternal(url: string) {
  * renders "No current breaking news" rather than substituting something
  * else), the flagship Daily Brief player beneath it as a persistent
  * anchor, connector status underneath.
+ *
+ * Since contract v1.7 the breaking section lists the last 24 h (at most 3
+ * rows, headlines clamped to two lines so the nav menu keeps its room): the
+ * newest alert with its player and tickers, then up to two more.
  */
 export function LatestNewsPanel() {
   const breaking = useBreakingNews();
@@ -63,63 +69,25 @@ export function LatestNewsPanel() {
         Latest News
       </div>
 
-      <div className="flex items-start gap-2">
-        {breaking.alert && breaking.audioUrl && (
-          <button
-            onClick={breaking.toggleAudio}
-            className="flex items-center justify-center w-5 h-5 rounded-full shrink-0 cursor-pointer mt-0.5"
-            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
-            title={breaking.playing ? 'Pause breaking news summary' : 'Play breaking news summary'}
-          >
-            {breaking.playing ? <Pause size={10} /> : <Play size={10} />}
-          </button>
-        )}
-        <div className="min-w-0 flex-1">
-          <div
-            className="text-[9px] font-semibold uppercase tracking-wide mb-0.5"
-            style={{ color: breaking.alert ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
-          >
-            Breaking
-          </div>
-          {breaking.alert ? (
-            <button
-              onClick={() => openExternal(breaking.alert!.url)}
-              className="text-left text-xs cursor-pointer hover:underline"
-              style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-text)' }}
-              title="Open source"
-            >
-              {breaking.alert.headline}
-            </button>
-          ) : null}
-          {breaking.alert?.tickers && breaking.alert.tickers.length > 0 ? (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {breaking.alert.tickers.map((t) => (
-                <span
-                  key={t}
-                  className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
-                  style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {breaking.alert ? null : (
-            <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-              No current breaking news
-            </span>
-          )}
-        </div>
-        {breaking.alert?.audio_available && (
-          <audio
-            ref={breaking.audioRef}
-            src={breaking.audioUrl ?? undefined}
-            onEnded={() => breaking.setPlaying(false)}
-            onPause={() => breaking.setPlaying(false)}
-            style={{ display: 'none' }}
-          />
-        )}
-      </div>
+      <BreakingListView
+        rows={selectBreaking(breaking.alert, breaking.recent, breaking.now)}
+        latestAt={breaking.alert?.alerted_at ?? null}
+        canPlay={!!breaking.audioUrl}
+        playing={breaking.playing}
+        stale={!!breaking.alert?.stale || breaking.recentStale}
+        now={breaking.now}
+        onToggle={breaking.toggleAudio}
+        onOpen={openExternal}
+      />
+      {breaking.alert?.audio_available && (
+        <audio
+          ref={breaking.audioRef}
+          src={breaking.audioUrl ?? undefined}
+          onEnded={() => breaking.setPlaying(false)}
+          onPause={() => breaking.setPlaying(false)}
+          style={{ display: 'none' }}
+        />
+      )}
 
       <div className="flex items-center gap-2 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
         {brief.audioUrl && (
