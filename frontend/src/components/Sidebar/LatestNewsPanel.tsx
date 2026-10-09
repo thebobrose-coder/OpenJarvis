@@ -30,7 +30,9 @@ async function openExternal(url: string) {
  *
  * Since contract v1.7 the breaking section lists the last 24 h (at most 3
  * rows, headlines clamped to two lines so the nav menu keeps its room): the
- * newest alert with its player and tickers, then up to two more.
+ * newest alert with its player and tickers, then up to two more (hidden on
+ * short windows). The dock may shrink and scroll (min-h-0) so it never
+ * pushes the nav menu below the window, down to the 600 px minimum.
  */
 export function LatestNewsPanel() {
   const breaking = useBreakingNews();
@@ -62,7 +64,7 @@ export function LatestNewsPanel() {
 
   return (
     <div
-      className="mx-3 mb-2 flex flex-col gap-2 px-3 py-2 rounded-lg"
+      className="mx-3 mb-2 flex flex-col gap-2 px-3 py-2 rounded-lg min-h-0 overflow-y-auto"
       style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
     >
       <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>

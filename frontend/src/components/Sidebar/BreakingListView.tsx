@@ -3,6 +3,13 @@ import type { BreakingNewsAlert } from '../../lib/api';
 import { alertAge, alertKind, LEVEL_COLOR, levelTone } from '../../lib/breaking-list';
 import { FeedFreshness } from '../Dashboard/FeedFreshness';
 
+/**
+ * The two extra rows give way on short windows (the default 800 px included):
+ * the sidebar's header and 11-item nav take ~560 px, so below ~900 px the
+ * list would leave the chat history no room. The newest alert always shows.
+ */
+export const SHORT_WINDOW_HIDDEN = '[@media(max-height:900px)]:hidden';
+
 function AlertMeta({ alert, now }: { alert: BreakingNewsAlert; now: number }) {
   const tone = levelTone(alert.level);
   return (
@@ -109,7 +116,7 @@ export function BreakingListView({
         </div>
       </div>
       {more.map((a) => (
-        <div key={`${a.event_id ?? ''}${a.alerted_at}`} className={`min-w-0 ${showPlay ? 'pl-7' : ''}`}>
+        <div key={`${a.event_id ?? ''}${a.alerted_at}`} className={`min-w-0 ${SHORT_WINDOW_HIDDEN} ${showPlay ? 'pl-7' : ''}`}>
           <Headline alert={a} onOpen={onOpen} />
           <AlertMeta alert={a} now={now} />
         </div>

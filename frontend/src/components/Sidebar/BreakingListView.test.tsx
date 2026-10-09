@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { BreakingNewsAlert } from '../../lib/api';
-import { BreakingListView } from './BreakingListView';
+import { BreakingListView, SHORT_WINDOW_HIDDEN } from './BreakingListView';
 
 // Invented alerts only: this repo is public.
 const NOW = Date.parse('2026-10-09T20:00:00Z');
@@ -56,6 +56,8 @@ describe('BreakingListView', () => {
     expect(html).toContain('ECB · 38 min');
     expect(html).toContain('trading');
     expect(html.match(/line-clamp-2/g)).toHaveLength(3);
+    // Only the two extra rows give way on short windows.
+    expect(html.split(SHORT_WINDOW_HIDDEN)).toHaveLength(3);
   });
 
   it('has no player when the newest row is not the spoken alert', () => {
