@@ -2,7 +2,7 @@ import { Newspaper, Pause, Play } from 'lucide-react';
 import { useDailyBriefAudio } from '../../lib/DailyBriefAudioContext';
 import { AutoFixes } from '../Commerce/fixes/AutoFixes';
 import { DashboardPanel } from './DashboardPanel';
-import { FeedFreshness } from './FeedFreshness';
+import { DAILY_LATE_AFTER_S, FeedFreshness } from './FeedFreshness';
 
 /**
  * Flagship general/market digest, brought onto the dashboard from the
@@ -39,7 +39,7 @@ export function DailyBriefPanel() {
         <p style={{ color: 'var(--color-text-tertiary)' }}>No briefing for today yet. Regenerate to get started.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          <FeedFreshness ageSeconds={digest.age_seconds} stale={digest.stale} />
+          <FeedFreshness ageSeconds={digest.age_seconds} stale={digest.stale} staleAfterSeconds={DAILY_LATE_AFTER_S} />
           <div className="flex items-start gap-2">
             {audioUrl && (
               <button

@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { fetchDigest, regenerateDigest, resolveDigestAudioSrc } from './api';
 import type { Digest } from './api';
+import { createDigestRefresher } from './digestRefresh';
 
 export interface SharedDigestAudioValue {
   digest: Digest | null;
@@ -49,22 +50,42 @@ export function createSharedDigestAudio(prefix: string) {
     const [playRequested, setPlayRequested] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
-    const load = useCallback(async () => {
-      try {
-        const d = await fetchDigest(prefix);
-        setDigest(d);
-        setAudioUrl(d ? await resolveDigestAudioSrc(d, prefix).catch(() => null) : null);
-        setError(null);
-      } catch (e: any) {
-        setError(e?.message ?? 'Failed to load.');
-      } finally {
-        setLoading(false);
-      }
+    const playingRef = useRef(false);
+    const markPlaying = useCallback((value: boolean) => {
+      playingRef.current = value;
+      setPlaying(value);
     }, []);
 
+    // See digestRefresh.ts: re-fetch while the app is open, apply only real
+    // changes, and never swap the src under a playing element.
+    const [refresher] = useState(() =>
+      createDigestRefresher({
+        fetchSnapshot: async () => {
+          const d = await fetchDigest(prefix);
+          return {
+            digest: d,
+            audioUrl: d ? await resolveDigestAudioSrc(d, prefix).catch(() => null) : null,
+          };
+        },
+        apply: ({ digest: d, audioUrl: url }) => {
+          setDigest(d);
+          setAudioUrl(url);
+        },
+        onOk: () => setError(null),
+        onError: (message) => setError(message),
+        isPlaying: () => {
+          const el = audioRef.current;
+          return playingRef.current || (!!el && !el.paused);
+        },
+      }),
+    );
+
     useEffect(() => {
-      load();
-    }, [load]);
+      refresher.start({ win: window, doc: document }).finally(() => setLoading(false));
+      return () => refresher.stop();
+    }, [refresher]);
+
+    const load = useCallback(() => refresher.load('user'), [refresher]);
 
     const regenerate = useCallback(async () => {
       setRegenerating(true);
@@ -80,13 +101,13 @@ export function createSharedDigestAudio(prefix: string) {
 
     const startPlayback = useCallback((el: HTMLAudioElement) => {
       el.play()
-        .then(() => setPlaying(true))
+        .then(() => markPlaying(true))
         .catch((e) => {
           console.error(`[digest audio ${prefix}] playback failed:`, e, el.error);
-          setPlaying(false);
+          markPlaying(false);
           setError(`Audio playback failed: ${el.error?.message || e?.message || 'unknown error'}`);
         });
-    }, []);
+    }, [markPlaying]);
 
     const playLatest = useCallback(async () => {
       await load();
@@ -106,11 +127,17 @@ export function createSharedDigestAudio(prefix: string) {
       if (!el) return;
       if (playing) {
         el.pause();
-        setPlaying(false);
+        markPlaying(false);
       } else {
         startPlayback(el);
       }
-    }, [playing, startPlayback]);
+    }, [playing, markPlaying, startPlayback]);
+
+    // Playback stopped: apply a digest that arrived while it was playing.
+    const onStopped = useCallback(() => {
+      markPlaying(false);
+      refresher.flush();
+    }, [markPlaying, refresher]);
 
     return (
       <Ctx.Provider
@@ -131,8 +158,8 @@ export function createSharedDigestAudio(prefix: string) {
           <audio
             ref={audioRef}
             src={audioUrl}
-            onEnded={() => setPlaying(false)}
-            onPause={() => setPlaying(false)}
+            onEnded={onStopped}
+            onPause={onStopped}
             style={{ display: 'none' }}
           />
         )}

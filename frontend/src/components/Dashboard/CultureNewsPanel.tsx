@@ -5,7 +5,7 @@ import type { DigestArticle } from '../../lib/api';
 import { useAppStore } from '../../lib/store';
 import { useCultureAudio } from '../../lib/CultureAudioContext';
 import { DashboardPanel } from './DashboardPanel';
-import { FeedFreshness } from './FeedFreshness';
+import { DAILY_LATE_AFTER_S, FeedFreshness } from './FeedFreshness';
 
 const CATEGORY_ICON: Record<string, typeof Goal> = {
   soccer: Goal,
@@ -59,7 +59,7 @@ export function CultureNewsPanel() {
         <p style={{ color: 'var(--color-text-tertiary)' }}>No briefing yet -- regenerate to get started.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          <FeedFreshness ageSeconds={digest?.age_seconds} stale={digest?.stale} />
+          <FeedFreshness ageSeconds={digest?.age_seconds} stale={digest?.stale} staleAfterSeconds={DAILY_LATE_AFTER_S} />
           {digest?.text && (
             <div className="flex items-start gap-2 pb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
               {audioUrl && (
