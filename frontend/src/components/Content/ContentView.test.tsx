@@ -7,12 +7,15 @@ import type {
   ContentSeedbank,
   Lane,
   Proposal,
+  ThesisLane as ThesisLaneData,
+  ThesisQueueItem,
 } from '../../lib/content-api';
 import { applyDecisions, reconcileDecisions, type ContentFeedStates } from '../../hooks/useContentData';
 import { ContentView, type ContentViewProps } from './ContentView';
 import { ALL_PROPERTIES } from './format';
 import { sortAlerts } from './HealthStrip';
 import { socialLine } from './PerformancePanel';
+import { ThesisLane, laneQueue, queueGroups, weeksOut } from './ThesisLane';
 import { ApproveEditor, RejectConfirm, approvalEdits } from './ProposalsQueue';
 
 // Neutral fixtures only: this repo is public, and real proposals name the
@@ -371,5 +374,131 @@ describe('socialLine', () => {
     expect(socialLine({ likes: 1, comments: 0, saves: 2 })).toBe('1 like · 2 saves');
     expect(socialLine({})).toBe('—');
     expect(socialLine(null)).toBe('—');
+  });
+});
+
+describe('ThesisLane', () => {
+  const item = (n: number, over: Partial<ThesisQueueItem> = {}): ThesisQueueItem => ({
+    signal_id: `sig-${n}`,
+    lane_position: n,
+    title: `Sample thesis ${n}`,
+    summary: `Sample summary ${n}`,
+    template_id: null,
+    pillar_hint: 'grit',
+    product_handle: 'sample-mount',
+    source: 'sample',
+    created_at: '2026-09-20T08:00:00Z',
+    est_weeks_out: Math.ceil(n / 2),
+    ...over,
+  });
+  const LANE: ThesisLaneData = {
+    lane: 'long',
+    cadence_per_week: 2,
+    queued: 4,
+    in_flight: 0,
+    runway_days: 14,
+    approvals_pending: 3,
+    next_up: item(1, { template_id: 'tpl-a' }),
+    // Out of order on purpose: the panel sorts by lane_position.
+    queue: [
+      item(3, { template_id: 'tpl-b' }),
+      item(1, { template_id: 'tpl-a' }),
+      item(4, { template_id: 'tpl-a', title: null, summary: 'Sample summary fallback' }),
+      item(2, { template_id: 'tpl-b' }),
+    ],
+    posts: [
+      { post_id: 'post-1', title: 'Sample posted title', excerpt: 'x', pillar: 'grit', product_handle: null, distributed_at: '2026-09-25T15:00:00Z', source: 'sample' },
+      { post_id: 'post-2', title: null, excerpt: 'Sample older excerpt', pillar: 'craft', product_handle: null, distributed_at: '2026-08-01T15:00:00Z', source: 'sample' },
+    ],
+    flags: [
+      { kind: 'runway_low', severity: 'warn', message: 'Sample runway message' },
+      { kind: 'possible_repeat', severity: 'info', message: 'Sample repeat message', signal_id: 'sig-2', post_id: 'post-1' },
+    ],
+  };
+  const withLane = (alpha: ThesisLaneData | null | undefined, beta: ThesisLaneData | null | undefined = null) =>
+    feeds({
+      content_seedbank: {
+        data: {
+          ...SEEDBANK,
+          properties: SEEDBANK.properties.map((p) => {
+            const lane = p.id === 'alpha' ? alpha : beta;
+            if (lane === undefined) return p;
+            return { ...p, thesis_lane: lane };
+          }),
+        },
+        loading: false,
+        error: null,
+      },
+    });
+  const panel = (html: string) => html.slice(html.indexOf('data-thesis-lane='), html.indexOf('Performance'));
+  const section = (html: string, name: string) => {
+    const start = html.indexOf(`data-section="${name}"`);
+    const next = html.indexOf('data-section="', start + 1);
+    return html.slice(start, next < 0 ? undefined : next);
+  };
+
+  it('renders once, for the property whose thesis_lane is set', () => {
+    const html = render({ feeds: withLane(LANE, null) });
+    expect(html.match(/data-thesis-lane=/g)).toHaveLength(1);
+    expect(html).toContain('data-thesis-lane="alpha"');
+    expect(html).toContain('14 days at 2 a week');
+    expect(html).toContain('G1 waiting (all lanes):');
+    expect(html).toMatch(/Next up: <\/span><span[^>]*>Sample thesis 1</);
+    expect(html).toContain('Posted (90 days) · 2');
+  });
+
+  it('orders the queue by lane_position, groups by template, and falls back to the summary', () => {
+    const queue = section(panel(render({ feeds: withLane(LANE) })), 'queue');
+    const order = [...queue.matchAll(/data-thesis-queue="(sig-\d)"/g)].map((m) => m[1]);
+    expect(order).toEqual(['sig-1', 'sig-4', 'sig-2', 'sig-3']);
+    expect([...queue.matchAll(/data-template="([^"]*)"/g)].map((m) => m[1])).toEqual(['tpl-a', 'tpl-b']);
+    expect(queue).toContain('Sample summary fallback');
+    expect(queueGroups([item(2), item(1)])).toEqual([{ template: null, items: [item(1), item(2)] }]);
+    expect(laneQueue([item(2), item(9, { lane_position: null }), item(1)]).map((i) => i.signal_id)).toEqual(['sig-1', 'sig-2', 'sig-9']);
+  });
+
+  it('words est_weeks_out as an estimate and shows no date in the queue', () => {
+    const queue = section(panel(render({ feeds: withLane(LANE) })), 'queue');
+    expect(queue).toContain('about 1 week out');
+    expect(queue).toContain('about 2 weeks out');
+    expect(queue).not.toMatch(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w* \d/);
+    expect(queue).not.toMatch(/\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}/);
+    expect(weeksOut(null)).toBeNull();
+    // Posts carry their own date; the excerpt stands in for a missing title.
+    const posts = section(panel(render({ feeds: withLane(LANE) })), 'posts');
+    expect(posts).toContain('Sample posted title');
+    expect(posts).toContain('Sample older excerpt');
+    expect(posts).toMatch(/Sep 25|25 Sep/);
+  });
+
+  it('shows the flags and highlights the rows a repeat names', () => {
+    const html = panel(render({ feeds: withLane(LANE) }));
+    expect(html).toContain('data-flag="runway_low"');
+    expect(html).toContain('Sample runway message');
+    expect(html).toMatch(/data-thesis-queue="sig-2" data-repeat="true"/);
+    expect(html).toMatch(/data-thesis-post="post-1" data-repeat="true"/);
+    expect(html).not.toMatch(/data-thesis-queue="sig-1" data-repeat/);
+    expect(html).not.toMatch(/data-thesis-post="post-2" data-repeat/);
+  });
+
+  it('says "Nothing queued" for an empty queue', () => {
+    const html = panel(render({ feeds: withLane({ ...LANE, queued: 0, queue: [], next_up: null, flags: [] }) }));
+    expect(html).toContain('Nothing queued');
+  });
+
+  it('hides the panel for a seedbank without the key, and when nothing is set', () => {
+    for (const f of [withLane(undefined, undefined), withLane(null, null)]) {
+      const html = render({ feeds: f });
+      expect(html).not.toContain('data-thesis-lane');
+      expect(html).not.toContain('Thesis lane');
+    }
+  });
+
+  it('has no enabled button, link or form', () => {
+    // DashboardPanel's title is a disabled <button> when it has no onTitleClick.
+    const html = renderToStaticMarkup(<ThesisLane properties={[{ id: 'alpha', lanes: [], thesis_lane: LANE }]} showProperty />);
+    expect(html).toContain('data-thesis-lane="alpha"');
+    expect(html.match(/<button[^>]*>/g) ?? []).toEqual([expect.stringContaining('disabled')]);
+    expect(html).not.toMatch(/<a |<form|href=/i);
   });
 });

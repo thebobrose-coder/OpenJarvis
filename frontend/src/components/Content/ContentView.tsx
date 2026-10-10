@@ -8,6 +8,7 @@ import { HealthStrip } from './HealthStrip';
 import { PerformancePanel } from './PerformancePanel';
 import { ProposalsQueue, type QueueTab } from './ProposalsQueue';
 import { SeedbankStrip } from './SeedbankStrip';
+import { ThesisLane } from './ThesisLane';
 import { ThesisPrompts } from './ThesisPrompts';
 
 export interface ContentViewProps {
@@ -31,7 +32,8 @@ export interface ContentViewProps {
 /**
  * The Content page: the Foundry content loop per property. Header, health
  * alerts, the seedbank, the proposals queue (with thesis prompts beside it
- * when there are any) and performance. Generic by property. Pure:
+ * when there are any), the thesis lane where a property has one, and
+ * performance. Generic by property. Pure:
  * everything comes in through props (see ContentPage).
  */
 export function ContentView(props: ContentViewProps) {
@@ -51,6 +53,7 @@ export function ContentView(props: ContentViewProps) {
   const pending = applied.pending.filter((p) => matchesProperty(selected, p.property_id));
   const recent = applied.recent.filter((p) => matchesProperty(selected, p.property_id));
   const prompts = applied.prompts.filter((t) => matchesProperty(selected, t.property_id));
+  const thesisLanes = (seedbank?.properties ?? []).filter((p) => p.thesis_lane != null && matchesProperty(selected, p.id));
   const alerts = (feeds.content_health.data?.alerts ?? []).filter((a) => !a.property || matchesProperty(selected, a.property));
 
   const pillarsByProperty: Record<string, string[]> = {};
@@ -117,6 +120,12 @@ export function ContentView(props: ContentViewProps) {
         />
         <ThesisPrompts prompts={prompts} showProperty={showProperty} onMark={props.onPrompt} />
       </div>
+
+      {thesisLanes.length > 0 && (
+        <div className="grid grid-cols-12 gap-4 mb-4">
+          <ThesisLane properties={thesisLanes} showProperty={showProperty} />
+        </div>
+      )}
 
       <div className="grid grid-cols-12 gap-4 mb-10">
         <PerformancePanel

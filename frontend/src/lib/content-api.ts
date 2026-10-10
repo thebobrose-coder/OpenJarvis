@@ -39,11 +39,68 @@ export interface Lane {
   last_run_result?: string | null;
 }
 
+/** A queued thesis, in lane order (v1.8). */
+export interface ThesisQueueItem {
+  signal_id: string | null;
+  lane_position: number | null;
+  /** Falls back to `summary` in the feed when Foundry has no title. */
+  title: string | null;
+  summary: string | null;
+  template_id: string | null;
+  pillar_hint: string | null;
+  product_handle: string | null;
+  source: string | null;
+  created_at: string | null;
+  /** ceil(lane_position / cadence): an estimate, never a date. */
+  est_weeks_out: number | null;
+}
+
+/** A thesis post in the snapshot's 90-day window, newest first. */
+export interface ThesisPost {
+  post_id: string | null;
+  /** Null for posts before titles were recorded: show `excerpt`. */
+  title: string | null;
+  excerpt: string | null;
+  pillar: string | null;
+  product_handle: string | null;
+  distributed_at: string | null;
+  source: string | null;
+}
+
+export interface ThesisFlag {
+  /** "runway_low" (warn) or "possible_repeat" (info); others may follow. */
+  kind: string;
+  severity: 'info' | 'warn' | string;
+  message: string | null;
+  signal_id?: string | null;
+  post_id?: string | null;
+}
+
+/**
+ * The operator-only thesis lane, read-only (contract v1.8). Present and null
+ * on every property but the one with an operator-only thesis lane.
+ */
+export interface ThesisLane {
+  lane: string | null;
+  cadence_per_week: number | null;
+  queued: number | null;
+  in_flight: number | null;
+  runway_days: number | null;
+  /** The property's G1 approvals waiting, across all lanes. */
+  approvals_pending: number | null;
+  next_up: ThesisQueueItem | null;
+  queue: ThesisQueueItem[] | null;
+  posts: ThesisPost[] | null;
+  flags: ThesisFlag[] | null;
+}
+
 export interface SeedbankProperty {
   id: string;
   channels?: string[];
   signal_mode?: string;
   lanes: Lane[];
+  /** v1.8; absent in an older seedbank. */
+  thesis_lane?: ThesisLane | null;
 }
 
 export interface ContentSeedbank extends FeedMeta {
