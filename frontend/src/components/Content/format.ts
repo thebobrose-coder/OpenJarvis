@@ -13,6 +13,9 @@ export function laneLabel(lane: string): string {
 
 export const humanize = (s?: string | null) => (s ? s.replace(/[_-]+/g, ' ') : '');
 
+/** A refused edit leaves the proposal pending with a note saying why (v1.10). */
+export const isRefusal = (note?: string | null) => !!note && note.trim().toLowerCase().startsWith('edit refused');
+
 export const pct = (n?: number | null) => (n == null ? '—' : `${Math.round(n * 100)}%`);
 
 export const PROPOSAL_STATUS: Record<string, { label: string; tone: Tone }> = {

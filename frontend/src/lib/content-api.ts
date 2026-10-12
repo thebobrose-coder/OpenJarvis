@@ -1,6 +1,7 @@
 /**
  * Content page data: Hermes's content-strategist feeds, proxied by
- * /api/content (hq/contracts/openjarvis-hermes.md v1.0 §2, "Content loop").
+ * /api/content (hq/contracts/openjarvis-hermes.md v1.0 §2, "Content loop";
+ * v1.9 measurement by page and `content_winners`, v1.10 target queries).
  *
  * Hermes proposes seed topics per Foundry property and measures what was
  * posted; the operator decides here. Only approved proposals reach
@@ -145,6 +146,10 @@ export interface Proposal {
   note?: string | null;
   approval?: { by?: string; at?: string; via?: string; edited?: boolean } | null;
   result?: { reasons?: string[]; [k: string]: unknown } | null;
+  /** v1.10, set by code: 1-3 Search Console queries (long-form only), or null. */
+  target_queries?: string[] | null;
+  /** v1.10: 1-3; null means the default 2. */
+  priority?: number | null;
 }
 
 export interface ThesisPrompt {
@@ -171,6 +176,32 @@ export interface ContentProposals extends FeedMeta {
 
 export type Origin = 'hermes' | 'operator' | 'feed';
 
+/** Search Console numbers for a page (v1.9 adds `position`). */
+export interface SiteStats {
+  clicks?: number | null;
+  impressions?: number | null;
+  position?: number | null;
+}
+
+/** GA4 landing-page numbers on the content host (v1.9). */
+export interface LandingStats {
+  sessions?: number | null;
+  engagedSessions?: number | null;
+  ecommercePurchases?: number | null;
+  purchaseRevenue?: number | null;
+  /** False until the operator's one-time cross-domain test: show purchases as unverified. */
+  purchases_verified?: boolean | null;
+}
+
+export interface TargetQueryReading {
+  query: string;
+  impressions?: number | null;
+  position?: number | null;
+}
+
+/** "Did it rank?" (v1.10): readings at the day-7 and day-28 checkpoints, keyed by day. */
+export type TargetsHit = Record<string, { queries?: TargetQueryReading[]; age_days?: number | null }>;
+
 export interface Post {
   post_id: string;
   proposal_id?: string | null;
@@ -183,8 +214,51 @@ export interface Post {
   g1?: string | null;
   social?: Partial<Record<'likes' | 'comments' | 'shares' | 'saves' | 'reach' | 'impressions' | 'views', number>> | null;
   engagement?: number | null;
-  site?: { clicks?: number | null; impressions?: number | null } | null;
+  site?: SiteStats | null;
+  /** Always null since v1.9 (posts are measured by page). */
   utm?: { sessions?: number | null; ecommercePurchases?: number | null; [k: string]: unknown } | null;
+  // v1.9: measured by page.
+  site_path?: string | null;
+  site_path_kind?: 'permalink' | 'feed' | string | null;
+  url?: string | null;
+  landing?: LandingStats | null;
+  /** Only for a property whose list sign-ups are joined; null otherwise. */
+  signup_sessions?: number | null;
+  /** The winner score; null when there is no search, landing or sign-up data. */
+  score?: number | null;
+  // v1.10.
+  target_queries?: string[] | null;
+  priority?: number | null;
+  targets_hit?: TargetsHit | null;
+}
+
+/** A short-form lane's feed page, reported once for the lane (v1.9). */
+export interface LanePage {
+  site_path: string;
+  content_type?: string | null;
+  posts?: number | null;
+  engagement?: number | null;
+  site?: SiteStats | null;
+  landing?: LandingStats | null;
+  signup_sessions?: number | null;
+  score?: number | null;
+}
+
+export interface Measurement {
+  /** "early" or "traffic": how scores are weighted. */
+  regime?: string | null;
+  gsc_clicks_28d?: number | null;
+  purchases_28d?: number | null;
+  purchases_verified?: boolean | null;
+  sources?: { gsc?: boolean; ga4?: boolean } | null;
+  /** Null for a property without a sign-up join. */
+  signup_sessions_28d?: number | null;
+  posts_with_path?: number | null;
+  with_gsc?: number | null;
+  with_landing?: number | null;
+  lane_pages_with_gsc?: number | null;
+  lane_pages_with_landing?: number | null;
+  days_since_first_path?: number | null;
 }
 
 export interface RollupRow {
@@ -203,6 +277,9 @@ export interface PerformanceProperty {
   posts: Post[];
   g1?: { counts?: Record<string, number>; approval_rate?: number | null };
   rollups?: Partial<Record<RollupKey, RollupRow[]>>;
+  /** v1.9; absent in an older feed. */
+  lane_pages?: LanePage[] | null;
+  measurement?: Measurement | null;
 }
 
 export interface ContentPerformance extends FeedMeta {
@@ -219,6 +296,8 @@ export interface HealthAlert {
   message: string;
   lane?: string | null;
   proposal_id?: string | null;
+  /** measurement_tag_mismatch (v1.9): each checked page's status. */
+  pages?: Record<string, string> | null;
 }
 
 export interface ContentHealth extends FeedMeta {
@@ -226,11 +305,71 @@ export interface ContentHealth extends FeedMeta {
   alerts: HealthAlert[];
 }
 
+/** A winners/laggards entry: a long-form post, briefly. */
+export interface WinnerPost {
+  post_id: string;
+  site_path?: string | null;
+  url?: string | null;
+  content_type?: string | null;
+  pillar?: string | null;
+  product_handle?: string | null;
+  distributed_at?: string | null;
+  excerpt?: string | null;
+  score?: number | null;
+  site?: SiteStats | null;
+  landing?: LandingStats | null;
+  engagement?: number | null;
+  target_queries?: string[] | null;
+  targets_hit?: TargetsHit | null;
+}
+
+export interface PageQuery {
+  query: string;
+  clicks?: number | null;
+  impressions?: number | null;
+  position?: number | null;
+}
+
+/** Target-query hit rate at each post's latest checkpoint (v1.10). */
+export interface TargetsRollup {
+  posts: number;
+  queries: number;
+  /** Queries with any impression. */
+  hit: number;
+  /** Queries at position 20 or better. */
+  top20: number;
+  hit_rate: number | null;
+  [key: string]: string | number | null;
+}
+
+export interface WinnersProperty {
+  id: string;
+  top: WinnerPost[];
+  bottom: WinnerPost[];
+  long_form?: number | null;
+  unmeasured?: number | null;
+  regime?: string | null;
+  lane_pages?: LanePage[] | null;
+  /** Top Search Console queries per content page (28 days). */
+  page_queries?: Record<string, PageQuery[]> | null;
+  targets?: { all?: TargetsRollup | null; by_pillar?: TargetsRollup[] | null } | null;
+}
+
+/** Weekly, Sundays (v1.9). */
+export interface ContentWinners extends FeedMeta {
+  run_at: string;
+  performance_run_at?: string | null;
+  window_days?: number | null;
+  properties: WinnersProperty[];
+  errors?: unknown;
+}
+
 export interface ContentFeeds {
   content_seedbank: ContentSeedbank;
   content_proposals: ContentProposals;
   content_performance: ContentPerformance;
   content_health: ContentHealth;
+  content_winners: ContentWinners;
 }
 
 export type ContentFeedName = keyof ContentFeeds;
@@ -239,6 +378,7 @@ export const CONTENT_FEEDS: ContentFeedName[] = [
   'content_proposals',
   'content_performance',
   'content_health',
+  'content_winners',
 ];
 
 /** The operator's edits on approval; only changed fields are sent. */
@@ -247,9 +387,20 @@ export interface ApprovalEdits {
   pillar_hint?: string;
   product_handle?: string;
   note?: string;
+  /** v1.10: up to 3; `[]` removes them. Hermes validates them with Foundry's intake rules. */
+  target_queries?: string[];
+  /** v1.10: 1-3, or null for the default. */
+  priority?: number | null;
 }
 
-export const LIMITS = { topic: 600, note: 500, pillar_hint: 120, product_handle: 120 } as const;
+export const LIMITS = {
+  topic: 600,
+  note: 500,
+  pillar_hint: 120,
+  product_handle: 120,
+  target_queries: 3,
+  target_query: 80,
+} as const;
 
 async function failure(res: Response, what: string): Promise<Error> {
   const detail = await res.json().then((b) => b?.detail ?? b?.error).catch(() => null);

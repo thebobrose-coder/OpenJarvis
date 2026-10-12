@@ -13,6 +13,14 @@ export function sortAlerts(alerts: HealthAlert[]): HealthAlert[] {
     .map(({ a }) => a);
 }
 
+// Page statuses that fail the tag check; `no-permalink`, `not-checked` and
+// `pixel-unverifiable` are notes, not failures.
+const FAILED_TAG = new Set(['missing-id', 'multiple-ids', 'fetch-failed']);
+
+/** A tag-mismatch alert's failing pages (v1.9). */
+export const badPages = (a: HealthAlert): [string, string][] =>
+  Object.entries(a.pages ?? {}).filter(([, status]) => FAILED_TAG.has(status));
+
 /** Hermes's report on the pipeline (it never acts on it): a strip under the header. */
 export function HealthStrip({ alerts, showProperty }: { alerts: HealthAlert[]; showProperty: boolean }) {
   if (alerts.length === 0) return null;
@@ -35,6 +43,11 @@ export function HealthStrip({ alerts, showProperty }: { alerts: HealthAlert[]; s
               {showProperty && a.property && <Chip tone="accent">{a.property}</Chip>}
               <Chip tone={warn ? 'warning' : 'muted'}>{humanize(a.kind)}</Chip>
               <span style={{ color: 'var(--color-text)' }}>{a.message}</span>
+              {badPages(a).map(([page, status]) => (
+                <Chip key={page} tone="warning" title="Measurement tag check">
+                  {page}: {humanize(status)}
+                </Chip>
+              ))}
             </span>
           </div>
         );

@@ -1,10 +1,10 @@
 import { Activity } from 'lucide-react';
-import type { ReactNode } from 'react';
 import type { ContentPerformance, PerformanceProperty, Post, RollupKey, RollupRow } from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num, shortDateTime } from '../shared/format';
 import { Chip, Quiet, Tile, type Tone } from '../shared/ui';
 import { humanize, matchesProperty, pct } from './format';
+import { LanePagesTable, LongFormTable, MeasurementTiles, NotJoinedYet, SectionLabel, Td, Th, isLongForm } from './Measurement';
 
 const RECENT_MAX = 30;
 
@@ -29,24 +29,12 @@ export function socialLine(social: Post['social']): string {
   return parts.length ? parts.join(' · ') : '—';
 }
 
-function Th({ children, right }: { children: ReactNode; right?: boolean }) {
-  return <th className={`py-1 px-2 font-medium ${right ? 'text-right' : 'text-left'}`}>{children}</th>;
-}
-
-function Td({ children, right, title }: { children: ReactNode; right?: boolean; title?: string }) {
-  return (
-    <td className={`py-1 px-2 align-top ${right ? 'text-right' : ''}`} title={title}>
-      {children}
-    </td>
-  );
-}
-
 function RollupTable({ label, dim, rows }: { label: string; dim: RollupKey; rows: RollupRow[] }) {
+  // v1.9 rows carry a score (and sort by it); an older feed's rows don't.
+  const scored = rows.some((r) => 'score' in r);
   return (
     <div className="flex flex-col gap-1 min-w-0">
-      <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
-        {label}
-      </span>
+      <SectionLabel>{label}</SectionLabel>
       {rows.length === 0 ? (
         <Quiet>No posts yet.</Quiet>
       ) : (
@@ -59,6 +47,7 @@ function RollupTable({ label, dim, rows }: { label: string; dim: RollupKey; rows
                 <Th right>Avg eng.</Th>
                 <Th right>Clicks</Th>
                 <Th right>Sessions</Th>
+                {scored && <Th right>Score</Th>}
               </tr>
             </thead>
             <tbody>
@@ -69,6 +58,7 @@ function RollupTable({ label, dim, rows }: { label: string; dim: RollupKey; rows
                   <Td right>{num(r.avg_engagement, 1)}</Td>
                   <Td right>{num(r.site_clicks)}</Td>
                   <Td right>{num(r.sessions)}</Td>
+                  {scored && <Td right>{num(r.score as number | null, 1)}</Td>}
                 </tr>
               ))}
             </tbody>
@@ -83,9 +73,7 @@ function RecentPosts({ posts, showProperty }: { posts: (Post & { property: strin
   const recent = [...posts].sort((a, b) => (b.distributed_at ?? '').localeCompare(a.distributed_at ?? '')).slice(0, RECENT_MAX);
   return (
     <div className="flex flex-col gap-1 min-w-0">
-      <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
-        Recent posts{posts.length > RECENT_MAX ? ` (latest ${RECENT_MAX} of ${posts.length})` : ''}
-      </span>
+      <SectionLabel>Recent posts{posts.length > RECENT_MAX ? ` (latest ${RECENT_MAX} of ${posts.length})` : ''}</SectionLabel>
       <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
         <table className="w-full text-[12px] tabular-nums">
           <thead>
@@ -123,7 +111,7 @@ function RecentPosts({ posts, showProperty }: { posts: (Post & { property: strin
                 <Td right>{num(p.engagement, 1)}</Td>
                 <Td>{socialLine(p.social)}</Td>
                 <Td right>{num(p.site?.clicks)}</Td>
-                <Td right>{num(p.utm?.sessions)}</Td>
+                <Td right>{num(p.landing?.sessions ?? p.utm?.sessions)}</Td>
               </tr>
             ))}
           </tbody>
@@ -165,6 +153,10 @@ export function PerformancePanel({
   const properties = (performance?.properties ?? []).filter((p) => matchesProperty(selectedProperty, p.id));
   const posts = properties.flatMap((p) => p.posts.map((post) => ({ ...post, property: p.id })));
   const single = properties.length === 1 ? properties[0] : null;
+  // v1.9: measured by page. An older feed has no `measurement` and shows none of this.
+  const measured = properties.some((p) => p.measurement != null);
+  const longForm = posts.filter(isLongForm);
+  const lanePages = properties.flatMap((p) => (p.lane_pages ?? []).map((page) => ({ ...page, property: p.id })));
 
   return (
     <DashboardPanel icon={Activity} title="Performance" tag="Daily · 30 days" size="full" loading={loading} error={error}>
@@ -177,11 +169,21 @@ export function PerformancePanel({
               <>
                 <G1Tiles property={single} />
                 <Tile label="Posts (30 days)" value={num(single.posts.length)} />
+                {single.measurement && <MeasurementTiles m={single.measurement} />}
               </>
             ) : (
               properties.map((p) => <G1Tiles key={p.id} property={p} label={p.id} />)
             )}
           </div>
+          {measured &&
+            (longForm.length || lanePages.length ? (
+              <>
+                {longForm.length > 0 && <LongFormTable posts={longForm} showProperty={!single} />}
+                {lanePages.length > 0 && <LanePagesTable pages={lanePages} showProperty={!single} />}
+              </>
+            ) : (
+              <NotJoinedYet />
+            ))}
           {single ? (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {ROLLUPS.map((r) => (

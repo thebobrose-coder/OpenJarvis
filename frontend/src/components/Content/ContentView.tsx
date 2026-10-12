@@ -10,6 +10,7 @@ import { ProposalsQueue, type QueueTab } from './ProposalsQueue';
 import { SeedbankStrip } from './SeedbankStrip';
 import { ThesisLane } from './ThesisLane';
 import { ThesisPrompts } from './ThesisPrompts';
+import { WinnersPanel } from './WinnersPanel';
 
 export interface ContentViewProps {
   feeds: ContentFeedStates;
@@ -32,8 +33,8 @@ export interface ContentViewProps {
 /**
  * The Content page: the Foundry content loop per property. Header, health
  * alerts, the seedbank, the proposals queue (with thesis prompts beside it
- * when there are any), the thesis lane where a property has one, and
- * performance. Generic by property. Pure:
+ * when there are any), the thesis lane where a property has one,
+ * performance, and the weekly winners. Generic by property. Pure:
  * everything comes in through props (see ContentPage).
  */
 export function ContentView(props: ContentViewProps) {
@@ -127,12 +128,22 @@ export function ContentView(props: ContentViewProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-12 gap-4 mb-10">
+      <div className="grid grid-cols-12 gap-4 mb-4">
         <PerformancePanel
           performance={feeds.content_performance.data}
           selectedProperty={selected}
           loading={feeds.content_performance.loading}
           error={feeds.content_performance.error}
+        />
+      </div>
+
+      <div className="grid grid-cols-12 gap-4 mb-10">
+        <WinnersPanel
+          winners={feeds.content_winners.data}
+          selectedProperty={selected}
+          showProperty={showProperty}
+          loading={feeds.content_winners.loading}
+          error={feeds.content_winners.error}
         />
       </div>
     </div>

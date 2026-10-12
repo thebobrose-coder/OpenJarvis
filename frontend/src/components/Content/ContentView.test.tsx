@@ -115,6 +115,7 @@ function feeds(over: Partial<ContentFeedStates> = {}): ContentFeedStates {
     content_proposals: s(PROPOSALS),
     content_performance: s(PERFORMANCE_EMPTY),
     content_health: s(HEALTH),
+    content_winners: s(null),
     ...over,
   };
 }
@@ -363,6 +364,7 @@ describe('decision reconciliation', () => {
     expect(reconcileDecisions(PROPOSALS, { [ID(1)]: { action: 'approve', at: 0 } }, 11 * 60_000)).toEqual({
       pending: {},
       lost: [ID(1)],
+      refused: [],
     });
     const fresh = reconcileDecisions(PROPOSALS, { [ID(1)]: { action: 'approve', at: 0 } }, 60_000);
     expect(Object.keys(fresh.pending)).toEqual([ID(1)]);

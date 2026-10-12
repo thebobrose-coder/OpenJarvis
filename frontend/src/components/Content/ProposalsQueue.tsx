@@ -1,14 +1,17 @@
 import { SpeakButton } from '../shared/SpeakButton';
 import type { SpeechBlock } from '../../lib/voice-api';
 import { useState } from 'react';
-import { Check, ClipboardList, Pencil, X } from 'lucide-react';
+import { Check, ClipboardList, Pencil, Plus, X } from 'lucide-react';
 import { LIMITS, type ApprovalEdits, type Proposal } from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { shortDateTime } from '../shared/format';
 import { Chip, ExtIcon, ExtLink, Quiet, Segmented, SmallButton } from '../shared/ui';
-import { PROPOSAL_STATUS, humanize, laneLabel } from './format';
+import { PROPOSAL_STATUS, humanize, isRefusal, laneLabel } from './format';
 
 const OTHER = '__other__';
+/** A proposal without a priority gets the default (v1.10). */
+const DEFAULT_PRIORITY = 2;
+const PRIORITIES = ['1', '2', '3'] as const;
 
 const field = {
   background: 'var(--color-surface)',
@@ -16,11 +19,27 @@ const field = {
   border: '1px solid var(--color-border)',
 } as const;
 
+/** Trimmed, lowercased (as Hermes stores them), de-duplicated, at most 3. */
+export function cleanQueries(queries: string[]): string[] {
+  const out: string[] = [];
+  for (const q of queries) {
+    const v = q.trim().toLowerCase().slice(0, LIMITS.target_query);
+    if (v && !out.includes(v)) out.push(v);
+  }
+  return out.slice(0, LIMITS.target_queries);
+}
+
+/** Does the feed carry the v1.10 targeting keys for this proposal? */
+export const hasTargeting = (p: Proposal) => 'target_queries' in p || 'priority' in p;
+
+/** Target queries are long-form only (Hermes refuses them elsewhere). */
+export const queriesEditable = (p: Proposal) => 'target_queries' in p && (p.lane === 'long' || !!p.target_queries?.length);
+
 /** What the operator changed, as the approve body: unchanged fields are left
  * out so an untouched approval isn't recorded as an edit. */
 export function approvalEdits(
-  proposal: Pick<Proposal, 'topic' | 'pillar_hint' | 'product_handle'>,
-  form: { topic: string; pillar: string; product: string; note: string },
+  proposal: Pick<Proposal, 'topic' | 'pillar_hint' | 'product_handle' | 'target_queries' | 'priority'>,
+  form: { topic: string; pillar: string; product: string; note: string; queries?: string[]; priority?: number },
 ): ApprovalEdits {
   const edits: ApprovalEdits = {};
   const topic = form.topic.trim();
@@ -31,6 +50,12 @@ export function approvalEdits(
   if (pillar && pillar !== (proposal.pillar_hint ?? '').trim()) edits.pillar_hint = pillar.slice(0, LIMITS.pillar_hint);
   if (product && product !== (proposal.product_handle ?? '').trim()) edits.product_handle = product.slice(0, LIMITS.product_handle);
   if (note) edits.note = note.slice(0, LIMITS.note);
+  if (form.queries) {
+    const was = cleanQueries(proposal.target_queries ?? []);
+    const now = cleanQueries(form.queries);
+    if (now.join('\n') !== was.join('\n')) edits.target_queries = now;
+  }
+  if (form.priority != null && form.priority !== (proposal.priority ?? DEFAULT_PRIORITY)) edits.priority = form.priority;
   return edits;
 }
 
@@ -42,7 +67,66 @@ function Label({ children }: { children: string }) {
   );
 }
 
-/** Inline edit before approving: topic, pillar, product and a note. */
+/** Target queries as chips: remove one, or type one and add it (at most 3). */
+export function QueryChips({ queries, onChange }: { queries: string[]; onChange: (q: string[]) => void }) {
+  const [draft, setDraft] = useState('');
+  const full = queries.length >= LIMITS.target_queries;
+  const add = () => {
+    const next = cleanQueries([...queries, draft]);
+    if (next.length > queries.length) onChange(next);
+    setDraft('');
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {queries.map((q) => (
+        <span
+          key={q}
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11.5px]"
+          style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }}
+        >
+          {q}
+          <button
+            type="button"
+            aria-label={`Remove ${q}`}
+            onClick={() => onChange(queries.filter((x) => x !== q))}
+            className="cursor-pointer"
+            style={{ background: 'transparent', border: 'none', color: 'var(--color-text-tertiary)', padding: 0 }}
+          >
+            <X size={10} />
+          </button>
+        </span>
+      ))}
+      {full ? (
+        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          3 at most
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value.slice(0, LIMITS.target_query))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                add();
+              }
+            }}
+            placeholder={queries.length ? 'Add a query' : 'Search query (optional)'}
+            aria-label="Add a target query"
+            className="rounded-md px-2 py-0.5 text-[12px] w-44"
+            style={field}
+          />
+          <SmallButton onClick={add} disabled={draft.trim().length < 2} title="Add this query">
+            <Plus size={11} />
+          </SmallButton>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Inline edit before approving: topic, pillar, product, target queries,
+ * priority and a note. */
 export function ApproveEditor({
   proposal,
   pillars,
@@ -62,7 +146,11 @@ export function ApproveEditor({
   const [pillarText, setPillarText] = useState('');
   const [product, setProduct] = useState(proposal.product_handle ?? '');
   const [note, setNote] = useState('');
+  const [queries, setQueries] = useState(() => cleanQueries(proposal.target_queries ?? []));
+  const [priority, setPriority] = useState(proposal.priority ?? DEFAULT_PRIORITY);
   const pillar = pillarChoice === OTHER ? pillarText : pillarChoice;
+  const editQueries = queriesEditable(proposal);
+  const editPriority = 'priority' in proposal;
 
   return (
     <div
@@ -118,6 +206,29 @@ export function ApproveEditor({
           />
         </label>
       </div>
+      {(editQueries || editPriority) && (
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+          {editQueries ? (
+            <div className="flex flex-col gap-1">
+              <Label>Target queries</Label>
+              <QueryChips queries={queries} onChange={setQueries} />
+            </div>
+          ) : (
+            <span />
+          )}
+          {editPriority && (
+            <div className="flex flex-col gap-1">
+              <Label>Priority</Label>
+              <Segmented
+                ariaLabel="Priority"
+                value={String(priority) as (typeof PRIORITIES)[number]}
+                onChange={(v) => setPriority(Number(v))}
+                options={PRIORITIES.map((v) => ({ value: v, label: v === '1' ? '1 low' : v === '3' ? '3 high' : v }))}
+              />
+            </div>
+          )}
+        </div>
+      )}
       <label className="flex flex-col gap-1">
         <Label>Note</Label>
         <textarea
@@ -130,13 +241,25 @@ export function ApproveEditor({
         />
       </label>
       <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-        Your edits are yours, not Hermes copy. Foundry’s compliance scan and G1 approval still apply.
+        Your edits are yours, not Hermes copy. Hermes checks edited queries with Foundry’s intake rules; Foundry’s
+        compliance scan and G1 approval still apply.
       </p>
       <div className="flex gap-1.5">
         <SmallButton
           tone="accent"
           disabled={!topic.trim()}
-          onClick={() => onApprove(approvalEdits(proposal, { topic, pillar, product, note }))}
+          onClick={() =>
+            onApprove(
+              approvalEdits(proposal, {
+                topic,
+                pillar,
+                product,
+                note,
+                queries: editQueries ? queries : undefined,
+                priority: editPriority ? priority : undefined,
+              }),
+            )
+          }
         >
           <Check size={11} /> Approve
         </SmallButton>
@@ -203,6 +326,28 @@ function Evidence({ proposal }: { proposal: Proposal }) {
   );
 }
 
+function PriorityChip({ priority }: { priority?: number | null }) {
+  const p = priority ?? DEFAULT_PRIORITY;
+  return (
+    <Chip tone={p >= 3 ? 'accent' : 'muted'} title={priority == null ? 'Priority (default)' : 'Priority'}>
+      priority {p}
+    </Chip>
+  );
+}
+
+/** The proposal's target queries, read-only. */
+export function TargetQueries({ queries }: { queries?: string[] | null }) {
+  if (!queries?.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]">
+      <span style={{ color: 'var(--color-text-tertiary)' }}>Target queries</span>
+      {queries.map((q) => (
+        <Chip key={q}>{q}</Chip>
+      ))}
+    </div>
+  );
+}
+
 function ProposalMeta({ proposal, showProperty }: { proposal: Proposal; showProperty: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -215,6 +360,7 @@ function ProposalMeta({ proposal, showProperty }: { proposal: Proposal; showProp
           {proposal.product_handle}
         </Chip>
       )}
+      {'priority' in proposal && <PriorityChip priority={proposal.priority} />}
       <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
         {shortDateTime(proposal.created_at)}
       </span>
@@ -250,6 +396,12 @@ export function ProposalCard({
         {proposal.topic}
       </h3>
       {proposal.rationale && <p>{proposal.rationale}</p>}
+      <TargetQueries queries={proposal.target_queries} />
+      {isRefusal(proposal.note) && (
+        <p role="note" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+          {proposal.note}
+        </p>
+      )}
       {links.length > 0 && (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]" style={{ color: 'var(--color-accent)' }}>
           {links.map((url, i) => (
@@ -270,7 +422,14 @@ export function ProposalCard({
           <SmallButton tone="accent" onClick={() => onApprove({})} title="Approve as proposed: Foundry's intake queues it">
             <Check size={11} /> Approve
           </SmallButton>
-          <SmallButton onClick={() => setMode('edit')} title="Edit the topic, pillar or product, then approve">
+          <SmallButton
+            onClick={() => setMode('edit')}
+            title={
+              hasTargeting(proposal)
+                ? 'Edit the topic, pillar, product, target queries or priority, then approve'
+                : 'Edit the topic, pillar or product, then approve'
+            }
+          >
             <Pencil size={11} /> Edit & approve
           </SmallButton>
           <SmallButton onClick={() => setMode('reject')} title="Reject (final)">
@@ -297,6 +456,7 @@ function DecidedItem({ proposal, showProperty }: { proposal: Proposal; showPrope
         </span>
       </div>
       <span style={{ color: 'var(--color-text)' }}>{proposal.topic}</span>
+      <TargetQueries queries={proposal.target_queries} />
       {reasons.length > 0 && (
         <span className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
           Intake reasons: {reasons.map(humanize).join(', ')}

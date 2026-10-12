@@ -4,10 +4,10 @@ content-strategist feeds, plus the actions the contract allows.
 Hermes proposes seed topics per Foundry property and measures what was
 posted; the operator decides here, and only approved proposals reach
 Foundry's intake (hq/contracts/openjarvis-hermes.md v1.0 §2, "Content
-loop"). These routes pass the four feeds through like the Business
-Development routes (`data` unwrapped, tagged with `generated_at` /
-`age_seconds` / `stale`) and forward only the allowlisted actions,
-validated as the bridge validates them.
+loop"; v1.9-v1.10 add `content_winners` and the target-query edits). These
+routes pass the five feeds through like the Business Development routes
+(`data` unwrapped, tagged with `generated_at` / `age_seconds` / `stale`) and
+forward only the allowlisted actions, validated as the bridge validates them.
 """
 
 from __future__ import annotations
@@ -30,7 +30,13 @@ HERMES_BRIDGE_URL = os.environ.get("HERMES_BRIDGE_URL", "http://127.0.0.1:8643")
 _TIMEOUT_S = 10.0
 
 FEEDS = frozenset(
-    {"content_seedbank", "content_proposals", "content_performance", "content_health"}
+    {
+        "content_seedbank",
+        "content_proposals",
+        "content_performance",
+        "content_health",
+        "content_winners",
+    }
 )
 PROPOSAL_ACTIONS = frozenset({"approve", "reject"})
 PROMPT_ACTIONS = frozenset({"used", "dismissed"})
@@ -39,6 +45,10 @@ _BODY_MAX = 2048
 # Per-field limits, as the bridge enforces them.
 _APPROVE_LIMITS = {"topic": 600, "pillar_hint": 120, "product_handle": 120, "note": 500}
 _REJECT_LIMITS = {"note": 500}
+# v1.10: the approve body's target queries and priority (the bridge checks the
+# shape only; Hermes validates the queries with Foundry's intake rules).
+_QUERIES_MAX = 3
+_QUERY_MAX_LEN = 80
 
 _cache: dict[str, dict] = {}
 
@@ -97,6 +107,42 @@ def _fields(body: dict | None, limits: dict[str, int]) -> dict[str, str] | None:
         if value.strip():
             kept[key] = value.strip()
     return kept or None
+
+
+def _targeting(body: dict | None) -> dict[str, Any]:
+    """Pop `target_queries` (0-3 strings; `[]` removes them) and `priority`
+    (1-3, or null for the default) off the approve body, shape-checked."""
+    out: dict[str, Any] = {}
+    if not body:
+        return out
+    if "target_queries" in body:
+        queries = body.pop("target_queries")
+        if (
+            not isinstance(queries, list)
+            or len(queries) > _QUERIES_MAX
+            or not all(
+                isinstance(q, str) and 0 < len(q.strip()) <= _QUERY_MAX_LEN
+                for q in queries
+            )
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=f"target_queries must be up to {_QUERIES_MAX} texts "
+                f"of at most {_QUERY_MAX_LEN} characters",
+            )
+        out["target_queries"] = [q.strip() for q in queries]
+    if "priority" in body:
+        priority = body.pop("priority")
+        if priority is not None and (
+            isinstance(priority, bool)
+            or not isinstance(priority, int)
+            or not 1 <= priority <= 3
+        ):
+            raise HTTPException(
+                status_code=400, detail="priority must be 1, 2, 3 or null"
+            )
+        out["priority"] = priority
+    return out
 
 
 def _check_id(object_id: str) -> None:
@@ -158,8 +204,12 @@ async def decide_proposal(
     _check_id(proposal_id)
     if action not in PROPOSAL_ACTIONS:
         raise HTTPException(status_code=400, detail="Invalid action")
-    limits = _APPROVE_LIMITS if action == "approve" else _REJECT_LIMITS
-    body = _fields(await _json_body(request), limits)
+    raw = await _json_body(request)
+    if action == "approve":
+        targeting = _targeting(raw)
+        body = {**(_fields(raw, _APPROVE_LIMITS) or {}), **targeting} or None
+    else:
+        body = _fields(raw, _REJECT_LIMITS)
     return await _post(f"/content/proposals/{proposal_id}/{action}", body)
 
 

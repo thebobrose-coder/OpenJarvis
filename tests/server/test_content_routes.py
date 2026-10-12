@@ -214,6 +214,65 @@ def test_bad_fields_are_rejected(body):
     assert seen == []
 
 
+def test_approve_forwards_target_queries_and_priority():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            json={"target_queries": [" budget rig ", "sample mount"], "priority": 3},
+        )
+        client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            json={"target_queries": [], "priority": None, "note": "Clear them."},
+        )
+
+    assert json.loads(seen[0].content) == {
+        "target_queries": ["budget rig", "sample mount"],
+        "priority": 3,
+    }
+    # `[]` removes the queries and null resets the priority: both are forwarded.
+    assert json.loads(seen[1].content) == {
+        "note": "Clear them.",
+        "target_queries": [],
+        "priority": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"target_queries": ["a", "b", "c", "d"]},
+        {"target_queries": ["x" * 81]},
+        {"target_queries": [" "]},
+        {"target_queries": "budget rig"},
+        {"target_queries": [5]},
+        {"priority": 9},
+        {"priority": 0},
+        {"priority": "2"},
+        {"priority": True},
+        {"target_queries": ["budget rig"], "topic": 5},
+    ],
+)
+def test_bad_targeting_is_rejected(body):
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(f"/api/content/proposals/{UUID}/approve", json=body)
+
+    assert resp.status_code == 400
+    assert seen == []
+
+
+def test_reject_never_forwards_targeting():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(
+            f"/api/content/proposals/{UUID}/reject", json={"priority": 1}
+        )
+
+    assert resp.status_code == 400
+    assert seen == []
+
+
 def test_body_over_2kb_is_rejected():
     client, patcher, seen = _client(_queued)
     with patcher:
