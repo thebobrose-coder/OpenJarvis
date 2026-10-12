@@ -70,6 +70,8 @@ export function CommerceView({
   initialTab = 'overview',
 }: CommerceViewProps) {
   const [tab, setTab] = useState<CommerceTab>(fixes ? initialTab : 'overview');
+  // A fix another panel linked to: the Fixes tab opens on its view.
+  const [fixTarget, setFixTarget] = useState<string | null>(null);
   const daily = feeds.ecom_daily.data;
   // Stores and their names come from ecom_daily; other feeds fall back to
   // their own lists if it hasn't run.
@@ -93,6 +95,7 @@ export function CommerceView({
   };
   const waiting = waitingCount(fixes?.data ?? null);
   const openFix = (id: string) => {
+    setFixTarget(id);
     setTab('fixes');
     window.setTimeout(() => document.getElementById(`fix-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
   };
@@ -128,7 +131,10 @@ export function CommerceView({
           <Segmented
             ariaLabel="Commerce view"
             value={tab}
-            onChange={setTab}
+            onChange={(t) => {
+              setFixTarget(null);
+              setTab(t);
+            }}
             options={[
               { value: 'overview', label: 'Overview' },
               { value: 'fixes', label: waiting ? `Fixes (${waiting})` : 'Fixes' },
@@ -158,6 +164,7 @@ export function CommerceView({
           policy={fixes.policy}
           tierPending={fixes.tierPending}
           onSetTier={fixes.setTier}
+          initialFocus={fixTarget}
         />
       ) : (
         <>

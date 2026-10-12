@@ -24,7 +24,7 @@ import {
 import type { ClassResult, PendingFix } from '../../../hooks/useCatalogFixes';
 import { DashboardPanel } from '../../Dashboard/DashboardPanel';
 import { FeedFreshness } from '../../Dashboard/FeedFreshness';
-import { Chip, Quiet, Select, SmallButton } from '../../shared/ui';
+import { Chip, Quiet, Segmented, Select, SmallButton } from '../../shared/ui';
 import { ALL_STORES, num, shortDateTime } from '../format';
 import { PatchCard, type CardPanel, type DecideOpts } from './PatchCard';
 
@@ -315,11 +315,42 @@ export const waitingCount = (feed: CatalogFixes | null) =>
 export type StatusFilter = 'all' | 'waiting' | FixStatus;
 export type SourceFilter = 'all' | FixSource;
 
+/** The tab's three views: what needs a decision, what the writer is still
+ * working on, and the settled history (kept in the feed so Revert stays
+ * possible). */
+export type FixView = 'needs' | 'progress' | 'archive';
+
+const IN_PROGRESS = new Set<FixStatus>(['approved', 'applied', 'failed-verify']);
+
+export function fixView(status: FixStatus): FixView {
+  if (needsOperator(status)) return 'needs';
+  return IN_PROGRESS.has(status) ? 'progress' : 'archive';
+}
+
+export const VIEW_LABEL: Record<FixView, string> = { needs: 'Needs you', progress: 'In progress', archive: 'Archive' };
+
+const VIEW_EMPTY: Record<FixView, string> = {
+  needs: 'Nothing needs you. New proposals arrive with the fixer runs.',
+  progress: 'Nothing in progress.',
+  archive: 'Nothing archived yet.',
+};
+
+/** The archive renders this many cards at a time. */
+export const ARCHIVE_PAGE = 50;
+
+/** How many fixes each view holds, for the switcher's labels. */
+export function viewCounts(patches: Patch[]): Record<FixView, number> {
+  const out: Record<FixView, number> = { needs: 0, progress: 0, archive: 0 };
+  for (const p of patches) out[fixView(p.status)] += 1;
+  return out;
+}
+
 export interface FixFilter {
   store: string;
   cls: string;
   status: StatusFilter;
   source: SourceFilter;
+  view?: FixView;
 }
 
 /** The patches the filters leave visible. v1.5 adds `source`, so the
@@ -328,6 +359,7 @@ export function visiblePatches(patches: Patch[], f: FixFilter): Patch[] {
   return patches.filter(
     (p) =>
       (f.store === ALL_STORES || p.store === f.store) &&
+      (!f.view || fixView(p.status) === f.view) &&
       (f.cls === 'all' || classKey(p.fix_class) === f.cls) &&
       (f.status === 'all' || (f.status === 'waiting' ? needsOperator(p.status) : p.status === f.status)) &&
       (f.source === 'all' || patchSource(p) === f.source),
@@ -597,6 +629,10 @@ export interface FixesTabProps {
   policy?: AutofixPolicy | null;
   tierPending?: string | null;
   onSetTier?: (c: ClassStats, tier: 0 | 1) => Promise<boolean>;
+  /** For tests: which view opens first. */
+  initialView?: FixView;
+  /** A fix to open on (a link from another panel): its view opens, and the archive pages far enough to show it. */
+  initialFocus?: string | null;
 }
 
 /** The Fixes tab (hq 0011 §7): review Hermes's catalog fixes quickly.
@@ -621,11 +657,18 @@ export function FixesTab({
   policy,
   tierPending,
   onSetTier,
+  initialView = 'needs',
+  initialFocus = null,
 }: FixesTabProps) {
+  const [view, setViewState] = useState<FixView>(() => {
+    const target = initialFocus ? feed?.patches?.find((p) => p.id === initialFocus) : null;
+    return target ? fixView(target.status) : initialView;
+  });
+  const [shown, setShown] = useState(ARCHIVE_PAGE);
   const [status, setStatus] = useState<StatusFilter>('all');
   const [cls, setCls] = useState('all');
   const [source, setSource] = useState<SourceFilter>('all');
-  const [focusId, setFocusId] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(initialFocus);
   const [panel, setPanel] = useState<{ id: string; kind: CardPanel } | null>(null);
   const [classResults, setClassResults] = useState<Record<string, ClassResult>>({});
   const [confirmClass, setConfirmClass] = useState<{ key: string; action: ClassAction } | null>(null);
@@ -650,14 +693,31 @@ export function FixesTab({
     return out;
   }, [patches]);
 
-  const groups = useMemo(() => {
-    const visible = visiblePatches(patches ?? [], { store: selectedStore, cls, status, source });
-    return groupPatches(sortPatches(visible, spotBlockers(classes, patches)));
-  }, [patches, classes, selectedStore, cls, status, source]);
+  const counts = useMemo(
+    () => viewCounts((patches ?? []).filter((p) => selectedStore === ALL_STORES || p.store === selectedStore)),
+    [patches, selectedStore],
+  );
+
+  const { groups, hidden } = useMemo(() => {
+    const visible = visiblePatches(patches ?? [], { store: selectedStore, cls, status, source, view });
+    const sorted = sortPatches(visible, spotBlockers(classes, patches));
+    const at = focusId ? sorted.findIndex((p) => p.id === focusId) : -1;
+    const page = view === 'archive' ? sorted.slice(0, Math.max(shown, at + 1)) : sorted;
+    return { groups: groupPatches(page), hidden: sorted.length - page.length };
+  }, [patches, classes, selectedStore, cls, status, source, view, shown, focusId]);
+
+  const setView = (v: FixView) => {
+    setViewState(v);
+    setStatus('all');
+    setShown(ARCHIVE_PAGE);
+    setPanel(null);
+  };
   const titles = useMemo(() => new Map((patches ?? []).map((p) => [p.id, p.product_title])), [patches]);
 
   /** Show a card wherever the filters left it, and focus it. */
   const openCard = (id: string) => {
+    const target = patches?.find((p) => p.id === id);
+    if (target) setViewState(fixView(target.status));
     setStatus('all');
     setCls('all');
     setSource('all');
@@ -719,8 +779,10 @@ export function FixesTab({
 
   const statusOptions: { value: StatusFilter; label: string }[] = [
     { value: 'all', label: 'All' },
-    { value: 'waiting', label: 'Waiting' },
-    ...FIX_STATUSES.filter((s) => feed?.counts[s]).map((s) => ({ value: s, label: `${s} (${feed!.counts[s]})` })),
+    ...FIX_STATUSES.filter((s) => feed?.counts[s] && fixView(s) === view).map((s) => ({
+      value: s,
+      label: `${s} (${feed!.counts[s]})`,
+    })),
   ];
 
   return (
@@ -754,6 +816,12 @@ export function FixesTab({
                 )}
               </div>
             )}
+            <Segmented
+              ariaLabel="Fixes view"
+              value={view}
+              onChange={setView}
+              options={(['needs', 'progress', 'archive'] as const).map((v) => ({ value: v, label: `${VIEW_LABEL[v]} (${counts[v]})` }))}
+            />
             <div className="flex flex-wrap items-center gap-3">
               <Select label="Status" value={status} options={statusOptions} onChange={setStatus} />
               <Select label="Class" value={cls} options={[{ value: 'all', label: 'All' }, ...classOptions]} onChange={setCls} />
@@ -764,7 +832,7 @@ export function FixesTab({
             </div>
 
             {flat.length === 0 ? (
-              <Quiet>Nothing for this filter.</Quiet>
+              <Quiet>{counts[view] === 0 ? VIEW_EMPTY[view] : 'Nothing for this filter.'}</Quiet>
             ) : (
               groups.map((g) => {
                 const approvable = classApprovable(g, pending);
@@ -875,6 +943,12 @@ export function FixesTab({
                   </section>
                 );
               })
+            )}
+            {hidden > 0 && (
+              <div className="flex items-center gap-2 text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <SmallButton onClick={() => setShown((n) => n + ARCHIVE_PAGE)}>Show {Math.min(ARCHIVE_PAGE, hidden)} more</SmallButton>
+                <span>{hidden} older not shown</span>
+              </div>
             )}
           </div>
         )}

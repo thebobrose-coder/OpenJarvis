@@ -13,8 +13,11 @@ import {
 } from '../../../lib/fixes-api';
 import { ALL_STORES } from '../format';
 import {
+  ARCHIVE_PAGE,
   ELIGIBILITY_RULE,
   FixesTab,
+  fixView,
+  viewCounts,
   eligibilityRule,
   panelRule,
   progressText,
@@ -373,5 +376,67 @@ describe('source filter and run summary (v1.5)', () => {
     const html = tab(feed([], { last_fixer_run: { run_at: '2026-10-06T16:00:00Z', proposed: 2 } }));
     expect(html).toContain('data-run-line');
     expect(html).not.toContain('data-run-seo');
+  });
+});
+
+describe('Needs you / In progress / Archive views', () => {
+  const mixed = [
+    patch('v1', 'proposed'),
+    patch('v2', 'invalid'),
+    patch('v3', 'confirm'),
+    patch('v4', 'approved'),
+    patch('v5', 'applied'),
+    patch('v6', 'failed-verify'),
+    patch('v7', 'verified', { product_title: 'Sample Verified Item' }),
+    patch('v8', 'rejected'),
+    patch('v9', 'stale'),
+    patch('va', 'reverted'),
+  ];
+
+  it('sorts every status into one view', () => {
+    expect(mixed.map((p) => fixView(p.status))).toEqual([
+      'needs', 'needs', 'needs', 'progress', 'progress', 'progress', 'archive', 'archive', 'archive', 'archive',
+    ]);
+    expect(viewCounts(mixed)).toEqual({ needs: 3, progress: 3, archive: 4 });
+    const all = { store: ALL_STORES, cls: 'all', status: 'all' as const, source: 'all' as const };
+    expect(visiblePatches(mixed, { ...all, view: 'archive' }).map((p) => p.id)).toEqual(['v7', 'v8', 'v9', 'va']);
+    expect(visiblePatches(mixed, all)).toHaveLength(10); // no view: every fix, as before
+  });
+
+  it('opens on Needs you, with counts on the switcher', () => {
+    const html = tab(feed(mixed));
+    expect(html).toContain('aria-label="Fixes view"');
+    expect(html).toContain('Needs you (3)');
+    expect(html).toContain('In progress (3)');
+    expect(html).toContain('Archive (4)');
+    expect(html).not.toContain('Sample Verified Item');
+  });
+
+  it('shows the archive, with its statuses only in the status filter', () => {
+    const html = tab(feed(mixed, { counts: { proposed: 1, verified: 1, stale: 1 } }), { initialView: 'archive' });
+    expect(html).toContain('Sample Verified Item');
+    expect(html).toContain('verified (1)');
+    expect(html).not.toContain('proposed (1)');
+  });
+
+  it('pages a long archive', () => {
+    const many = Array.from({ length: ARCHIVE_PAGE + 7 }, (_, i) => patch(`w${String(i).padStart(3, '0')}`, 'verified'));
+    const html = tab(feed(many), { initialView: 'archive' });
+    expect(html).toContain('Show 7 more');
+    expect(html).toContain('7 older not shown');
+    expect(tab(feed(many.slice(0, 3)), { initialView: 'archive' })).not.toContain('more');
+  });
+
+  it('opens on a linked fix: its view, and far enough into the archive', () => {
+    expect(tab(feed(mixed), { initialFocus: 'v7' })).toContain('Sample Verified Item');
+    const many = Array.from({ length: ARCHIVE_PAGE + 7 }, (_, i) => patch(`w${String(i).padStart(3, '0')}`, 'verified'));
+    const last = many[many.length - 1].id;
+    const html = tab(feed(many), { initialFocus: last });
+    expect(html).toContain(`id="fix-${last}"`);
+    expect(html).not.toContain('more');
+  });
+
+  it('says so when nothing needs a decision', () => {
+    expect(tab(feed([patch('x1', 'verified')]))).toContain('Nothing needs you.');
   });
 });
