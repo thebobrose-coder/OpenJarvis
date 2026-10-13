@@ -125,7 +125,7 @@ export function Segmented<T extends string>({
   ariaLabel,
 }: {
   value: T;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; title?: string }[];
   onChange: (v: T) => void;
   ariaLabel: string;
 }) {
@@ -143,6 +143,7 @@ export function Segmented<T extends string>({
             key={o.value}
             role="tab"
             aria-selected={active}
+            title={o.title}
             onClick={() => onChange(o.value)}
             className="px-2.5 py-1 rounded-md text-[12px] cursor-pointer transition-colors"
             style={{

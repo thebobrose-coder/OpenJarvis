@@ -779,15 +779,61 @@ export interface SearchConsoleQuery {
   impressions: number;
   ctr: number;
   position: number;
+  // Contract v1.11: a label Hermes sets from the operator's term list.
+  class?: SearchQueryClass;
+}
+
+export type SearchQueryClass = 'brand' | 'non_brand' | 'noise';
+export type SearchPageClass = 'product' | 'collection' | 'store_other' | 'content' | 'legacy';
+
+export interface SearchClassTotals {
+  queries: number;
+  clicks: number;
+  impressions: number;
+}
+
+export interface SearchConsolePage {
+  page: string;
+  page_class: SearchPageClass;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  // GA4 organic landing data; null when GA4 didn't answer.
+  organic: { sessions: number; purchases: number; revenue: number } | null;
+}
+
+/** Product + collection pages. Counted per page shown, so it can exceed the property total. */
+export interface ProductSearch {
+  pages: number;
+  clicks: number;
+  impressions: number;
+  position: number;
+  non_brand_clicks: number;
+  non_brand_impressions: number;
+  brand_impressions: number;
+  noise_impressions: number;
+  unclassified_impressions: number;
+  organic_sessions: number | null;
+  organic_purchases: number | null;
+  organic_revenue: number | null;
 }
 
 export interface SearchConsolePerformanceSection {
   connected: boolean;
   error?: string;
   top_queries?: SearchConsoleQuery[];
+  // Since contract v1.11 these are property totals, private queries included.
   total_clicks?: number;
   total_impressions?: number;
   avg_position?: number;
+  visible_query_impressions?: number;
+  hidden_impressions?: number;
+  window?: { start: string; end: string };
+  terms_version?: number;
+  by_class?: Record<SearchQueryClass, SearchClassTotals>;
+  top_pages?: SearchConsolePage[];
+  product_search?: ProductSearch;
 }
 
 export interface StorePerformanceEntry {
