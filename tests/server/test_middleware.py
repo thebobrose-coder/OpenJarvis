@@ -128,6 +128,12 @@ class TestSpeechHeaders:
         csp = SECURITY_HEADERS["Content-Security-Policy"]
         assert "media-src 'self' blob:" in csp
 
+    def test_csp_allows_only_the_product_image_cdn(self):
+        """The Fixes tab's alt thumbnails (0011 A17) come from one CDN."""
+        csp = SECURITY_HEADERS["Content-Security-Policy"]
+        assert "img-src 'self' https://cdn.shopify.com" in csp
+        assert "img-src *" not in csp and "img-src https:" not in csp
+
     def test_microphone_allowed_for_same_origin(self):
         """An empty allowlist would block the chat UI's own voice input."""
         policy = SECURITY_HEADERS["Permissions-Policy"]

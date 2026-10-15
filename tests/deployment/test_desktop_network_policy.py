@@ -36,6 +36,14 @@ def test_desktop_csp_allows_local_synthesized_audio() -> None:
     assert media_sources.isdisjoint({"http:", "https:", "*"})
 
 
+def test_desktop_csp_allows_the_product_image_cdn_only() -> None:
+    """The Fixes tab's alt thumbnails (0011 A17) come from one CDN."""
+    img_sources = _csp_sources("img-src")
+
+    assert "https://cdn.shopify.com" in img_sources
+    assert img_sources.isdisjoint({"http:", "https:", "*"})
+
+
 def test_macos_webview_allows_user_configured_http_servers() -> None:
     """CSP alone cannot override App Transport Security for public hosts."""
     info = plistlib.loads(MACOS_INFO_PLIST.read_bytes())
