@@ -238,6 +238,27 @@ of them Foundry copy, which the tab used to show as HTML copy patches.
 
 No backend change: the routes pass the feed through.
 
+**Commerce Fixes tab: image alt patches** (0011 A17, class `seo:image_alt`).
+An `image.alt` patch's one change holds the product's whole alt map as JSON;
+the card renders the patch's `images [{media_id, url, before, after}]` instead.
+- **Cards:** one row per image: a small lazy-loaded thumbnail (`width=160`,
+  https URLs only), then the alt before ("— none —" when empty) and after, as
+  plain text, never HTML. The class reads "Image alt", and the `checks: alt`
+  chip explains the alt profile.
+- **Edit:** one field per image with a live count against 125 (amber past it,
+  and a note that an emptied image drops out of the fix). Saving sends only
+  the changed images: `changes: [{field: "image.alt", images: [{media_id,
+  after}]}]`. The backend edit route accepts that shape for `image.alt` only
+  and refuses a mismatched one locally; copy fields keep `{field, after}`.
+- **Tier and outcomes:** `suggest_at` falls back to 10 for `seo:image_alt`
+  when the feed lacks it; `media_not_on_product` reads in words.
+- **CSP:** the server's and the desktop app's `img-src` add
+  `https://cdn.shopify.com`, and only that host, so the thumbnails load.
+  Before this, `default-src 'self'` (server) and `'self' data: blob:`
+  (desktop) blocked them.
+
+Copy patches and unknown fields render as before.
+
 **Trading view** (`/trading`, hq decision 0014, contract v1.6). A read-only
 view of the x402 paper trader from two Hermes feeds, `trading_status` (the
 trader's own status export, every 5 minutes) and `trading_day` (the nightly
