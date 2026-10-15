@@ -5,6 +5,9 @@ import {
   SEO_RANGE,
   SOURCE_TITLE,
   actionsFor,
+  altEditChange,
+  altImages,
+  ruleLabel,
   entryWhy,
   foundryCopyLabel,
   isSeoField,
@@ -14,6 +17,8 @@ import {
   seoVerifyText,
   specDrops,
   statusReason,
+  type AltImage,
+  type EditChange,
   type FixAction,
   type FixStatus,
   type Patch,
@@ -22,7 +27,7 @@ import {
 import type { PendingFix } from '../../../hooks/useCatalogFixes';
 import { Chip, ExtIcon, ExtLink, SmallButton, type Tone } from '../../shared/ui';
 import { shortDateTime } from '../format';
-import { CharCount, DiffBody, DroppedFigures, FieldDiff, SeoFieldDiff } from './FieldDiff';
+import { AltCount, AltImagesDiff, AltThumb, CharCount, DiffBody, DroppedFigures, FieldDiff, SeoFieldDiff } from './FieldDiff';
 
 export const STATUS_TONE: Record<FixStatus, Tone> = {
   proposed: 'accent',
@@ -57,7 +62,7 @@ export const WITHDRAW_QUESTION = 'Withdraw this approval? It won’t be applied.
 
 export type CardPanel = 'edit' | 'reject' | 'revert' | 'over-judge' | null;
 
-export type DecideOpts = { note?: string; changes?: { field: string; after: string }[]; overJudge?: boolean };
+export type DecideOpts = { note?: string; changes?: EditChange[]; overJudge?: boolean };
 
 export const REVIEW_ONLY_TITLE =
   'A judge flag allowed a spec to be dropped from this fix, so it is never auto-applied and is approved one at a time.';
@@ -71,8 +76,14 @@ export const FOUNDRY_REJECT_HINT =
 /** The statuses on which the SEO audit's reading is shown (v1.5). */
 export const SEO_VERIFY_STATUSES = new Set<FixStatus>(['applied', 'verified', 'failed-verify']);
 
-const SEO_PROFILE_TITLE =
-  'Checked with the seo profile: an absolute length range, and figures may be dropped but none invented.';
+const PROFILE_TITLE: Record<string, string> = {
+  seo: 'Checked with the seo profile: an absolute length range, and figures may be dropped but none invented.',
+  alt: 'Checked with the alt profile: 5 to 125 characters, no markup, no “image of” opening, and nothing absent from the product’s title or description.',
+};
+
+/** A17: Edit on an alt patch sends only the images whose text changed. */
+export const ALT_EDIT_HINT =
+  'Saving approves your text. Only the images you change are sent; Hermes re-checks them, and the new results appear on the next feed refresh (about 2 minutes).';
 
 const textareaStyle: React.CSSProperties = {
   background: 'var(--color-bg)',
@@ -171,6 +182,68 @@ function History({ history }: { history: Patch['history'] }) {
         })}
       </ul>
     </details>
+  );
+}
+
+/** A17: the alt editor, one field per image with a live count. */
+function AltEditor({
+  images,
+  onSubmit,
+  onCancel,
+}: {
+  images: AltImage[];
+  onSubmit: (opts: DecideOpts) => void;
+  onCancel: () => void;
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(images.map((i) => [i.media_id, i.after])),
+  );
+  const [note, setNote] = useState('');
+  const first = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => first.current?.focus(), []);
+  const change = altEditChange(images, drafts);
+  return (
+    <div className="flex flex-col gap-3 rounded-md p-2" data-alt-editor style={{ border: '1px solid var(--color-accent-subtle)' }}>
+      {images.map((img, i) => (
+        <div key={img.media_id} className="flex gap-2.5 items-start" data-media-id={img.media_id}>
+          <AltThumb url={img.url} />
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
+            <textarea
+              ref={i === 0 ? first : undefined}
+              value={drafts[img.media_id]}
+              onChange={(e) => setDrafts((d) => ({ ...d, [img.media_id]: e.target.value }))}
+              onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+              rows={2}
+              spellCheck
+              className="w-full rounded-md p-2 text-[12px]"
+              style={textareaStyle}
+            />
+            <AltCount text={drafts[img.media_id]} />
+          </div>
+        </div>
+      ))}
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value.slice(0, 500))}
+        placeholder="Note (optional)"
+        className="rounded-md px-2 py-1 text-[12px]"
+        style={textareaStyle}
+      />
+      <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        {ALT_EDIT_HINT}
+      </p>
+      <div className="flex gap-2">
+        <SmallButton
+          tone="accent"
+          disabled={!change}
+          title={change ? undefined : 'Nothing changed: use Approve'}
+          onClick={() => change && onSubmit({ note, changes: [change] })}
+        >
+          <Check size={11} /> Save edit and approve
+        </SmallButton>
+        <SmallButton onClick={onCancel}>Cancel</SmallButton>
+      </div>
+    </div>
   );
 }
 
@@ -301,6 +374,8 @@ export function PatchCard({
   const foundry = !!patch.copy_source;
   const seoProfile = patch.checks_profile === 'seo';
   const seoVerify = patch.seo_verify && SEO_VERIFY_STATUSES.has(patch.status) ? patch.seo_verify : null;
+  // A17: an alt patch renders its images, not the alt map's JSON.
+  const alt = altImages(patch);
 
   return (
     <article
@@ -361,6 +436,13 @@ export function PatchCard({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        {alt && (
+          <span data-rule={patch.fix_class.rule}>
+            <Chip tone="neutral" title={`Class ${patch.fix_class.rule}`}>
+              {ruleLabel(patch.fix_class.rule)}
+            </Chip>
+          </span>
+        )}
         <span data-source={source}>
           <Chip tone={source === 'seo' ? 'accent' : 'muted'} title={SOURCE_TITLE[source]}>
             {source}
@@ -368,7 +450,7 @@ export function PatchCard({
         </span>
         {patch.checks_profile && patch.checks_profile !== 'standard' && (
           <span data-checks-profile={patch.checks_profile}>
-            <Chip tone="neutral" title={SEO_PROFILE_TITLE}>
+            <Chip tone="neutral" title={PROFILE_TITLE[patch.checks_profile]}>
               checks: {patch.checks_profile}
             </Chip>
           </span>
@@ -449,8 +531,9 @@ export function PatchCard({
 
       <DropLines drops={drops} />
 
+      {alt && <AltImagesDiff images={alt} rationale={patch.changes[0]?.rationale} />}
       {patch.changes.map((c) =>
-        isSeoField(c.field) ? (
+        alt ? null : isSeoField(c.field) ? (
           <SeoFieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} ranged={seoProfile} />
         ) : (
           <FieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} drops={drops} />
@@ -495,7 +578,9 @@ export function PatchCard({
         </p>
       )}
 
-      {panel === 'edit' && actions.includes('edit') ? (
+      {panel === 'edit' && actions.includes('edit') && alt ? (
+        <AltEditor images={alt} onSubmit={(opts) => onDecide('edit', opts)} onCancel={() => onPanel(null)} />
+      ) : panel === 'edit' && actions.includes('edit') ? (
         <Editor patch={patch} onSubmit={(opts) => onDecide('edit', opts)} onCancel={() => onPanel(null)} />
       ) : panel === 'reject' && actions.includes('reject') ? (
         patch.status === 'confirm' ? (

@@ -205,6 +205,54 @@ def test_edit_forwards_changes_and_note():
     assert json.loads(seen[0].content) == {**body, "note": "tightened"}
 
 
+def test_edit_forwards_an_alt_edit_per_image():
+    """0011 A17: an image.alt change carries only the changed images."""
+    client, patcher, seen = _client(_queued)
+    body = {
+        "patch_sha256": _SHA,
+        "changes": [
+            {
+                "field": "image.alt",
+                "images": [
+                    {"media_id": "gid://shopify/MediaImage/2", "after": "Side view"}
+                ],
+            }
+        ],
+    }
+    with patcher:
+        resp = client.post(f"/api/commerce/fixes/{_ID}/edit", json=body)
+    assert resp.status_code == 202
+    assert json.loads(seen[0].content) == body
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"field": "image.alt", "after": "{}"},
+        {"field": "image.alt", "images": []},
+        {
+            "field": "image.alt",
+            "images": [
+                {"media_id": "m1", "after": "a"},
+                {"media_id": "m1", "after": "b"},
+            ],
+        },
+        {"field": "image.alt", "images": [{"media_id": "m1", "after": "x" * 501}]},
+        {"field": "title", "images": [{"media_id": "m1", "after": "x"}]},
+        {"field": "title"},
+    ],
+)
+def test_edit_refuses_a_mismatched_change_shape(change):
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(
+            f"/api/commerce/fixes/{_ID}/edit",
+            json={"patch_sha256": _SHA, "changes": [change]},
+        )
+    assert resp.status_code in (400, 422)
+    assert seen == []
+
+
 def test_edit_rejects_fields_outside_the_allowlist():
     client, patcher, seen = _client(_queued)
     with patcher:

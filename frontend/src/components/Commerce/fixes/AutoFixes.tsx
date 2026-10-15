@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
-import { fetchCatalogFixes, fixRequest, postFix, type AutoFix, type FixStatus } from '../../../lib/fixes-api';
+import { fetchCatalogFixes, fixRequest, postFix, ruleLabel, type AutoFix, type FixStatus } from '../../../lib/fixes-api';
 import { runDecision } from '../../../hooks/useCatalogFixes';
 import { Chip, ExtIcon, ExtLink, SmallButton } from '../../shared/ui';
 import { shortDateTime } from '../format';
@@ -8,8 +8,6 @@ import { NoteConfirm, REVERT_QUESTION } from './PatchCard';
 
 /** The statuses a fix can be reverted from (contract §2, revert route). */
 export const REVERTABLE: FixStatus[] = ['applied', 'verified', 'failed-verify'];
-
-const ruleWords = (rule: string) => (/^\d+$/.test(rule) ? `rule ${rule}` : rule);
 
 /**
  * The catalog fixes the writer applied without asking since the previous
@@ -49,7 +47,7 @@ export function AutoFixesList({
                 </ExtLink>
                 <ExtIcon url={f.admin_url} title="Open in Shopify admin" />
                 <Chip tone="muted">
-                  {ruleWords(f.fix_class.rule)} · {f.fix_class.field}
+                  {ruleLabel(f.fix_class.rule)} · {f.fix_class.field}
                 </Chip>
                 <span className="tabular-nums text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
                   {shortDateTime(f.applied_at)}

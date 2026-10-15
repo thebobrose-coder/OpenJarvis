@@ -1,6 +1,15 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Chip, Segmented } from '../../shared/ui';
-import { EMPTY_BEFORE, SEO_RANGE, charCount, type SpecDrops } from '../../../lib/fixes-api';
+import {
+  ALT_MAX,
+  ALT_NONE,
+  EMPTY_BEFORE,
+  SEO_RANGE,
+  charCount,
+  thumbUrl,
+  type AltImage,
+  type SpecDrops,
+} from '../../../lib/fixes-api';
 import { NUMERIC, diffWords, droppedNumbers, figureKeys, htmlToText, normNum, type DiffOp } from './diff';
 
 /** `text`: the visible text of HTML; `html`: the source; `plain` (v1.5):
@@ -273,5 +282,87 @@ function SeoText({ label, text, range }: { label: string; text: string; range?: 
         </div>
       )}
     </div>
+  );
+}
+
+/** A17: an image's thumbnail, small and lazy-loaded; a URL that isn't https
+ * shows an empty box. */
+export function AltThumb({ url }: { url: string }) {
+  const src = thumbUrl(url);
+  return (
+    <div
+      className="shrink-0 rounded-md overflow-hidden"
+      style={{ width: 64, height: 64, background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
+    >
+      {src && <img src={src} alt="" loading="lazy" width={64} height={64} className="w-full h-full object-contain" />}
+    </div>
+  );
+}
+
+/** One alt text as text, never HTML; an empty one shows "— none —". */
+function AltText({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="flex items-baseline gap-2 text-[12px]" data-alt-text={label.toLowerCase()}>
+      <span className="text-[10.5px] shrink-0 w-10" style={{ color: 'var(--color-text-tertiary)' }}>
+        {label}
+      </span>
+      {text ? (
+        <span className="break-words" style={{ color: 'var(--color-text-secondary)' }}>
+          {text}
+        </span>
+      ) : (
+        <span style={{ color: 'var(--color-text-tertiary)' }}>{ALT_NONE}</span>
+      )}
+    </div>
+  );
+}
+
+/** A17: an `image.alt` patch, one row per image it writes: the thumbnail,
+ * then the alt before and after as plain text. */
+export function AltImagesDiff({ images, rationale }: { images: AltImage[]; rationale?: string }) {
+  return (
+    <div className="flex flex-col gap-1.5" data-alt-images={images.length}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+          image alt
+        </span>
+        <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          {images.length} {images.length === 1 ? 'image' : 'images'} · up to {ALT_MAX} characters
+        </span>
+      </div>
+      {rationale && (
+        <p className="text-[11.5px] italic" style={{ color: 'var(--color-text-tertiary)' }}>
+          {rationale}
+        </p>
+      )}
+      <ul className="flex flex-col gap-1.5">
+        {images.map((img) => (
+          <li key={img.media_id} className="flex gap-2.5 items-start" data-media-id={img.media_id}>
+            <AltThumb url={img.url} />
+            <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+              <AltText label="Before" text={img.before} />
+              <AltText label="After" text={img.after} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** The count beside an alt draft, amber past the limit or when empty. */
+export function AltCount({ text }: { text: string }) {
+  const n = charCount(text);
+  const off = n === 0 ? 'empty' : n > ALT_MAX ? 'long' : null;
+  return (
+    <span
+      className="tabular-nums text-[10.5px]"
+      data-chars={n}
+      data-chars-off={off ?? undefined}
+      style={{ color: off ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }}
+    >
+      {n} / {ALT_MAX}
+      {off === 'long' ? ' · too long' : off === 'empty' ? ' · empty: this image drops out of the fix' : ''}
+    </span>
   );
 }

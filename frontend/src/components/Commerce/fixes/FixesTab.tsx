@@ -10,6 +10,7 @@ import {
   isWaiting,
   needsOperator,
   patchSource,
+  ruleLabel,
   type CatalogFixes,
   type ClassAction,
   type ClassStats,
@@ -72,7 +73,7 @@ export function sortPatches(patches: Patch[], blockers: Set<string> = new Set())
     return a.created_at.localeCompare(b.created_at);
   });
 }
-export const ruleLabel = (rule: string) => (/^\d+$/.test(rule) ? `rule ${rule}` : rule);
+export { ruleLabel };
 
 export interface FixGroup {
   key: string;
@@ -157,10 +158,12 @@ export const eligibilityRule = (n: number) =>
   `Suggest auto-apply when: ${n} single approvals in a row, ${n} fixes applied and verified, and no revert or failed verification since the streak began.`;
 export const ELIGIBILITY_RULE = eligibilityRule(20);
 
-/** A class's threshold: the feed's `suggest_at`, else 5 for `seo:foundry`
- * and 20 otherwise (contract v1.5, A16 D1). */
-export const suggestAt = (c: Pick<ClassStats, 'suggest_at' | 'rule'>) =>
-  c.suggest_at ?? (c.rule === 'seo:foundry' ? 5 : 20);
+/** The threshold by rule for a feed without `suggest_at`: 5 for
+ * `seo:foundry` (A16 D1), 10 for `seo:image_alt` (A17 D4). */
+const SUGGEST_AT: Record<string, number> = { 'seo:foundry': 5, 'seo:image_alt': 10 };
+
+/** A class's threshold: the feed's `suggest_at`, else by rule, else 20. */
+export const suggestAt = (c: Pick<ClassStats, 'suggest_at' | 'rule'>) => c.suggest_at ?? SUGGEST_AT[c.rule] ?? 20;
 
 /** The class's progress toward the suggestion: "1 of 5 in a row · 1 of 5 verified". */
 export function progressText(c: ClassStats): string {

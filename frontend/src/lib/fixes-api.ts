@@ -1,7 +1,8 @@
 /**
  * Catalog fixes: Hermes's proposed product-copy fixes and the operator's
  * decisions on them (hq/contracts/openjarvis-hermes.md v1.3 §2, "Catalog
- * fixes", through v1.3.4, the v1.4 tiers and the v1.5 SEO meta patches). The feed is proxied like the other ecom feeds; the
+ * fixes", through v1.3.4, the v1.4 tiers, the v1.5 SEO meta patches and the 0011 A17
+ * image alt patches). The feed is proxied like the other ecom feeds; the
  * decision POSTs go to /api/commerce/fixes, where the backend adds the
  * operator token. The token never reaches this code. From P2 the writer
  * applies approved fixes once it is live.
@@ -64,6 +65,15 @@ export interface FixChange {
   rationale?: string;
 }
 
+/** 0011 A17: one image an `image.alt` patch writes. `before` is the live alt
+ * (blank when proposed), `after` the alt it writes. */
+export interface AltImage {
+  media_id: string;
+  url: string;
+  before: string;
+  after: string;
+}
+
 export interface ValidatorCheck {
   name: string;
   passed: boolean;
@@ -118,13 +128,16 @@ export interface Patch {
   source?: FixSource;
   /** v1.5: the check profile that ran. `seo` makes `length` an absolute
    * range and lets `specs` drop figures. */
-  checks_profile?: 'standard' | 'seo';
+  checks_profile?: 'standard' | 'seo' | 'alt';
   /** v1.5: set on a Foundry-copy patch (rule `seo:foundry`), which had no
    * model call. */
   copy_source?: { generated_at: string; source_commit: string } | null;
   product_url?: string;
   /** v1.5 (A16 D2): the SEO audit's latest reading, on applied seo patches. */
   seo_verify?: SeoVerify | null;
+  /** A17: on an `image.alt` patch, the images it writes. Its one change holds
+   * the whole alt map as JSON; the card renders this list instead. */
+  images?: AltImage[];
 }
 
 export interface ClassStats extends FixClass {
@@ -151,7 +164,8 @@ export interface ClassStats extends FixClass {
   /** v1.4 (A14): the first approval of the current streak; null at 0. */
   streak_since?: string | null;
   /** v1.5 (A16 D1): the threshold `eligible` uses for the streak and the
-   * verified count: 5 for `seo:foundry`, 20 otherwise. See `suggestAt`. */
+   * verified count: 5 for `seo:foundry`, 10 for `seo:image_alt` (A17 D4),
+   * 20 otherwise. See `suggestAt`. */
   suggest_at?: number;
   /** v1.3.3 (A11): the writer's outcomes, as patch counts. */
   applied?: number;
@@ -234,7 +248,7 @@ export function patchSource(p: Pick<Patch, 'source' | 'addresses'>): FixSource {
 export const SOURCE_TITLE: Record<FixSource, string> = {
   sentinel: 'From a compliance finding',
   rec: 'From a recommendation',
-  seo: 'From the SEO audit: meta description or SEO title',
+  seo: 'From the SEO audit: meta description, SEO title or image alt text',
 };
 
 export const isSeoField = (field: string) => field === 'seo.title' || field === 'seo.description';
@@ -259,7 +273,46 @@ export const SEO_ISSUE_WORDS: Record<string, string> = {
   missing_meta_description: 'missing meta description',
   meta_description_length: 'meta description length',
   title_length: 'title length',
+  product_images_missing_alt: 'images missing alt text',
 };
+
+// -- A17: image alt patches ---------------------------------------------------
+
+export const ALT_FIELD = 'image.alt';
+/** The alt check profile's upper length, in characters (A17). */
+export const ALT_MAX = 125;
+/** An image's alt when it has none. */
+export const ALT_NONE = '— none —';
+
+/** A class rule's words; a numbered compliance rule reads "rule N". */
+const RULE_WORDS: Record<string, string> = { 'seo:image_alt': 'Image alt' };
+export const ruleLabel = (rule: string) => RULE_WORDS[rule] ?? (/^\d+$/.test(rule) ? `rule ${rule}` : rule);
+
+/** An alt patch's images, when it is one and carries them; else null. */
+export const altImages = (p: Pick<Patch, 'changes' | 'images'>): AltImage[] | null =>
+  p.images?.length && p.changes.some((c) => c.field === ALT_FIELD) ? p.images : null;
+
+/** A small thumbnail of a Shopify CDN image (`width=160`); null for a URL
+ * that isn't https. */
+export function thumbUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return null;
+    u.searchParams.set('width', '160');
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** An alt edit's one change: only the images whose text changed, keyed by
+ * `media_id` (the bridge's per-image edit body, A17). Null when none did. */
+export function altEditChange(images: AltImage[], drafts: Record<string, string>): AltEditChange | null {
+  const changed = images
+    .filter((i) => i.media_id in drafts && drafts[i.media_id] !== i.after)
+    .map((i) => ({ media_id: i.media_id, after: drafts[i.media_id] }));
+  return changed.length ? { field: ALT_FIELD, images: changed } : null;
+}
 
 const codesIn = (detail: string) =>
   [...detail.matchAll(/still reports ([a-z_]+(?:, [a-z_]+)*)/g)]
@@ -359,6 +412,7 @@ const REASON_WORDS: Record<string, string> = {
   no_property: 'no rules for this store',
   failed_apply: 'Shopify didn’t take the change',
   revert_blocked: 'the revert was blocked',
+  media_not_on_product: 'an image is no longer on this product',
 };
 
 export function reasonText(code: string): string {
@@ -492,6 +546,12 @@ export function tierRequest(cls: FixClass & { rules_sha256?: string }, tier: 0 |
   };
 }
 
+/** An edit's changes: `{field, after}` for a copy field; an alt patch sends
+ * its changed images instead (A17). */
+export type CopyEditChange = { field: string; after: string };
+export type AltEditChange = { field: string; images: { media_id: string; after: string }[] };
+export type EditChange = CopyEditChange | AltEditChange;
+
 export interface FixRequest {
   path: string;
   body?: unknown;
@@ -509,7 +569,7 @@ const cleanNote = (note?: string) => {
 export function fixRequest(
   action: FixAction,
   patch: Pick<Patch, 'id' | 'patch_sha256'>,
-  opts: { note?: string; changes?: { field: string; after: string }[]; overJudge?: boolean } = {},
+  opts: { note?: string; changes?: EditChange[]; overJudge?: boolean } = {},
 ): FixRequest {
   const path = `/api/commerce/fixes/${patch.id}/${action}`;
   switch (action) {

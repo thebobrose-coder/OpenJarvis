@@ -10,6 +10,9 @@ token is a file the operator created, its path is local config
 per request, never logged, and never sent to the frontend. The bridge's
 202 / 401 / 409 answers are passed through as they come.
 
+An `image.alt` patch (0011 A17) edits per image: its change carries
+`images [{media_id, after}]`, only the changed ones, instead of `after`.
+
 The bridge records each decision; from P2 the writer applies approved fixes
 once it is live. P1 approvals wait in `confirm` until the operator
 re-confirms them (0011 A9); before the writer is live both confirm routes
@@ -54,8 +57,13 @@ FIELDS = frozenset(
         "variant.barcode",
         "inventoryItem.tracked",
         "image.altText",
+        "image.alt",
     }
 )
+# 0011 A17: an alt patch's one field; its edit carries per-image values.
+ALT_FIELD = "image.alt"
+_ALT_MAX = 500  # the bridge's own cap; Hermes's checks hold an alt to 125
+_ALT_IMAGES_MAX = 50  # the fixer reads media(first: 50)
 _ID = re.compile(r"^[0-9a-f]{12}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 _NOTE_MAX = 500
@@ -77,9 +85,32 @@ class ApproveBody(NoteBody):
     over_judge: bool = False
 
 
+class AltEdit(BaseModel):
+    media_id: str = Field(min_length=1, max_length=200)
+    after: str = Field(max_length=_ALT_MAX)
+
+
 class EditChange(BaseModel):
     field: str
-    after: str
+    # A copy field sends `after`; an `image.alt` change sends `images`.
+    after: Optional[str] = None
+    images: Optional[list[AltEdit]] = Field(
+        default=None, min_length=1, max_length=_ALT_IMAGES_MAX
+    )
+
+    def shape_ok(self) -> bool:
+        if self.field == ALT_FIELD:
+            ids = [i.media_id for i in self.images or []]
+            return self.after is None and bool(ids) and len(set(ids)) == len(ids)
+        return self.after is not None and self.images is None
+
+    def payload(self) -> dict:
+        if self.field == ALT_FIELD:
+            return {
+                "field": self.field,
+                "images": [i.model_dump() for i in self.images or []],
+            }
+        return {"field": self.field, "after": self.after}
 
 
 class EditBody(NoteBody):
@@ -204,10 +235,12 @@ async def edit(fix_id: str, body: EditBody) -> JSONResponse:
     _check_sha(body.patch_sha256)
     if any(c.field not in FIELDS for c in body.changes):
         raise HTTPException(status_code=400, detail="Invalid field")
+    if not all(c.shape_ok() for c in body.changes):
+        raise HTTPException(status_code=400, detail="Invalid change")
     payload = _with_note(
         {
             "patch_sha256": body.patch_sha256,
-            "changes": [{"field": c.field, "after": c.after} for c in body.changes],
+            "changes": [c.payload() for c in body.changes],
         },
         body.note,
     )
