@@ -5,6 +5,7 @@ import type { RunState } from '../../hooks/useStackHealth';
 import {
   cappedEvents,
   clock,
+  cloudKind,
   duration,
   isIssue,
   nextRunAt,
@@ -91,7 +92,8 @@ function EventRows({ events }: { events: CloudEvent[] }) {
           }}
           data-cloud-event
         >
-          <span className="text-[11.5px]" style={{ color: 'var(--color-text)' }}>
+          <span className="flex items-center gap-1.5 text-[11.5px]" style={{ color: 'var(--color-text)' }}>
+            <Chip tone="muted">{cloudKind(e)}</Chip>
             {[e.alias, e.service, e.type, e.status, e.age_seconds != null ? formatAge(e.age_seconds) : null]
               .filter(Boolean)
               .join(' · ')}

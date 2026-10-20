@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BreakingNewsAlert } from './api';
 import type { AlertKind } from './api';
-import { alertAge, alertKind, isQuiet, levelTone, selectBreaking } from './breaking-list';
+import { alertAge, alertKind, isCloudNotice, isQuiet, levelTone, selectBreaking } from './breaking-list';
 
 // Invented alerts only: this repo is public.
 const NOW = Date.parse('2026-10-09T20:00:00Z');
@@ -116,5 +116,30 @@ describe('severity gate (hq 0017 A3)', () => {
   it('accepts the aws and google kinds', () => {
     const kinds: AlertKind[] = ['aws', 'google'];
     expect(kinds.map((kind) => alertKind({ kind }))).toEqual(['aws', 'google']);
+  });
+});
+
+describe('cloud notices leave the list (hq 0017 A3.1)', () => {
+  it('a quiet aws or google row is a cloud notice; a 9+ one or another kind is not', () => {
+    expect(isCloudNotice({ kind: 'google', severity: 6 })).toBe(true);
+    expect(isCloudNotice({ kind: 'aws', severity: 7 })).toBe(true);
+    expect(isCloudNotice({ kind: 'aws', severity: 9 })).toBe(false);
+    expect(isCloudNotice({ kind: 'google', severity: null })).toBe(false);
+    expect(isCloudNotice({ kind: 'official', severity: 7 })).toBe(false);
+  });
+
+  it('drops cloud notices before the three-row cap', () => {
+    const rows = selectBreaking(
+      null,
+      [
+        alert(1, { kind: 'google', severity: 6, headline: 'notice 1' }),
+        alert(2, { kind: 'aws', severity: 6, headline: 'notice 2' }),
+        alert(3, { kind: 'official', severity: 7, headline: 'release' }),
+        alert(4, { kind: 'aws', severity: 9, headline: 'outage' }),
+        alert(5, { kind: 'hazard', severity: 9, headline: 'quake' }),
+      ],
+      NOW,
+    );
+    expect(rows.map((r) => r.headline)).toEqual(['release', 'outage', 'quake']);
   });
 });

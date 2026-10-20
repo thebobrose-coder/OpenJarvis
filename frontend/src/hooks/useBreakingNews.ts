@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchBreakingNews, fetchRecentBreakingNews, resolveBreakingNewsAudioSrc } from '../lib/api';
 import type { BreakingNewsAlert } from '../lib/api';
-import { LIST_HOURS, LIST_ROWS } from '../lib/breaking-list';
+import { FETCH_ROWS, LIST_HOURS } from '../lib/breaking-list';
 
 const POLL_MS = 60 * 1000;
 
@@ -28,7 +28,7 @@ export function useBreakingNews() {
 
   const load = useCallback(async () => {
     setNow(Date.now());
-    fetchRecentBreakingNews(LIST_HOURS, LIST_ROWS)
+    fetchRecentBreakingNews(LIST_HOURS, FETCH_ROWS)
       .then((r) => {
         setRecent(r.alerts);
         setRecentStale(r.stale);

@@ -7,6 +7,9 @@ import type { AlertKind, BreakingNewsAlert } from './api';
 
 export const LIST_HOURS = 24;
 export const LIST_ROWS = 3;
+/** Rows asked of /recent (the bridge's maximum): cloud notices are dropped
+ * before the cap, so they must not use up the three slots. */
+export const FETCH_ROWS = 10;
 
 /** hq 0017 A3: rows at 9+ ring and speak; the server's
  * `BREAKING_VOICE_MIN_SEVERITY` decides, this only labels the quiet ones. */
@@ -21,6 +24,13 @@ export function isQuiet(a: Pick<BreakingNewsAlert, 'severity'>): boolean {
   return Number.isFinite(n) && n < VOICE_MIN_SEVERITY;
 }
 
+/** hq 0017 A3.1: a quiet `aws` / `google` row is a cloud notice. Its home is
+ * the Stack health drawer, not the breaking list; a 9+ cloud row still lists. */
+export function isCloudNotice(a: Pick<BreakingNewsAlert, 'kind' | 'source' | 'severity'>): boolean {
+  const kind = alertKind(a);
+  return (kind === 'aws' || kind === 'google') && isQuiet(a);
+}
+
 /** A row without `kind` is `news`, or `trading` when `source` is `trading`. */
 export function alertKind(a: Pick<BreakingNewsAlert, 'kind' | 'source'>): AlertKind {
   if (a.kind) return a.kind;
@@ -32,6 +42,7 @@ export function alertKind(a: Pick<BreakingNewsAlert, 'kind' | 'source'>): AlertK
  * upgrade row replaces the one it upgrades), at most `rows`. `latest` is the
  * spoken alert from /api/breaking-news; its matching /recent row (same
  * `alerted_at`) lends it the v1.7 keys the root route doesn't carry.
+ * Cloud notices (hq 0017 A3.1) are dropped before the cap.
  */
 export function selectBreaking(
   latest: BreakingNewsAlert | null,
@@ -48,7 +59,7 @@ export function selectBreaking(
   const cutoff = now - hours * 3600_000;
   const seen = new Set<string>();
   return all
-    .filter((a) => Date.parse(a.alerted_at) >= cutoff)
+    .filter((a) => Date.parse(a.alerted_at) >= cutoff && !isCloudNotice(a))
     .sort((a, b) => Date.parse(b.alerted_at) - Date.parse(a.alerted_at))
     .filter((a) => {
       const key = a.event_id ? `event:${a.event_id}` : `at:${a.alerted_at}`;

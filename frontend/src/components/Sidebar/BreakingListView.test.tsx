@@ -1,6 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { BreakingNewsAlert } from '../../lib/api';
+import { selectBreaking } from '../../lib/breaking-list';
+import { StackHealthDrawer } from './StackHealthDrawer';
+import { event, health } from './stackHealthFixtures';
 import { BreakingListView, SHORT_WINDOW_HIDDEN } from './BreakingListView';
 
 // Invented alerts only: this repo is public.
@@ -98,5 +101,39 @@ describe('BreakingListView severity gate (hq 0017 A3)', () => {
     expect(without.match(/Play breaking news summary/g)).toHaveLength(1);
     expect(withSix.match(/Play breaking news summary/g)).toHaveLength(1);
     expect(view([nine], { latestAt: nine.alerted_at })).not.toContain('>quiet<');
+  });
+});
+
+describe('BreakingListView cloud notices (hq 0017 A3.1)', () => {
+  const notice = alert(5, { severity: 6, kind: 'google', source: 'Google Cloud', headline: 'Sample Google notice' });
+  const outage = alert(10, { severity: 9, kind: 'aws', source: 'AWS Health', headline: 'Sample AWS outage' });
+  const release = alert(20, { severity: 7, kind: 'official', source: 'Sample Agency', headline: 'Sample release' });
+  const listed = (rows: typeof notice[]) => view(selectBreaking(null, rows, NOW), { latestAt: null });
+
+  it('hides a severity-6 google row that the stack health drawer still shows', () => {
+    expect(listed([notice, outage])).not.toContain('Sample Google notice');
+    const drawer = renderToStaticMarkup(
+      <StackHealthDrawer
+        health={health({ cloud_events: [event('accountNotification', { type: 'GOOGLE_NOTICE', description: 'Sample Google notice' })] })}
+        now={NOW}
+        run={{ state: 'idle', detail: null }}
+        onRun={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(drawer).toContain('Sample Google notice');
+    expect(drawer).toContain('>google<');
+  });
+
+  it('keeps a severity-9 aws row and a quiet official row with its marker', () => {
+    const html = listed([notice, outage, release]);
+    expect(html).toContain('Sample AWS outage');
+    expect(html).toContain('Sample release');
+    expect(html).toContain('>quiet<');
+    expect(html.match(/>quiet</g)).toHaveLength(1);
+  });
+
+  it('shows the usual empty line when only cloud notices are recent', () => {
+    expect(listed([notice, alert(8, { severity: 7, kind: 'aws' })])).toContain('No current breaking news');
   });
 });

@@ -238,6 +238,15 @@ of them Foundry copy, which the tab used to show as HTML copy patches.
 
 No backend change: the routes pass the feed through.
 
+**Breaking list: cloud notices move to Stack health** (hq decision 0017
+A3.1). Quiet `aws` / `google` rows (below severity 9) no longer show in the
+sidebar's breaking list; they are dropped before the three-row cap, and the
+list now asks `/recent` for 10 rows so notices don't use up the slots. Their
+home is the Stack health drawer, whose cloud rows now carry an `aws` /
+`google` chip (Google types are `GOOGLE_*`). A 9+ cloud row (an outage)
+still lists and rings, and quiet rows of other kinds keep the "quiet"
+marker. `/recent` itself is unchanged.
+
 **Breaking alerts: severity gate** (hq decision 0017 A3). Only rows with
 severity 9 or above become the latest alert (`/api/breaking-news`) and get
 TTS audio (`BREAKING_VOICE_MIN_SEVERITY = 9` in `breaking_news_routes.py`).

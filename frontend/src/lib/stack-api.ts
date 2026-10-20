@@ -83,6 +83,11 @@ export async function runStackHealth(): Promise<void> {
 
 export const isIssue = (e: CloudEvent) => e.category === 'issue';
 
+/** Where a cloud event came from: Google rows' types are `GOOGLE_*`
+ * (hq 0017 A1.1), everything else is AWS Health. */
+export const cloudKind = (e: Pick<CloudEvent, 'type'>): 'google' | 'aws' =>
+  e.type?.startsWith('GOOGLE_') ? 'google' : 'aws';
+
 /** Age now, counting on from the age the server reported at `receivedAt`. */
 export function ageNow(h: StackHealth, receivedAt: number, now: number): number | null {
   if (h.age_seconds == null) return null;

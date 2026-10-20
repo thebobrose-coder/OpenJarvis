@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cloudKind,
   headline,
   nextRunAt,
   noticeOnly,
@@ -67,5 +68,13 @@ describe('nextRunAt', () => {
     expect(new Date(nextRunAt(Date.parse('2026-10-20T04:00:00Z'))).toISOString()).toBe('2026-10-20T05:10:00.000Z');
     // Exactly at a slot -> the following one.
     expect(new Date(nextRunAt(Date.parse('2026-10-19T11:10:00Z'))).toISOString()).toBe('2026-10-19T17:10:00.000Z');
+  });
+});
+
+describe('cloudKind', () => {
+  it('reads google from the GOOGLE_ types, aws otherwise', () => {
+    expect(cloudKind({ type: 'GOOGLE_NOTICE' })).toBe('google');
+    expect(cloudKind({ type: 'GOOGLE_SERVICE_HEALTH_INCIDENT' })).toBe('google');
+    expect(cloudKind({ type: 'AWS_EC2_OPERATIONAL_ISSUE' })).toBe('aws');
   });
 });
