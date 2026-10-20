@@ -52,7 +52,9 @@ export type SpeechFeed =
   | 'bd_prospects'
   | 'bd_pipeline'
   | 'content_proposals'
-  | 'trading_status';
+  | 'trading_status'
+  /** Composed on this machine from the stack-health file, not by Hermes. */
+  | 'stack_health';
 
 export const SOURCE_LABELS: Record<string, string> = {
   digest_general: 'Digest',
@@ -63,6 +65,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   bd_pipeline: 'Business Development',
   content_proposals: 'Content',
   trading_status: 'Trading',
+  stack_health: 'Stack health',
 };
 
 /** The expressive voice's name for its render, "fast" for Kokoro, null if not rendered. */

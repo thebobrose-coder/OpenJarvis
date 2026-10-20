@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { LatestNewsPanel } from './LatestNewsPanel';
+import { StackHealthDock } from './StackHealthDock';
 import { useAppStore } from '../../lib/store';
 import { modelDisplayName } from '../../lib/chat-routing';
 
@@ -202,6 +203,10 @@ export function Sidebar() {
           <div className="flex-1 overflow-y-auto px-2">
             <ConversationList searchQuery={searchQuery} />
           </div>
+
+          {/* Stack health (hq 0017 A2) -- one quiet line when green, a
+              strip when something is wrong; sits on top of Latest News */}
+          <StackHealthDock />
 
           {/* Latest News -- breaking news + Daily Brief anchor, persists
               across pages, sits above the nav menu */}

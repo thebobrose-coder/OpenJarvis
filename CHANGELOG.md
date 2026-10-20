@@ -238,6 +238,40 @@ of them Foundry copy, which the tab used to show as HTML copy patches.
 
 No backend change: the routes pass the feed through.
 
+**Stack-health dock in the sidebar** (hq decision 0017 A2). The operator's
+stack-health check writes a local result file every 6 h, and the cloud
+Health relay exports open AWS and Google events. A dock on top of Latest
+News reads both. When everything is fine it is one muted line:
+"All systems operating nominally." plus the run time and its age. When
+something is wrong it becomes a tinted two-line strip:
+`N FAIL · M WARN — area/check` / `Stack health is <age> old`.
+- **Colours:** the strip is red for a FAIL or an open cloud `issue`, and
+  amber for a WARN or a run older than 7 h. Cloud notices alone keep the
+  green line and add an amber "N cloud notice(s)".
+- **Drawer:** clicking the strip opens the drawer. It shows the counts, every
+  FAIL then WARN row with its full evidence and a copy button, and the open
+  cloud events (newest first, capped at 10). Its footer shows the last run,
+  its duration and the next scheduled run, with **Run now** and **Speak**.
+- **Chime:** a run that turns red chimes once (a Web Audio tone, stored per
+  `ran_at`) and pulses for 10 s.
+- **No data:** with no file the dock reads "No stack-health run yet". Any
+  other error reads "Stack health unavailable"; neither blocks the sidebar.
+
+Backend: `server/stack_routes.py`, loopback-only. `GET /api/stack/health`
+reads the files per request, with no cache. A missing file answers 404; an
+unreadable one answers 503 naming the file, never its content. The response
+carries a `speech` block that `/api/voice/prepare` serves as the local
+`stack_health` feed, never asking the bridge. `POST /api/stack/health/run`
+runs `schtasks /Run` for the configured task: 202, 503 on failure, 501 off
+Windows. The server never runs the check itself.
+
+Config: a new `[stack]` section in `~/.openjarvis/credentials.toml`. No path
+or task name ships with the repo; all three values are machine-local:
+- `STACK_HEALTH_FILE`: the check's result JSON (required for the dock).
+- `HEALTH_EVENTS_FILE`: the cloud relay's export (optional).
+- `STACK_HEALTH_TASK`: the scheduled task's full name, for Run now
+  (optional).
+
 **Commerce Fixes tab: image alt patches** (0011 A17, class `seo:image_alt`).
 An `image.alt` patch's one change holds the product's whole alt map as JSON;
 the card renders the patch's `images [{media_id, url, before, after}]` instead.

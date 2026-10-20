@@ -21,6 +21,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
+from openjarvis.server import stack_routes
 from openjarvis.voice_worker import paths as voice_paths
 from openjarvis.voice_worker.core import SPEAK_TEXT_MAX
 
@@ -46,8 +47,12 @@ SPEECH_FEEDS = frozenset(
         "bd_pipeline",
         "content_proposals",
         "trading_status",
+        "stack_health",
     }
 )
+# Feeds composed on this machine rather than read from the bridge: the
+# sidebar's stack-health dock (hq 0017 A2) speaks its own summary.
+LOCAL_FEEDS = frozenset({"stack_health"})
 _ITEM_FIELDS = (
     "id",
     "title",
@@ -184,13 +189,21 @@ async def prepare(request: Request):
     feed, block_id = str(body.get("feed", "")), str(body.get("id", ""))
     if feed not in SPEECH_FEEDS or not valid_id(block_id):
         raise HTTPException(status_code=400, detail="unknown feed or bad id")
+    if feed in LOCAL_FEEDS:
+        stack_routes._local_only(request)
     info = audio_info(block_id)
     if info["audio"] != "missing":
         return {"id": block_id, **info}
     try:
-        block = next(
-            (b for b in _blocks(await _bridge_data(feed)) if b["id"] == block_id), None
-        )
+        if feed in LOCAL_FEEDS:
+            blocks = _blocks({"speech": stack_routes.speech_blocks()})
+        else:
+            blocks = _blocks(await _bridge_data(feed))
+        block = next((b for b in blocks if b["id"] == block_id), None)
+    except HTTPException:
+        raise HTTPException(
+            status_code=404, detail="That block is no longer current"
+        ) from None
     except (httpx.HTTPError, ValueError):
         raise HTTPException(status_code=503, detail="Hermes feed unavailable") from None
     if block is None or not block.get("text"):

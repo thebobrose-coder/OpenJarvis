@@ -66,6 +66,10 @@ TOOL_CREDENTIALS: dict[str, list[str]] = {
     # Bearer for the local Hermes agent API (chat router pass-through), and
     # the path of the operator token file for the Commerce Fixes decisions.
     "hermes": ["HERMES_API_KEY", "HERMES_FIX_TOKEN_FILE"],
+    # The sidebar's stack-health dock (hq 0017 A2): the local result file of
+    # the operator's stack-health check, the cloud Health relay's export, and
+    # the scheduled task that runs the check (Run now).
+    "stack": ["STACK_HEALTH_FILE", "HEALTH_EVENTS_FILE", "STACK_HEALTH_TASK"],
 }
 
 
@@ -79,6 +83,7 @@ TOOL_CREDENTIALS: dict[str, list[str]] = {
 OPTIONAL_TOOL_CREDENTIALS: dict[str, frozenset[str]] = {
     "web_search": frozenset({"TAVILY_API_KEY", "YOUDOTCOM_API_KEY", "SERPLY_API_KEY"}),
     "hermes": frozenset({"HERMES_FIX_TOKEN_FILE"}),
+    "stack": frozenset({"HEALTH_EVENTS_FILE", "STACK_HEALTH_TASK"}),
 }
 
 
