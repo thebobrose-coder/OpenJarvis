@@ -80,6 +80,7 @@ TOOL_CREDENTIALS: dict[str, list[str]] = {
         "BD_REPLY_TO",
         "BD_POSTAL_ADDRESS",
         "BD_TRACK_BASE_URL",
+        "BD_LIST_UNSUBSCRIBE",
     ],
 }
 
@@ -104,6 +105,7 @@ OPTIONAL_TOOL_CREDENTIALS: dict[str, frozenset[str]] = {
             "BD_REPLY_TO",
             "BD_POSTAL_ADDRESS",
             "BD_TRACK_BASE_URL",
+            "BD_LIST_UNSUBSCRIBE",
         }
     ),
 }

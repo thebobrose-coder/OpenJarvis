@@ -57,6 +57,7 @@ def _pipeline(card: dict) -> dict:
 class FakeFE:
     def __init__(self, *, count=0, limit=300, fail=None, status="queued"):
         self.count, self.lim, self.fail, self.st = count, limit, fail, status
+        self.rejected: list[dict] = []
         self.sent: list[dict] = []
         self.status_calls: list[str] = []
 
@@ -71,7 +72,7 @@ class FakeFE:
 
     async def status(self, email_id):
         self.status_calls.append(email_id)
-        return {"status": self.st, "rejectedErrors": []}
+        return {"status": self.st, "rejectedErrors": self.rejected}
 
 
 @pytest.fixture
@@ -154,9 +155,7 @@ def test_send_posts_the_mail_and_the_exact_v010_flag(env):
     mail = env["fe"].sent[0]
     assert mail["from"] == f"S. Sender <{SENDER}>"
     assert mail["replyTo"] == SENDER and mail["to"] == TO
-    assert mail["list"] == {
-        "unsubscribe": {"url": f"mailto:{SENDER}?subject=unsubscribe"}
-    }
+    assert "list" not in mail  # 0018 Phase 0: List-Unsubscribe reads as a newsletter
     assert mail["messageId"].startswith("<bd-42-1-") and mail["messageId"].endswith(
         "@example.org>"
     )
@@ -185,6 +184,19 @@ def test_send_posts_the_mail_and_the_exact_v010_flag(env):
     # The log keeps ids and status, not the prospect's text, once recorded.
     (entry,) = bs.load_log()
     assert entry["flag"] is None and entry["fe_status"] == "queued"
+
+
+@pytest.mark.parametrize("value", ["1", "true", "on"])
+def test_list_unsubscribe_only_when_turned_on(env, value):
+    env["cfg"]["BD_LIST_UNSUBSCRIBE"] = value
+    with _bridge(_card()):
+        assert (
+            _client().post("/api/bizdev/prospects/42/send", json=_body()).status_code
+            == 200
+        )
+    assert env["fe"].sent[0]["list"] == {
+        "unsubscribe": {"url": f"mailto:{SENDER}?subject=unsubscribe"}
+    }
 
 
 def test_forward_email_4xx_is_502_with_no_flag(env):
@@ -382,7 +394,7 @@ def test_poll_relays_a_status_change_once(env):
 
 def test_poll_maps_delivered_to_sent_and_stops_at_a_terminal_status(env):
     _log(env)
-    env["fe"].st = "delivered"
+    env["fe"].st = "sent"
     seen: list = []
     with _bridge(_card(), seen=seen):
         asyncio.run(bs.poll_once(client=env["fe"]))
@@ -393,15 +405,39 @@ def test_poll_maps_delivered_to_sent_and_stops_at_a_terminal_status(env):
     assert env["fe"].status_calls == ["fe0001"]  # not polled again once sent
 
 
-def test_poll_keeps_an_unknown_value_raw_and_relays_nothing(env):
+def test_poll_relays_why_a_mail_was_deferred(env):
     _log(env)
-    env["fe"].st = "mystery"
+    env["fe"].st = "deferred"
+    env["fe"].rejected = [
+        {
+            "recipient": "a.person@example.edu",
+            "responseCode": 421,
+            "message": "Newsletter usage is not yet approved\nmore detail",
+        }
+    ]
+    seen: list = []
+    with _bridge(_card(), seen=seen):
+        asyncio.run(bs.poll_once(client=env["fe"]))
+    assert _flags(seen, "status") == [
+        {
+            "touch": 1,
+            "fe_id": "fe0001",
+            "fe_status": "deferred",
+            "fe_error": "Newsletter usage is not yet approved",
+        }
+    ]
+
+
+@pytest.mark.parametrize("raw", ["mystery", "delivered"])
+def test_poll_keeps_an_unknown_value_raw_and_relays_nothing(env, raw):
+    _log(env)
+    env["fe"].st = raw
     seen: list = []
     with _bridge(_card(), seen=seen):
         asyncio.run(bs.poll_once(client=env["fe"]))
     assert _flags(seen, "status") == []
     entry = bs.load_log()[0]
-    assert entry["fe_raw"] == "mystery" and entry["fe_status"] == "queued"
+    assert entry["fe_raw"] == raw and entry["fe_status"] == "queued"
 
 
 def test_poll_stops_after_seven_days_and_drops_the_entry(env):

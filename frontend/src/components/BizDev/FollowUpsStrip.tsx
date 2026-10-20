@@ -78,6 +78,7 @@ export function FollowUpsStrip({
                             ? null
                             : `Touch ${f.touch} isn’t the next one (${nextTouch(p)})`,
                         status: p ? (touchOf(p, f.touch)?.fe_status ?? null) : null,
+                        error: p ? (touchOf(p, f.touch)?.fe_error ?? null) : null,
                         onSend: (to, fromName) =>
                           onSend(
                             f.prospect_id,

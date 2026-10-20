@@ -8,10 +8,14 @@ Hermes holds no Forward Email token).
 
 Invariants (0018): Send only on a click and only from this machine; a second
 send of a touch is refused unless the earlier one was `rejected`; a failed
-call never records a send or moves a stage; every mail carries
-List-Unsubscribe and the footer with the machine-local postal address. The
+call never records a send or moves a stage; every mail carries the footer
+with the machine-local postal address and the reply-"unsubscribe" line. The
 sender identity and the key file are local config (`[bizdev]` in
 credentials.toml); with the key file unset the page behaves as before.
+List-Unsubscribe is off unless `BD_LIST_UNSUBSCRIBE` is set: Forward Email
+treats a mail carrying it as a newsletter and defers it (421, "Newsletter
+usage is not yet approved") until the account is approved for that (0018
+Phase 0); the footer's reply-"unsubscribe" line is the opt-out.
 
 A small send log (`<config dir>/bizdev/sends.json`, never in the repo) keeps
 each send's ids and status for the poll and for the duplicate check while
@@ -54,14 +58,16 @@ CONFIG_KEYS = (
     "BD_REPLY_TO",
     "BD_POSTAL_ADDRESS",
     "BD_TRACK_BASE_URL",
+    "BD_LIST_UNSUBSCRIBE",
 )
 
 # Contract v0.10 `fe_status`: pending | queued | deferred | rejected | sent.
 TRANSIENT = frozenset({"pending", "queued", "deferred"})
-# Forward Email does not document its delivered value; 0018's Phase 0 result
-# names it. Until then these read as delivered, and any other value is kept
-# raw in the send log (`fe_raw`) and never relayed.
-DELIVERED = frozenset({"sent", "delivered"})
+# Forward Email's delivered value, as 0018's Phase 0 read it back. Any value
+# outside the contract's set is kept raw in the send log (`fe_raw`) and never
+# relayed.
+DELIVERED = frozenset({"sent"})
+_ON = frozenset({"1", "true", "yes", "on"})
 RETENTION = timedelta(days=7)  # Forward Email keeps a mail 7 days
 POLL_S = 300
 
@@ -152,6 +158,15 @@ def _age(s: dict, now: datetime) -> timedelta:
     except ValueError:
         return RETENTION * 2
     return now - (t if t.tzinfo else t.replace(tzinfo=timezone.utc))
+
+
+def fe_error(rejected: Any) -> str | None:
+    """The first line of the first rejection's message: why a mail was
+    deferred or rejected, for the card (contract v0.10.1 `fe_error`)."""
+    first = rejected[0] if isinstance(rejected, list) and rejected else None
+    message = first.get("message") if isinstance(first, dict) else None
+    lines = str(message or "").strip().splitlines()
+    return lines[0].strip()[:300] if lines else None
 
 
 def normalise(raw: Any) -> str | None:
@@ -255,8 +270,11 @@ def render(
         "text": text,
         "html": to_html(text),
         "messageId": message_id,
-        "list": {"unsubscribe": {"url": f"mailto:{sender}?subject=unsubscribe"}},
     }
+    if cfg.get("BD_LIST_UNSUBSCRIBE", "").lower() in _ON:
+        payload["list"] = {
+            "unsubscribe": {"url": f"mailto:{sender}?subject=unsubscribe"}
+        }
     if touch > 1 and in_reply_to:
         payload["inReplyTo"] = in_reply_to
         payload["references"] = in_reply_to
@@ -508,6 +526,9 @@ async def poll_once(
                     "fe_id": s["fe_id"],
                     "fe_status": fe_status,
                 }
+                error = fe_error(st.get("rejectedErrors"))
+                if fe_status in ("deferred", "rejected") and error:
+                    body["fe_error"] = error
                 if not await _post_flag(f"/bd/prospects/{pid}/status", body):
                     s["status_flag"] = body
         kept = [

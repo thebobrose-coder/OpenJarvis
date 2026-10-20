@@ -122,6 +122,30 @@ describe('the drawer and the strip', () => {
   });
 });
 
+describe('fe_error (v0.10.1)', () => {
+  it('a deferred touch says why, in the drawer and on the chip', () => {
+    const p = card({
+      stage: 'sent',
+      touches: [{ n: 1, sent_at: '2026-10-20T15:00:00Z', fe_status: 'deferred', fe_error: 'Sample deferral reason' }],
+    });
+    const html = renderToStaticMarkup(
+      <ProspectDrawer
+        prospect={p}
+        onClose={() => {}}
+        onMove={() => {}}
+        onRecheck={() => {}}
+        recheckDisabled={false}
+        rechecksToday={0}
+        recheckCap={5}
+        sendConfig={CONFIG}
+        onSend={noSend}
+      />,
+    );
+    expect(html).toContain('title="Forward Email: Sample deferral reason"');
+    expect(html).toContain('>Sample deferral reason<');
+  });
+});
+
 describe('send helpers', () => {
   it('nextTouch: 1 when never sent, the same after a rejection, else the next', () => {
     expect(nextTouch({})).toBe(1);

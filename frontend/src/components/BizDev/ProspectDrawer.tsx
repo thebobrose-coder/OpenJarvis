@@ -277,6 +277,7 @@ export function ProspectDrawer({
                         // The drawer's draft is touch 1; follow-ups send from the strip.
                         blocked: nextTouch(prospect) === 1 ? null : 'Touch 1 was sent',
                         status: touchOf(prospect, 1)?.fe_status ?? null,
+                        error: touchOf(prospect, 1)?.fe_error ?? null,
                         onSend: (to, fromName) => onSend(sendRequest(prospect, { touch: 1, to, fromName, subject, body })),
                       }
                     : null
@@ -334,7 +335,12 @@ export function ProspectDrawer({
                 <li key={i} className="flex flex-wrap items-center gap-1.5" data-touch={t.n}>
                   <span style={{ color: 'var(--color-text)' }}>Touch {t.n}</span> · {shortDateTime(t.sent_at)}
                   {t.to_email && <span>· {t.to_email}</span>}
-                  <FeStatusChip status={t.fe_status} />
+                  <FeStatusChip status={t.fe_status} error={t.fe_error} />
+                  {t.fe_error && (t.fe_status === 'deferred' || t.fe_status === 'rejected') && (
+                    <span className="basis-full text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                      {t.fe_error}
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>

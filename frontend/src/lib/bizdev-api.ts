@@ -137,6 +137,8 @@ export interface Touch {
   message_id?: string | null;
   fe_id?: string | null;
   fe_status?: FeStatus | null;
+  /** v0.10.1: why a mail was deferred or rejected (Forward Email's first line). */
+  fe_error?: string | null;
   to_email?: string | null;
   draft_source?: string | null;
   subject?: string | null;

@@ -256,23 +256,29 @@ as before: the mail link, the copy buttons and "Mark as sent".
   route:
   - screens for an empty body or an unresolved `{{field}}`;
   - checks Forward Email's daily limit (429 at the cap);
-  - renders the mail with the footer, `Reply-To`, its own `Message-ID`,
-    `In-Reply-To`/`References` on follow-ups, and `List-Unsubscribe`;
+  - renders the mail with the footer (its reply-"unsubscribe" line is the
+    opt-out), `Reply-To`, its own `Message-ID`, and `In-Reply-To` /
+    `References` on follow-ups. `List-Unsubscribe` is added only with
+    `BD_LIST_UNSUBSCRIBE` on: Forward Email defers mail carrying it as a
+    newsletter (421) until the account is approved for newsletters;
   - sends it, then posts the v0.10 flag body.
 
   A Forward Email error answers 502 and records nothing. When the bridge is
   down, nothing is sent.
 - **Status poll:** a background task (only under `jarvis serve`) polls each
   send's delivery status every 5 minutes for up to 7 days. It relays changes
-  with the `status` flag and retries any flag the bridge did not take. A
+  with the `status` flag (with `fe_error`, the first line of Forward Email's
+  rejection message, when a mail is deferred or rejected) and retries any flag the bridge did not take. A
   small send log under the config dir (`bizdev/sends.json`) keeps the ids;
   a prospect's text is kept there only until the bridge has accepted it.
 - **Config:** a `[bizdev]` section in `credentials.toml`, all machine-local
   and empty by default: `FORWARDEMAIL_API_KEY_FILE`, `BD_SENDER_NAME`,
-  `BD_SENDER_ADDRESS`, `BD_SENDER_ORG`, `BD_REPLY_TO`, `BD_POSTAL_ADDRESS` and
-  `BD_TRACK_BASE_URL` (Part B). The key is read per call by the server only
-  and is never logged or returned; `GET /api/bizdev/send-config` reports only
-  whether Send is on and the sender to show.
+  `BD_SENDER_ADDRESS`, `BD_SENDER_ORG`, `BD_REPLY_TO`, `BD_POSTAL_ADDRESS`,
+  `BD_TRACK_BASE_URL` (Part B) and `BD_LIST_UNSUBSCRIBE` (off). The key is
+  read per call by the server only and is never logged or returned;
+  `GET /api/bizdev/send-config` reports only whether Send is on and the
+  sender to show. A deferred or rejected touch shows Forward Email's reason
+  (`fe_error`) on its status chip.
 
 **Breaking list: cloud notices move to Stack health** (hq decision 0017
 A3.1). Quiet `aws` / `google` rows (below severity 9) no longer show in the

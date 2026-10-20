@@ -13,10 +13,10 @@ const FE_TONE: Record<FeStatus, Tone> = {
 };
 
 /** A sent touch's delivery status (contract v0.10 `fe_status`). */
-export function FeStatusChip({ status }: { status: FeStatus | null | undefined }) {
+export function FeStatusChip({ status, error }: { status: FeStatus | null | undefined; error?: string | null }) {
   if (!status) return null;
   return (
-    <Chip tone={FE_TONE[status] ?? 'muted'} title="Delivery status from Forward Email">
+    <Chip tone={FE_TONE[status] ?? 'muted'} title={error ? `Forward Email: ${error}` : 'Delivery status from Forward Email'}>
       {status}
     </Chip>
   );
@@ -29,6 +29,8 @@ export interface SendMode {
   blocked?: string | null;
   /** The touch's delivery status when it was already sent. */
   status?: FeStatus | null;
+  /** Why it was deferred or rejected (v0.10.1 `fe_error`). */
+  error?: string | null;
   onSend: (to: string, fromName: string) => Promise<SendResult>;
 }
 
@@ -175,7 +177,7 @@ export function MailActions({
           <SmallButton tone="accent" onClick={() => void doSend()} disabled={!!sendBlocked || sending} title={sendBlocked ?? `Send from ${send!.config.sender_address}`}>
             {sending ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />} {sending ? 'Sending…' : 'Send'}
           </SmallButton>
-          <FeStatusChip status={shown} />
+          <FeStatusChip status={shown} error={result ? null : send!.error} />
           <SmallButton onClick={() => setMore((m) => !m)} title="Mail link and copy buttons">
             More <ChevronDown size={11} />
           </SmallButton>
