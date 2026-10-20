@@ -291,6 +291,7 @@ def test_an_unresolved_merge_field_is_422(env):
         ({"touch": 4}, 400),
         ({"from_name": "Evil\r\nBcc: x"}, 400),
         ({"draft_source": "other"}, 400),
+        ({"draft_source": "template:abc"}, 400),  # Hermes takes digits only
     ],
 )
 def test_bad_requests_never_send(env, over, status):

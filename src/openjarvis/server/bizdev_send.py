@@ -73,7 +73,7 @@ POLL_S = 300
 
 _EMAIL = re.compile(r"^[^@\s<>,;\"]+@[^@\s<>,;\"]+\.[^@\s<>,;\"]+$")
 _MERGE = re.compile(r"\{\{\s*([^{}]*?)\s*\}\}")
-_SOURCE = re.compile(r"^(hermes|template:[A-Za-z0-9_-]{1,64})$")
+_SOURCE = re.compile(r"^(hermes|template:[0-9]{1,9})$")
 _MSGID = re.compile(r"^<[^<>\s]{3,250}>$")
 _SUBJECT_MAX = 300
 _BODY_MAX = 10_000
