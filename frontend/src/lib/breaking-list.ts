@@ -8,6 +8,19 @@ import type { AlertKind, BreakingNewsAlert } from './api';
 export const LIST_HOURS = 24;
 export const LIST_ROWS = 3;
 
+/** hq 0017 A3: rows at 9+ ring and speak; the server's
+ * `BREAKING_VOICE_MIN_SEVERITY` decides, this only labels the quiet ones. */
+export const VOICE_MIN_SEVERITY = 9;
+
+/** Below the bar: listed, never the spoken alert. A missing or non-numeric
+ * severity counts as 9, as on the server. */
+export function isQuiet(a: Pick<BreakingNewsAlert, 'severity'>): boolean {
+  const sev = a.severity;
+  if (sev == null || sev === '') return false;
+  const n = typeof sev === 'number' ? sev : Number(sev);
+  return Number.isFinite(n) && n < VOICE_MIN_SEVERITY;
+}
+
 /** A row without `kind` is `news`, or `trading` when `source` is `trading`. */
 export function alertKind(a: Pick<BreakingNewsAlert, 'kind' | 'source'>): AlertKind {
   if (a.kind) return a.kind;

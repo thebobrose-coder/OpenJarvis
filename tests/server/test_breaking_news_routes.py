@@ -370,3 +370,87 @@ def test_route_no_longer_uses_alert_store():
 
 
 _real_synthesize = bnr._synthesize
+
+
+# -- severity gate (hq 0017 A3) -----------------------------------------------
+
+
+def _row(generated_at: str, severity, kind: str = "aws") -> dict:
+    payload = _payload(generated_at)
+    payload["data"].update(severity=severity, kind=kind, headline=f"Sev {severity}")
+    return payload
+
+
+def _feed(rows: list[dict]):
+    """A bridge whose root serves the newest row and /recent all of them."""
+
+    def handler(req: httpx.Request):
+        ordered = sorted(rows, key=lambda r: r["generated_at"], reverse=True)
+        if req.url.path.endswith("/recent"):
+            return httpx.Response(200, json={"rows": ordered})
+        return httpx.Response(200, json=ordered[0])
+
+    return handler
+
+
+def test_gate_constant_is_nine():
+    assert bnr.BREAKING_VOICE_MIN_SEVERITY == 9
+
+
+def test_a_nine_is_latest_and_a_later_six_neither_displaces_it_nor_speaks(_reset):
+    rows = [_row("2026-10-20T10:00:00Z", 9)]
+    client, patcher = _client(_feed(rows))
+    with patcher:
+        first = client.get("/api/breaking-news").json()
+        rows.append(_row("2026-10-20T11:00:00Z", 6))
+        second = client.get("/api/breaking-news").json()
+        recent = client.get("/api/breaking-news/recent").json()["alerts"]
+    assert first["headline"] == "Sev 9" and first["audio_available"]
+    assert second["alerted_at"] == "2026-10-20T10:00:00Z"
+    assert second["audio_available"]
+    assert [c[2] for c in _reset] == ["2026-10-20T10:00:00Z"]  # spoken once
+    # The list still shows every row, the 6 first.
+    assert [a["severity"] for a in recent] == [6, 9]
+
+
+def test_a_ten_after_the_six_becomes_latest_and_speaks(_reset):
+    rows = [_row("2026-10-20T10:00:00Z", 9), _row("2026-10-20T11:00:00Z", 6)]
+    client, patcher = _client(_feed(rows))
+    with patcher:
+        client.get("/api/breaking-news")
+        rows.append(_row("2026-10-20T12:00:00Z", 10))
+        body = client.get("/api/breaking-news").json()
+    assert body["headline"] == "Sev 10" and body["audio_available"]
+    assert [c[2] for c in _reset] == ["2026-10-20T10:00:00Z", "2026-10-20T12:00:00Z"]
+
+
+@pytest.mark.parametrize("severity", [None, "high", ""])
+def test_missing_or_non_numeric_severity_counts_as_nine(_reset, severity):
+    client, patcher = _client(_feed([_row("2026-10-20T10:00:00Z", severity)]))
+    with patcher:
+        body = client.get("/api/breaking-news").json()
+    assert body["audio_available"] and len(_reset) == 1
+
+
+def test_only_quiet_rows_is_no_alerts_yet_and_nothing_speaks(_reset):
+    client, patcher = _client(_feed([_row("2026-10-20T11:00:00Z", 6)]))
+    with patcher:
+        resp = client.get("/api/breaking-news")
+    assert resp.status_code == 404 and _reset == []
+
+
+def test_a_quiet_newest_row_with_the_nine_off_the_list_keeps_the_last_seen(_reset):
+    rows = [_row("2026-10-20T10:00:00Z", 9)]
+    client, patcher = _client(_feed(rows))
+    with patcher:
+        client.get("/api/breaking-news")
+        rows[:] = [_row("2026-10-20T11:00:00Z", 7)]  # the 9 aged out of /recent
+        body = client.get("/api/breaking-news").json()
+    assert body["alerted_at"] == "2026-10-20T10:00:00Z" and len(_reset) == 1
+
+
+def test_ensure_audio_refuses_a_quiet_row(_reset):
+    import asyncio
+
+    assert asyncio.run(bnr._ensure_audio(_row("2026-10-20T11:00:00Z", 6))) is None
+    assert _reset == []

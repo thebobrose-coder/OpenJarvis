@@ -16,6 +16,13 @@ than an empty sidebar item.
 `/recent` (contract v1.7) passes through `/panels/breaking_alerts/recent`, the
 last N hours of alerts newest first, for the sidebar's list. It never
 synthesizes audio: only the newest alert (the root route) is spoken.
+
+Severity gate (hq 0017 A3): only rows at `BREAKING_VOICE_MIN_SEVERITY` or
+above become the latest alert and get audio. A quieter row (a maintenance
+notice at 6) stays in the feed and in `/recent`, but never displaces the
+latest alert. When the bridge's newest row is below the bar, the latest is
+the newest passing row in the last 72 h of `/recent`, else the last passing
+alert this process saw.
 """
 
 from __future__ import annotations
@@ -36,6 +43,9 @@ HERMES_BREAKING_URL = os.environ.get(
     "HERMES_BREAKING_URL", "http://127.0.0.1:8643/panels/breaking_alerts"
 )
 _TIMEOUT_S = 10.0
+# hq 0017 A3 (contract `breaking_alerts` lanes): 9 and 10 wake the human, 6
+# and 7 are worth seeing. Not configurable; a code change if it ever moves.
+BREAKING_VOICE_MIN_SEVERITY = 9
 # Bridge limits for /recent (contract v1.7); out-of-range values are clamped.
 _HOURS_RANGE = (1, 72)
 _LIMIT_RANGE = (1, 10)
@@ -55,6 +65,35 @@ _audio: dict = {"generated_at": None, "path": None}
 _audio_lock = asyncio.Lock()
 # Last good /recent rows, per (hours, limit).
 _recent_cache: dict[tuple[int, int], list[dict]] = {}
+
+
+def voiced(data: dict) -> bool:
+    """A row rings and speaks at severity 9+. A missing or non-numeric
+    severity counts as 9, so no legacy row goes quiet."""
+    sev = data.get("severity")
+    if sev is None or isinstance(sev, bool):
+        return True
+    try:
+        return float(sev) >= BREAKING_VOICE_MIN_SEVERITY
+    except (TypeError, ValueError):
+        return True
+
+
+async def _newest_voiced(client: httpx.AsyncClient) -> dict | None:
+    """The newest passing row the bridge still lists (72 h, 10 rows)."""
+    resp = await client.get(
+        f"{HERMES_BREAKING_URL}/recent",
+        params={"hours": _HOURS_RANGE[1], "limit": _LIMIT_RANGE[1]},
+    )
+    if resp.status_code != 200:
+        return None
+    rows = [
+        r
+        for r in resp.json()["rows"]
+        if isinstance(r, dict) and "headline" in r["data"] and voiced(r["data"])
+    ]
+    rows.sort(key=lambda r: r["generated_at"], reverse=True)
+    return rows[0] if rows else None
 
 
 def _synthesize(headline: str, summary: str, generated_at: str) -> Path | None:
@@ -93,7 +132,10 @@ def _synthesize(headline: str, summary: str, generated_at: str) -> Path | None:
 
 
 async def _ensure_audio(payload: dict) -> Path | None:
-    """Synthesize audio once per new alert; later calls reuse it."""
+    """Synthesize audio once per new alert; later calls reuse it. A row
+    below the severity bar never gets audio."""
+    if not voiced(payload["data"]):
+        return None
     generated_at = payload["generated_at"]
     async with _audio_lock:
         if _audio["generated_at"] != generated_at:
@@ -174,6 +216,14 @@ def create_breaking_news_router() -> APIRouter:
             if resp.status_code == 200:
                 payload = resp.json()
                 payload["data"]["headline"]  # validate before caching
+                if not voiced(payload["data"]):
+                    # Below the bar: the latest stays the newest passing row.
+                    async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
+                        payload = await _newest_voiced(client) or _cache
+                    if payload is None:
+                        raise HTTPException(
+                            status_code=404, detail="No breaking news alerts yet"
+                        )
                 _cache = payload
                 return _shape(payload, await _ensure_audio(payload), False)
         except (httpx.HTTPError, ValueError, KeyError, TypeError):

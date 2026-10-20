@@ -69,3 +69,34 @@ describe('BreakingListView', () => {
     expect(view([alert(5)])).not.toContain('>stale<');
   });
 });
+
+describe('BreakingListView severity gate (hq 0017 A3)', () => {
+  const nine = alert(30, { severity: 9, kind: 'aws', source: 'AWS Health', headline: 'Open issue' });
+  const six = alert(5, { severity: 6, kind: 'aws', source: 'AWS Health', headline: 'Scheduled maintenance' });
+
+  it('lists a newer 6 with its chip and a quiet marker', () => {
+    const html = view([six, nine], { latestAt: nine.alerted_at });
+    expect(html).toContain('Scheduled maintenance');
+    expect(html).toContain('>aws<');
+    expect(html).toContain('>quiet<');
+    expect(html.indexOf('Scheduled maintenance')).toBeLessThan(html.indexOf('Open issue'));
+  });
+
+  it('keeps the player on the spoken 9 when a 6 leads, visible on short windows', () => {
+    const html = view([six, nine], { latestAt: nine.alerted_at });
+    expect(html.match(/Play breaking news summary/g)).toHaveLength(1);
+    const playAt = html.indexOf('Play breaking news summary');
+    expect(playAt).toBeGreaterThan(html.indexOf('Scheduled maintenance'));
+    expect(playAt).toBeLessThan(html.indexOf('Open issue'));
+    const nineRow = html.slice(html.lastIndexOf('<div', playAt), playAt);
+    expect(nineRow).not.toContain('hidden');
+  });
+
+  it('the spoken state is the same with or without the 6', () => {
+    const without = view([nine], { latestAt: nine.alerted_at });
+    const withSix = view([six, nine], { latestAt: nine.alerted_at });
+    expect(without.match(/Play breaking news summary/g)).toHaveLength(1);
+    expect(withSix.match(/Play breaking news summary/g)).toHaveLength(1);
+    expect(view([nine], { latestAt: nine.alerted_at })).not.toContain('>quiet<');
+  });
+});

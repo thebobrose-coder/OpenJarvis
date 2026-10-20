@@ -238,6 +238,19 @@ of them Foundry copy, which the tab used to show as HTML copy patches.
 
 No backend change: the routes pass the feed through.
 
+**Breaking alerts: severity gate** (hq decision 0017 A3). Only rows with
+severity 9 or above become the latest alert (`/api/breaking-news`) and get
+TTS audio (`BREAKING_VOICE_MIN_SEVERITY = 9` in `breaking_news_routes.py`).
+A missing or non-numeric severity counts as 9, so no older row goes quiet.
+- **Quieter rows** (an AWS maintenance notice at 6, an official release at
+  7) stay in `/recent` and in the sidebar list, marked "quiet", but never
+  displace the latest alert and are never spoken.
+- **Newest row below the bar:** the latest is the newest passing row in the
+  last 72 h of `/recent`, else the last passing alert the server saw.
+- **Player:** when a quiet row leads the list, the play button stays on the
+  spoken alert's own row, which stays visible on short windows.
+- **Kinds:** `AlertKind` adds `aws` and `google`.
+
 **Stack-health dock in the sidebar** (hq decision 0017 A2). The operator's
 stack-health check writes a local result file every 6 h, and the cloud
 Health relay exports open AWS and Google events. A dock on top of Latest

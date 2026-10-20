@@ -1,6 +1,6 @@
 import { Pause, Play } from 'lucide-react';
 import type { BreakingNewsAlert } from '../../lib/api';
-import { alertAge, alertKind, LEVEL_COLOR, levelTone } from '../../lib/breaking-list';
+import { alertAge, alertKind, isQuiet, LEVEL_COLOR, levelTone } from '../../lib/breaking-list';
 import { FeedFreshness } from '../Dashboard/FeedFreshness';
 
 /**
@@ -29,6 +29,11 @@ function AlertMeta({ alert, now }: { alert: BreakingNewsAlert; now: number }) {
         {alert.source ? `${alert.source} · ` : ''}
         {alertAge(alert.alerted_at, now)}
       </span>
+      {isQuiet(alert) && (
+        <span className="shrink-0 italic" title={`Severity ${alert.severity}: listed, not voiced (below 9)`}>
+          quiet
+        </span>
+      )}
     </div>
   );
 }
@@ -42,6 +47,19 @@ function Headline({ alert, onOpen }: { alert: BreakingNewsAlert; onOpen: (url: s
       title={alert.headline}
     >
       {alert.headline}
+    </button>
+  );
+}
+
+function PlayButton({ playing, onToggle }: { playing: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex items-center justify-center w-5 h-5 rounded-full shrink-0 cursor-pointer mt-0.5"
+      style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
+      title={playing ? 'Pause breaking news summary' : 'Play breaking news summary'}
+    >
+      {playing ? <Pause size={10} /> : <Play size={10} />}
     </button>
   );
 }
@@ -70,19 +88,13 @@ export function BreakingListView({
 }) {
   const [lead, ...more] = rows;
   const showPlay = !!lead && lead.alerted_at === latestAt && canPlay;
+  // hq 0017 A3: a quieter, newer row can lead the list; the spoken alert then
+  // keeps its player on its own row, which stays visible on short windows.
+  const playsHere = (a: BreakingNewsAlert) => a.alerted_at === latestAt && canPlay;
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-start gap-2">
-        {showPlay && (
-          <button
-            onClick={onToggle}
-            className="flex items-center justify-center w-5 h-5 rounded-full shrink-0 cursor-pointer mt-0.5"
-            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
-            title={playing ? 'Pause breaking news summary' : 'Play breaking news summary'}
-          >
-            {playing ? <Pause size={10} /> : <Play size={10} />}
-          </button>
-        )}
+        {showPlay && <PlayButton playing={playing} onToggle={onToggle} />}
         <div className="min-w-0 flex-1">
           <div
             className="text-[9px] font-semibold uppercase tracking-wide mb-0.5"
@@ -115,12 +127,22 @@ export function BreakingListView({
           ) : null}
         </div>
       </div>
-      {more.map((a) => (
-        <div key={`${a.event_id ?? ''}${a.alerted_at}`} className={`min-w-0 ${SHORT_WINDOW_HIDDEN} ${showPlay ? 'pl-7' : ''}`}>
-          <Headline alert={a} onOpen={onOpen} />
-          <AlertMeta alert={a} now={now} />
-        </div>
-      ))}
+      {more.map((a) =>
+        playsHere(a) ? (
+          <div key={`${a.event_id ?? ''}${a.alerted_at}`} className="flex items-start gap-2 min-w-0">
+            <PlayButton playing={playing} onToggle={onToggle} />
+            <div className="min-w-0 flex-1">
+              <Headline alert={a} onOpen={onOpen} />
+              <AlertMeta alert={a} now={now} />
+            </div>
+          </div>
+        ) : (
+          <div key={`${a.event_id ?? ''}${a.alerted_at}`} className={`min-w-0 ${SHORT_WINDOW_HIDDEN} ${showPlay ? 'pl-7' : ''}`}>
+            <Headline alert={a} onOpen={onOpen} />
+            <AlertMeta alert={a} now={now} />
+          </div>
+        ),
+      )}
       {stale && lead && (
         <FeedFreshness ageSeconds={Math.max(0, (now - Date.parse(lead.alerted_at)) / 1000)} stale />
       )}

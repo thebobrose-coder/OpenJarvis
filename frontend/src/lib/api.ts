@@ -885,7 +885,7 @@ export interface BreakingNewsAlert {
   level?: string | null;
 }
 
-export type AlertKind = 'hazard' | 'official' | 'news' | 'trading';
+export type AlertKind = 'hazard' | 'official' | 'news' | 'trading' | 'aws' | 'google';
 
 export interface RecentBreakingNews {
   alerts: BreakingNewsAlert[];

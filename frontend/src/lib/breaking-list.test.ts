@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BreakingNewsAlert } from './api';
-import { alertAge, alertKind, levelTone, selectBreaking } from './breaking-list';
+import type { AlertKind } from './api';
+import { alertAge, alertKind, isQuiet, levelTone, selectBreaking } from './breaking-list';
 
 // Invented alerts only: this repo is public.
 const NOW = Date.parse('2026-10-09T20:00:00Z');
@@ -98,5 +99,22 @@ describe('display', () => {
     expect(alertAge(at(59), NOW)).toBe('59 min');
     expect(alertAge(at(60), NOW)).toBe('1 h');
     expect(alertAge(at(23 * 60 + 50), NOW)).toBe('23 h');
+  });
+});
+
+describe('severity gate (hq 0017 A3)', () => {
+  it('marks rows below 9 quiet; missing or non-numeric severity is not quiet', () => {
+    expect(isQuiet({ severity: 6 })).toBe(true);
+    expect(isQuiet({ severity: '7' })).toBe(true);
+    expect(isQuiet({ severity: 9 })).toBe(false);
+    expect(isQuiet({ severity: 10 })).toBe(false);
+    expect(isQuiet({ severity: null })).toBe(false);
+    expect(isQuiet({})).toBe(false);
+    expect(isQuiet({ severity: 'high' })).toBe(false);
+  });
+
+  it('accepts the aws and google kinds', () => {
+    const kinds: AlertKind[] = ['aws', 'google'];
+    expect(kinds.map((kind) => alertKind({ kind }))).toEqual(['aws', 'google']);
   });
 });
