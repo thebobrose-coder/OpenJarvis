@@ -15,6 +15,7 @@ export function BizDevHeader({
   stats,
   researchStatus,
   onResearch,
+  sendEnabled = false,
 }: {
   lines: { line: string; display_name: string }[];
   selectedLine: string;
@@ -24,6 +25,8 @@ export function BizDevHeader({
   stats: StatsLine | undefined;
   researchStatus: 'idle' | 'queued' | 'error';
   onResearch: () => void;
+  /** Send through Forward Email is configured (hq 0018). */
+  sendEnabled?: boolean;
 }) {
   return (
     <header className="flex flex-col gap-3 mb-6">
@@ -33,7 +36,9 @@ export function BizDevHeader({
             Business Development
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Hermes researches and drafts; you review, send from your own mail, and record what happened.
+            {sendEnabled
+              ? 'Hermes researches and drafts; you review and send from here, and the touch is recorded for you.'
+              : 'Hermes researches and drafts; you review, send from your own mail, and record what happened.'}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">

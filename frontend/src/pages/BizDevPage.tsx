@@ -26,6 +26,8 @@ export function BizDevPage() {
         researchStatus={data.researchStatus}
         notice={data.notice}
         onClearNotice={data.clearNotice}
+        sendConfig={data.sendConfig}
+        onSend={data.send}
       />
     </div>
   );

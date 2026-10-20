@@ -70,6 +70,17 @@ TOOL_CREDENTIALS: dict[str, list[str]] = {
     # the operator's stack-health check, the cloud Health relay's export, and
     # the scheduled task that runs the check (Run now).
     "stack": ["STACK_HEALTH_FILE", "HEALTH_EVENTS_FILE", "STACK_HEALTH_TASK"],
+    # Business Development Send (hq 0018): the Forward Email API key's file
+    # and the sender identity; all machine-local, Send is off until set.
+    "bizdev": [
+        "FORWARDEMAIL_API_KEY_FILE",
+        "BD_SENDER_NAME",
+        "BD_SENDER_ADDRESS",
+        "BD_SENDER_ORG",
+        "BD_REPLY_TO",
+        "BD_POSTAL_ADDRESS",
+        "BD_TRACK_BASE_URL",
+    ],
 }
 
 
@@ -84,6 +95,17 @@ OPTIONAL_TOOL_CREDENTIALS: dict[str, frozenset[str]] = {
     "web_search": frozenset({"TAVILY_API_KEY", "YOUDOTCOM_API_KEY", "SERPLY_API_KEY"}),
     "hermes": frozenset({"HERMES_FIX_TOKEN_FILE"}),
     "stack": frozenset({"HEALTH_EVENTS_FILE", "STACK_HEALTH_TASK"}),
+    "bizdev": frozenset(
+        {
+            "FORWARDEMAIL_API_KEY_FILE",
+            "BD_SENDER_NAME",
+            "BD_SENDER_ADDRESS",
+            "BD_SENDER_ORG",
+            "BD_REPLY_TO",
+            "BD_POSTAL_ADDRESS",
+            "BD_TRACK_BASE_URL",
+        }
+    ),
 }
 
 

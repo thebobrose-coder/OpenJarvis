@@ -4,7 +4,9 @@ import {
   BOARD_STAGES,
   SUPPRESSION_STAGES,
   fetchBizDevFeed,
+  fetchSendConfig,
   moveProspect,
+  sendProspect,
   recheckProspect,
   researchMore,
   type BdFeedName,
@@ -13,6 +15,9 @@ import {
   type BoardStage,
   type PipelineLine,
   type PipelineProspect,
+  type SendConfig,
+  type SendRequest,
+  type SendResult,
   type StageAction,
 } from '../lib/bizdev-api';
 
@@ -129,6 +134,11 @@ export function useBizDevData() {
   const [recheckBlocked, setRecheckBlocked] = useState(false);
   const [researchStatus, setResearchStatus] = useState<'idle' | 'queued' | 'error'>('idle');
   const [notice, setNotice] = useState<string | null>(null);
+  const [sendConfig, setSendConfig] = useState<SendConfig | null>(null);
+
+  useEffect(() => {
+    void fetchSendConfig().then(setSendConfig);
+  }, []);
 
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
@@ -184,6 +194,29 @@ export function useBizDevData() {
     [later, loadFeed],
   );
 
+  // Send (hq 0018): the server sends and posts the `sent` flag. Touch 1 moves
+  // the card to Sent locally, a follow-up leaves the strip, until Hermes
+  // applies the flag; a failure undoes that and says why.
+  const send = useCallback(
+    async (id: number, req: SendRequest): Promise<SendResult> => {
+      setPending((p) => ({ ...p, [id]: { stage: 'sent', at: Date.now(), ...(req.touch > 1 ? { touch: req.touch } : {}) } }));
+      try {
+        const result = await sendProspect(id, req);
+        later(RECHECK_MS, () => void loadFeed('bd_pipeline'));
+        return result;
+      } catch (e: unknown) {
+        setPending((p) => {
+          const next = { ...p };
+          delete next[id];
+          return next;
+        });
+        setNotice(e instanceof Error ? e.message : 'Send failed.');
+        throw e;
+      }
+    },
+    [later, loadFeed],
+  );
+
   const recheck = useCallback(
     async (id: number) => {
       try {
@@ -219,6 +252,8 @@ export function useBizDevData() {
     feeds,
     pending,
     move,
+    send,
+    sendConfig,
     recheck,
     recheckDisabled: recheckBlocked || rechecksToday >= RECHECK_DAILY_CAP,
     rechecksToday,

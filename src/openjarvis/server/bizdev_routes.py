@@ -8,6 +8,11 @@ pass the feeds through like the Commerce routes (`data` unwrapped, tagged
 with `generated_at` / `age_seconds` / `stale`) and forward only the
 allowlisted actions, validated as the bridge validates them.
 
+Send (hq 0018, contract v0.10): `GET /send-config` and
+`POST /prospects/<id>/send` hand the operator's click to `bizdev_send`, which
+sends through Forward Email and records the touch with the `sent` flag. Both
+answer only requests from this machine.
+
 Prospect documents carry official-directory work contacts. They are passed
 through to the page for display only: nothing here logs or stores them
 beyond the in-memory last-known copy that keeps the page up when the bridge
@@ -25,6 +30,9 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+
+from openjarvis.server import bizdev_send
+from openjarvis.server.stack_routes import _local_only
 
 bizdev_router = APIRouter(prefix="/api/bizdev", tags=["bizdev"])
 
@@ -106,6 +114,33 @@ async def _post(path: str, body: Any = None) -> JSONResponse:
         return JSONResponse(status_code=resp.status_code, content=content)
     except httpx.HTTPError:
         raise HTTPException(status_code=503, detail="Hermes bridge unavailable")
+
+
+# Registered before the feed and stage routes, so "send-config" is never read
+# as a feed nor "send" as a stage.
+@bizdev_router.get("/send-config")
+async def send_config(request: Request) -> dict:
+    """Whether Send is configured, and the sender to show; never the key."""
+    _local_only(request)
+    return bizdev_send.public_config()
+
+
+@bizdev_router.post("/prospects/{prospect_id}/send")
+async def send_prospect(prospect_id: str, request: Request) -> JSONResponse:
+    """Send one touch to one of the prospect's contacts (the operator's click)."""
+    _local_only(request)
+    _check_id(prospect_id)
+    raw = await request.body()
+    if len(raw) > bizdev_send.REQUEST_MAX:
+        raise HTTPException(status_code=413, detail="Body over 16 KB")
+    try:
+        body = json.loads(raw or b"null")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Body is not JSON")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body must be a JSON object")
+    result = await bizdev_send.send(int(prospect_id), body)
+    return JSONResponse(status_code=200, content=result)
 
 
 @bizdev_router.get("/{feed}")

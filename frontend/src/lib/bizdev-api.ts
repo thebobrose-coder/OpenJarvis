@@ -124,7 +124,23 @@ export interface PipelineProspect extends Prospect {
   stage_changed_at?: string;
   days_in_stage?: number;
   history?: { stage: string; at: string; note?: string | null }[];
-  touches?: { n: number; sent_at: string }[];
+  touches?: Touch[];
+}
+
+/** Contract v0.10: delivery status, relayed from Forward Email by OpenJarvis. */
+export type FeStatus = 'pending' | 'queued' | 'deferred' | 'rejected' | 'sent';
+
+/** One sent touch. The v0.10 keys are absent on touches marked sent by hand. */
+export interface Touch {
+  n: number;
+  sent_at: string;
+  message_id?: string | null;
+  fe_id?: string | null;
+  fe_status?: FeStatus | null;
+  to_email?: string | null;
+  draft_source?: string | null;
+  subject?: string | null;
+  body?: string | null;
 }
 
 export interface FollowUp {
@@ -220,4 +236,95 @@ export async function recheckProspect(id: number): Promise<void> {
 export async function researchMore(): Promise<void> {
   const res = await apiFetch('/api/bizdev/research/refresh', { method: 'POST' });
   if (!res.ok) throw await failure(res, 'Research');
+}
+
+// ---------------------------------------------------------------------------
+// Send (hq 0018, contract v0.10 BD): the operator's click sends through Forward
+// Email from this machine; Hermes records the touch from the `sent` flag.
+// ---------------------------------------------------------------------------
+
+export interface SendConfig {
+  enabled: boolean;
+  sender_name: string | null;
+  sender_address: string | null;
+  reply_to: string | null;
+  /** Config keys a half-done setup still lacks (names only). */
+  missing: string[];
+}
+
+export interface SendRequest {
+  to_email: string;
+  subject: string;
+  body: string;
+  touch: number;
+  from_name?: string;
+  draft_source: string;
+  in_reply_to_message_id?: string;
+}
+
+export interface SendResult {
+  fe_id: string;
+  message_id: string;
+  fe_status: FeStatus;
+  /** False when the bridge didn't take the record yet; the server retries it. */
+  recorded: boolean;
+}
+
+/** Whether Send is set up; null when the server can't say (Send stays off). */
+export async function fetchSendConfig(): Promise<SendConfig | null> {
+  try {
+    const res = await apiFetch('/api/bizdev/send-config');
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function sendProspect(id: number, req: SendRequest): Promise<SendResult> {
+  const res = await apiFetch(`/api/bizdev/prospects/${id}/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw await failure(res, 'Send');
+  return res.json();
+}
+
+/** The touch a Send records: 1 for a card never sent, the same touch again
+ * after a rejected send, else the one after the last (as the server checks). */
+export function nextTouch(p: Pick<PipelineProspect, 'touches'>): number {
+  const touches = p.touches ?? [];
+  if (!touches.length) return 1;
+  const last = touches.reduce((a, b) => (b.n > a.n ? b : a));
+  return last.fe_status === 'rejected' ? last.n : last.n + 1;
+}
+
+export function touchOf(p: Pick<PipelineProspect, 'touches'>, n: number): Touch | undefined {
+  const matches = (p.touches ?? []).filter((t) => t.n === n);
+  return matches[matches.length - 1];
+}
+
+/** Touch 1's message id, which a follow-up threads on. */
+export function firstMessageId(p: Pick<PipelineProspect, 'touches'>): string | null {
+  return touchOf(p, 1)?.message_id ?? null;
+}
+
+/** `{{field}}` names left in the text; any one blocks Send. */
+export function unresolvedFields(...texts: string[]): string[] {
+  const out = new Set<string>();
+  for (const t of texts) for (const m of t.matchAll(/\{\{\s*([^{}]*?)\s*\}\}/g)) out.add(m[1] || '?');
+  return [...out].sort();
+}
+
+/** The send route's body for one touch of one prospect. */
+export function sendRequest(
+  p: Pick<PipelineProspect, 'touches'>,
+  { touch, to, fromName, subject, body }: { touch: number; to: string; fromName?: string; subject: string; body: string },
+): SendRequest {
+  const req: SendRequest = { to_email: to, subject, body, touch, draft_source: 'hermes' };
+  const name = fromName?.trim();
+  if (name) req.from_name = name;
+  const first = touch > 1 ? firstMessageId(p) : null;
+  if (first) req.in_reply_to_message_id = first;
+  return req;
 }

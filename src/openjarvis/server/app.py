@@ -188,6 +188,7 @@ def create_app(
     webhook_config: dict | None = None,
     cors_origins: list[str] | None = None,
     digest_audio_warmup: bool = False,
+    bd_send_poll: bool = False,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -530,6 +531,21 @@ def create_app(
         @app.on_event("shutdown")
         async def _stop_digest_audio_warmup() -> None:
             task = getattr(app.state, "digest_audio_warmup", None)
+            if task is not None:
+                task.cancel()
+
+    if bd_send_poll:
+        # Relay Business Development sends' delivery status to Hermes (hq
+        # 0018 D2). Like the warm-up, only `jarvis serve` turns it on.
+        from openjarvis.server.bizdev_send import poll_loop
+
+        @app.on_event("startup")
+        async def _start_bd_send_poll() -> None:
+            app.state.bd_send_poll = asyncio.create_task(poll_loop())
+
+        @app.on_event("shutdown")
+        async def _stop_bd_send_poll() -> None:
+            task = getattr(app.state, "bd_send_poll", None)
             if task is not None:
                 task.cancel()
 

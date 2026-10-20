@@ -238,6 +238,42 @@ of them Foundry copy, which the tab used to show as HTML copy patches.
 
 No backend change: the routes pass the feed through.
 
+**Business Development: Send through Forward Email** (hq decision 0018,
+contract v0.10 BD, Part A). With an API key configured, the prospect drawer
+and the follow-ups strip get a **Send** button. The server sends the mail
+through Forward Email's API and records the touch with the bridge's `sent`
+flag, so "Mark as sent" goes away. Without the key, the page behaves exactly
+as before: the mail link, the copy buttons and "Mark as sent".
+- **UI:** Send is the primary button, with a From name (prefilled from config)
+  and the To choice; the mail link and copy buttons move under **More**.
+  A sent touch shows its delivery status (`queued`, `sent`, `deferred`,
+  `rejected`), and `rejected` enables Send again. The drawer lists the sent
+  touches.
+- **Route:** `POST /api/bizdev/prospects/<id>/send` (loopback-only, 16 KB)
+  checks the request against the live `bd_pipeline` card. The address must be
+  one of the card's contacts, the touch must be the card's next one, and a
+  touch already sent is refused unless it was rejected. Once checked, the
+  route:
+  - screens for an empty body or an unresolved `{{field}}`;
+  - checks Forward Email's daily limit (429 at the cap);
+  - renders the mail with the footer, `Reply-To`, its own `Message-ID`,
+    `In-Reply-To`/`References` on follow-ups, and `List-Unsubscribe`;
+  - sends it, then posts the v0.10 flag body.
+
+  A Forward Email error answers 502 and records nothing. When the bridge is
+  down, nothing is sent.
+- **Status poll:** a background task (only under `jarvis serve`) polls each
+  send's delivery status every 5 minutes for up to 7 days. It relays changes
+  with the `status` flag and retries any flag the bridge did not take. A
+  small send log under the config dir (`bizdev/sends.json`) keeps the ids;
+  a prospect's text is kept there only until the bridge has accepted it.
+- **Config:** a `[bizdev]` section in `credentials.toml`, all machine-local
+  and empty by default: `FORWARDEMAIL_API_KEY_FILE`, `BD_SENDER_NAME`,
+  `BD_SENDER_ADDRESS`, `BD_SENDER_ORG`, `BD_REPLY_TO`, `BD_POSTAL_ADDRESS` and
+  `BD_TRACK_BASE_URL` (Part B). The key is read per call by the server only
+  and is never logged or returned; `GET /api/bizdev/send-config` reports only
+  whether Send is on and the sender to show.
+
 **Breaking list: cloud notices move to Stack health** (hq decision 0017
 A3.1). Quiet `aws` / `google` rows (below severity 9) no longer show in the
 sidebar's breaking list; they are dropped before the three-row cap, and the

@@ -1,5 +1,14 @@
 import { CalendarClock } from 'lucide-react';
-import type { FollowUp, PipelineProspect } from '../../lib/bizdev-api';
+import {
+  nextTouch,
+  sendRequest,
+  touchOf,
+  type FollowUp,
+  type PipelineProspect,
+  type SendConfig,
+  type SendRequest,
+  type SendResult,
+} from '../../lib/bizdev-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { Chip } from '../shared/ui';
 import { MailActions } from './MailActions';
@@ -20,10 +29,15 @@ export function FollowUpsStrip({
   followUps,
   prospectsById,
   onMarkSent,
+  sendConfig = null,
+  onSend,
 }: {
   followUps: FollowUp[];
   prospectsById: Map<number, PipelineProspect>;
   onMarkSent: (prospectId: number, touch: number) => void;
+  /** Send through Forward Email (hq 0018); a follow-up threads on touch 1. */
+  sendConfig?: SendConfig | null;
+  onSend?: (prospectId: number, req: SendRequest) => Promise<SendResult>;
 }) {
   if (followUps.length === 0) return null;
   return (
@@ -54,6 +68,24 @@ export function FollowUpsStrip({
                 body={f.draft.body}
                 sentLabel={`Mark touch ${f.touch} as sent?`}
                 onMarkSent={() => onMarkSent(f.prospect_id, f.touch)}
+                send={
+                  sendConfig?.enabled && onSend
+                    ? {
+                        config: sendConfig,
+                        blocked: !p
+                          ? 'Prospect not on the board'
+                          : nextTouch(p) === f.touch
+                            ? null
+                            : `Touch ${f.touch} isn’t the next one (${nextTouch(p)})`,
+                        status: p ? (touchOf(p, f.touch)?.fe_status ?? null) : null,
+                        onSend: (to, fromName) =>
+                          onSend(
+                            f.prospect_id,
+                            sendRequest(p ?? {}, { touch: f.touch, to, fromName, subject: f.draft.subject, body: f.draft.body }),
+                          ),
+                      }
+                    : null
+                }
               />
             </article>
           );

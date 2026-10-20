@@ -766,6 +766,7 @@ def serve(
         webhook_config=webhook_config,
         cors_origins=cors_origins,
         digest_audio_warmup=True,
+        bd_send_poll=True,
     )
 
     console.print(

@@ -3,17 +3,23 @@ import { createPortal } from 'react-dom';
 import { RotateCw, X } from 'lucide-react';
 import {
   SUPPRESSION_STAGES,
+  nextTouch,
+  sendRequest,
+  touchOf,
   rankBreakdown,
   rankNumber,
   recheckReason,
   type PipelineProspect,
   type RecheckResult,
+  type SendConfig,
+  type SendResult,
+  type SendRequest,
   type StageAction,
   type SuppressionStage,
 } from '../../lib/bizdev-api';
 import { shortDateTime } from '../shared/format';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
-import { MailActions } from './MailActions';
+import { FeStatusChip, MailActions } from './MailActions';
 import { RankChip, STAGE_LABELS } from './PipelineBoard';
 
 const OUTCOMES: StageAction[] = ['replied', 'meeting', 'won', 'lost', 'not_interested', 'do_not_contact', 'bounced'];
@@ -96,6 +102,8 @@ export function ProspectDrawer({
   recheckDisabled,
   rechecksToday,
   recheckCap,
+  sendConfig = null,
+  onSend,
 }: {
   prospect: PipelineProspect;
   onClose: () => void;
@@ -104,6 +112,9 @@ export function ProspectDrawer({
   recheckDisabled: boolean;
   rechecksToday: number;
   recheckCap: number;
+  /** Send through Forward Email (hq 0018); null or disabled keeps the mail link path. */
+  sendConfig?: SendConfig | null;
+  onSend?: (req: SendRequest) => Promise<SendResult>;
 }) {
   // Draft edits stay in this component: never saved, never sent anywhere.
   const [subject, setSubject] = useState(prospect.draft?.subject ?? '');
@@ -246,12 +257,31 @@ export function ProspectDrawer({
                 style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
               />
               <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                Edits stay on this screen; they aren’t saved or sent anywhere.
+                {sendConfig?.enabled
+                  ? 'Send sends the text as edited here; edits aren’t saved back to Hermes.'
+                  : 'Edits stay on this screen; they aren’t saved or sent anywhere.'}
               </span>
               {(prospect.draft_problems?.length ?? 0) > 0 && (
                 <Quiet>Hermes flagged: {prospect.draft_problems!.join('; ')}</Quiet>
               )}
-              <MailActions contacts={contacts} subject={subject} body={body} onMarkSent={() => onMove('sent', note)} />
+              <MailActions
+                key={prospect.id}
+                contacts={contacts}
+                subject={subject}
+                body={body}
+                onMarkSent={() => onMove('sent', note)}
+                send={
+                  sendConfig?.enabled && onSend
+                    ? {
+                        config: sendConfig,
+                        // The drawer's draft is touch 1; follow-ups send from the strip.
+                        blocked: nextTouch(prospect) === 1 ? null : 'Touch 1 was sent',
+                        status: touchOf(prospect, 1)?.fe_status ?? null,
+                        onSend: (to, fromName) => onSend(sendRequest(prospect, { touch: 1, to, fromName, subject, body })),
+                      }
+                    : null
+                }
+              />
             </>
           ) : (
             <Quiet>No draft -- Hermes drafts for the week’s top prospects.</Quiet>
@@ -296,6 +326,20 @@ export function ProspectDrawer({
           </div>
           {prospect.recheck && <RecheckNote recheck={prospect.recheck} />}
         </Section>
+
+        {(prospect.touches?.length ?? 0) > 0 && (
+          <Section title="Touches">
+            <ol className="flex flex-col gap-1">
+              {prospect.touches!.map((t, i) => (
+                <li key={i} className="flex flex-wrap items-center gap-1.5" data-touch={t.n}>
+                  <span style={{ color: 'var(--color-text)' }}>Touch {t.n}</span> · {shortDateTime(t.sent_at)}
+                  {t.to_email && <span>· {t.to_email}</span>}
+                  <FeStatusChip status={t.fe_status} />
+                </li>
+              ))}
+            </ol>
+          </Section>
+        )}
 
         {(prospect.history?.length ?? 0) > 0 && (
           <Section title="History">

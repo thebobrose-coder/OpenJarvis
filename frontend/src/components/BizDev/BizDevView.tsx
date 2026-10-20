@@ -1,6 +1,13 @@
 import { firstBlock, type SpeechBlock, type SpeechFeed } from '../../lib/voice-api';
 import { X } from 'lucide-react';
-import { BOARD_STAGES, type PipelineProspect, type StageAction } from '../../lib/bizdev-api';
+import {
+  BOARD_STAGES,
+  type PipelineProspect,
+  type SendConfig,
+  type SendRequest,
+  type SendResult,
+  type StageAction,
+} from '../../lib/bizdev-api';
 import { applyMoves, type BizDevFeedStates, type PendingMove } from '../../hooks/useBizDevData';
 import { BizDevHeader } from './BizDevHeader';
 import { FollowUpsStrip } from './FollowUpsStrip';
@@ -24,6 +31,9 @@ export interface BizDevViewProps {
   researchStatus: 'idle' | 'queued' | 'error';
   notice?: string | null;
   onClearNotice?: () => void;
+  /** Send through Forward Email (hq 0018); null keeps the mail link path. */
+  sendConfig?: SendConfig | null;
+  onSend?: (id: number, req: SendRequest) => Promise<SendResult>;
 }
 
 /**
@@ -65,6 +75,7 @@ export function BizDevView(props: BizDevViewProps) {
         stats={stats}
         researchStatus={props.researchStatus}
         onResearch={props.onResearch}
+        sendEnabled={!!props.sendConfig?.enabled}
       />
 
       {props.notice && (
@@ -88,6 +99,8 @@ export function BizDevView(props: BizDevViewProps) {
             followUps={followUps}
             prospectsById={byId}
             onMarkSent={(id, touch) => props.onMove(id, 'sent', '', touch)}
+            sendConfig={props.sendConfig}
+            onSend={props.onSend}
           />
         </div>
       )}
@@ -119,6 +132,8 @@ export function BizDevView(props: BizDevViewProps) {
           recheckDisabled={props.recheckDisabled}
           rechecksToday={props.rechecksToday}
           recheckCap={props.recheckCap}
+          sendConfig={props.sendConfig}
+          onSend={props.onSend ? (req) => props.onSend!(open.id, req) : undefined}
         />
       )}
     </div>
