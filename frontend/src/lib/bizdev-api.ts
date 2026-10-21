@@ -35,8 +35,12 @@ export interface Contact {
 
 export interface Draft {
   to_role?: string;
+  /** The contact Hermes wrote it for; Send's To starts there. */
+  to_email?: string | null;
   subject: string;
   body: string;
+  /** v0.10.2: `hermes` or `template:<id>`; absent on older drafts (= hermes). */
+  draft_source?: string | null;
 }
 
 export interface Prospect {
@@ -123,8 +127,41 @@ export interface PipelineProspect extends Prospect {
   stage: BoardStage;
   stage_changed_at?: string;
   days_in_stage?: number;
-  history?: { stage: string; at: string; note?: string | null }[];
+  history?: HistoryEntry[];
   touches?: Touch[];
+  /** v0.10: what came back after the sends ({} until the first). */
+  engagement?: Engagement;
+}
+
+export interface HistoryEntry {
+  stage: string;
+  at: string;
+  note?: string | null;
+  /** v0.10: a send's entry carries the text actually sent. */
+  subject?: string | null;
+  body?: string | null;
+  draft_source?: string | null;
+}
+
+/** Contract v0.10 / v0.10.2 `engagement`, from Hermes's engagement pull. */
+export interface Engagement {
+  sent_at?: string | null;
+  fe_status?: FeStatus | null;
+  /** All opens, proxy prefetches included. */
+  opens?: number;
+  proxy_opens?: number;
+  first_open_at?: string | null;
+  last_open_at?: string | null;
+  replied_at?: string | null;
+  reply_kind?: 'reply' | 'auto_reply' | 'reply_other_sender' | null;
+  replies?: number;
+  replied_touch?: number | null;
+  time_to_reply_h?: number | null;
+  auto_reply_at?: string | null;
+  followup_hold_until?: string | null;
+  bounced_at?: string | null;
+  bounce_kind?: 'hard' | 'soft' | null;
+  unsubscribed_at?: string | null;
 }
 
 /** Contract v0.10: delivery status, relayed from Forward Email by OpenJarvis. */
@@ -143,13 +180,43 @@ export interface Touch {
   draft_source?: string | null;
   subject?: string | null;
   body?: string | null;
+  /** v0.10.2 per-touch counts. */
+  opens?: number;
+  soft_bounces?: number;
+  bounce?: string | null;
 }
 
 export interface FollowUp {
   prospect_id: number;
   touch: 2 | 3;
   due: string;
-  draft: { subject: string; body: string };
+  draft: { subject: string; body: string; to_email?: string | null };
+  /** v0.10.2: `template:<id>` when Hermes merged the line's default template. */
+  draft_source?: string | null;
+}
+
+/** Contract v0.10 `screen`: what a line never says, and its footer. */
+export interface Screen {
+  patterns: { regex: string; reason: string }[];
+  /** Holds `[Your name]` and `[postal address]` for the sender to fill. */
+  footer: string;
+}
+
+export type TemplateTouch = 1 | 2 | 3 | 'any';
+
+export interface Template {
+  id: number;
+  name: string;
+  touch: TemplateTouch;
+  subject: string;
+  body: string;
+  merge_fields_used?: string[];
+  default_for_touch?: 1 | 2 | 3 | null;
+  uses?: number;
+  replies?: number;
+  archived_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface PipelineLine {
@@ -158,6 +225,9 @@ export interface PipelineLine {
   stages: Record<BoardStage, PipelineProspect[]>;
   suppressed_count: number;
   follow_ups_due: FollowUp[];
+  screen?: Screen;
+  /** Current templates by name, then archived ones (newest archived first). */
+  templates?: Template[];
 }
 
 export interface BdPipeline extends FeedMeta {
@@ -166,6 +236,20 @@ export interface BdPipeline extends FeedMeta {
 
   run_at: string;
   lines: PipelineLine[];
+}
+
+/** Contract v0.10.2 `bd_stats.lines[].engagement`; rates are 0-1 or null. */
+export interface EngagementStats {
+  pulled_at?: string | null;
+  sends?: number;
+  delivery_rate?: number | null;
+  open_rate_nonproxy?: number | null;
+  reply_rate_by_touch?: Partial<Record<'1' | '2' | '3', number | null>>;
+  reply_rate_by_draft_source?: Record<string, number | null>;
+  median_time_to_reply_h?: number | null;
+  bounce_rate_week?: number | null;
+  /** Only past 30 sends. */
+  reply_rate_by_send_slot?: { dow: string; hour_bucket: string; sent: number; replied: number }[];
 }
 
 export interface StatsLine {
@@ -177,6 +261,7 @@ export interface StatsLine {
   conversion: { sent_to_replied?: number | null; replied_to_meeting?: number | null; meeting_to_won?: number | null };
   cost: { week_usd: number; month_usd: number; by_engine: Record<string, number> };
   signal_insights: { signal: string; prospects: number; replied: number; reply_rate: number }[];
+  engagement?: EngagementStats;
 }
 
 export interface BdStats extends FeedMeta {
@@ -250,6 +335,10 @@ export interface SendConfig {
   sender_name: string | null;
   sender_address: string | null;
   reply_to: string | null;
+  /** Fills `{{sender_title}}`; absent on older servers. */
+  sender_title?: string | null;
+  /** Part B: mails carry the open pixel. */
+  tracking?: boolean;
   /** Config keys a half-done setup still lacks (names only). */
   missing: string[];
 }
@@ -262,6 +351,8 @@ export interface SendRequest {
   from_name?: string;
   draft_source: string;
   in_reply_to_message_id?: string;
+  /** Characters changed against the Hermes draft or the merged template. */
+  draft_edited?: number;
 }
 
 export interface SendResult {
@@ -321,12 +412,58 @@ export function unresolvedFields(...texts: string[]): string[] {
 /** The send route's body for one touch of one prospect. */
 export function sendRequest(
   p: Pick<PipelineProspect, 'touches'>,
-  { touch, to, fromName, subject, body }: { touch: number; to: string; fromName?: string; subject: string; body: string },
+  {
+    touch,
+    to,
+    fromName,
+    subject,
+    body,
+    draftSource = 'hermes',
+    draftEdited,
+  }: {
+    touch: number;
+    to: string;
+    fromName?: string;
+    subject: string;
+    body: string;
+    draftSource?: string;
+    draftEdited?: number;
+  },
 ): SendRequest {
-  const req: SendRequest = { to_email: to, subject, body, touch, draft_source: 'hermes' };
+  const req: SendRequest = { to_email: to, subject, body, touch, draft_source: draftSource };
   const name = fromName?.trim();
   if (name) req.from_name = name;
   const first = touch > 1 ? firstMessageId(p) : null;
   if (first) req.in_reply_to_message_id = first;
+  if (draftEdited != null) req.draft_edited = draftEdited;
   return req;
+}
+
+// ---------------------------------------------------------------------------
+// Templates (contract v0.10 `templates[]`): saved through the bridge; Hermes
+// applies them within a pass of bd-requests (2 minutes).
+// ---------------------------------------------------------------------------
+
+export interface TemplateSave {
+  id?: number;
+  line: string;
+  name: string;
+  touch: TemplateTouch;
+  subject: string;
+  body: string;
+  default_for_touch?: 1 | 2 | 3;
+}
+
+export async function saveTemplate(t: TemplateSave): Promise<void> {
+  const res = await apiFetch('/api/bizdev/templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(t),
+  });
+  if (!res.ok) throw await failure(res, 'Saving the template');
+}
+
+export async function archiveTemplate(id: number): Promise<void> {
+  const res = await apiFetch(`/api/bizdev/templates/${id}/archive`, { method: 'POST' });
+  if (!res.ok) throw await failure(res, 'Archiving the template');
 }

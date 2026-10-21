@@ -3,9 +3,10 @@ import type { SpeechBlock, SpeechFeed } from '../../lib/voice-api';
 import { useMemo, useState, type DragEvent } from 'react';
 import { KanbanSquare } from 'lucide-react';
 import { BOARD_STAGES, rankBreakdown, rankNumber, type BoardStage, type PipelineProspect } from '../../lib/bizdev-api';
+import { ENGAGEMENT_CHIP_LABELS, engagementChips, type EngagementChipKind } from '../../lib/bizdev-compose';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num } from '../shared/format';
-import { Chip, Quiet, Segmented, Select } from '../shared/ui';
+import { Chip, Quiet, Segmented, Select, type Tone } from '../shared/ui';
 
 export const STAGE_LABELS: Record<string, string> = {
   new: 'New',
@@ -73,6 +74,34 @@ export function RankChip({ p }: { p: PipelineProspect }) {
   );
 }
 
+const ENGAGEMENT_TONE: Record<EngagementChipKind, Tone> = {
+  opened: 'accent',
+  replied: 'success',
+  referred: 'success',
+  auto_reply: 'muted',
+  bounced: 'error',
+  unsubscribed: 'warning',
+};
+
+/** Part B chips: Opened (a non-proxy open), Replied, Referred, Auto-reply,
+ * Bounced, Unsubscribed. */
+export function EngagementChips({ p }: { p: Pick<PipelineProspect, 'engagement'> }) {
+  const e = p.engagement;
+  return (
+    <>
+      {engagementChips(e).map((k) => (
+        <Chip
+          key={k}
+          tone={ENGAGEMENT_TONE[k]}
+          title={k === 'opened' ? `${e?.opens ?? 0} opens, ${e?.proxy_opens ?? 0} by a mail proxy` : undefined}
+        >
+          {ENGAGEMENT_CHIP_LABELS[k]}
+        </Chip>
+      ))}
+    </>
+  );
+}
+
 /** List view: one table across stages, highest rank first, unranked last.
  * A stable sort, so ties keep Hermes's per-stage order. */
 export function listOrder(items: PipelineProspect[]): PipelineProspect[] {
@@ -128,6 +157,7 @@ function ProspectCard({ p, onOpen, onDragging }: { p: PipelineProspect; onOpen: 
         )}
         {p.signals?.platform && <Chip tone="muted">{p.signals.platform}</Chip>}
         {!hasContacts(p) && <Chip tone="warning">no contacts</Chip>}
+        <EngagementChips p={p} />
         {p.recheck?.kept_previous && (
           <Chip tone="muted" title="A re-check came back worse; the earlier research was kept">
             re-checked

@@ -4,7 +4,6 @@ import { RotateCw, X } from 'lucide-react';
 import {
   SUPPRESSION_STAGES,
   nextTouch,
-  sendRequest,
   touchOf,
   rankBreakdown,
   rankNumber,
@@ -16,11 +15,14 @@ import {
   type SendRequest,
   type StageAction,
   type SuppressionStage,
+  type TemplateSave,
 } from '../../lib/bizdev-api';
+import { engagementTimeline, templatesFor, type TimelineEvent } from '../../lib/bizdev-compose';
 import { shortDateTime } from '../shared/format';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
-import { FeStatusChip, MailActions } from './MailActions';
-import { RankChip, STAGE_LABELS } from './PipelineBoard';
+import { DraftComposer, type ComposeLine } from './DraftComposer';
+import { FeStatusChip } from './MailActions';
+import { EngagementChips, RankChip, STAGE_LABELS } from './PipelineBoard';
 
 const OUTCOMES: StageAction[] = ['replied', 'meeting', 'won', 'lost', 'not_interested', 'do_not_contact', 'bounced'];
 const isSuppression = (s: string): s is SuppressionStage => (SUPPRESSION_STAGES as readonly string[]).includes(s);
@@ -56,6 +58,35 @@ export function RecheckNote({ recheck }: { recheck: RecheckResult }) {
         </>
       )}
     </div>
+  );
+}
+
+const TONE_COLOR: Record<NonNullable<TimelineEvent['tone']>, string> = {
+  success: 'var(--color-success)',
+  warning: 'var(--color-warning)',
+  error: 'var(--color-error)',
+  muted: 'var(--color-text-tertiary)',
+};
+
+/** Sends and what came back (Part B): delivery, opens (proxy prefetches
+ * marked), replies, auto-replies, bounces, unsubscribes, in time order. */
+export function EngagementTimeline({ prospect }: { prospect: Pick<PipelineProspect, 'touches' | 'engagement'> }) {
+  const events = engagementTimeline(prospect);
+  return (
+    <ol className="flex flex-col gap-1">
+      {events.map((ev, i) => (
+        <li key={i} className="flex flex-wrap items-center gap-1.5" data-event={ev.label} {...(ev.touch ? { 'data-touch': ev.touch.n } : {})}>
+          <span style={{ color: ev.tone ? TONE_COLOR[ev.tone] : 'var(--color-text)' }}>{ev.label}</span> · {shortDateTime(ev.at)}
+          {ev.detail && <span>· {ev.detail}</span>}
+          {ev.touch && <FeStatusChip status={ev.touch.fe_status} error={ev.touch.fe_error} />}
+          {ev.touch?.fe_error && (ev.touch.fe_status === 'deferred' || ev.touch.fe_status === 'rejected') && (
+            <span className="basis-full text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+              {ev.touch.fe_error}
+            </span>
+          )}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -104,6 +135,8 @@ export function ProspectDrawer({
   recheckCap,
   sendConfig = null,
   onSend,
+  line,
+  onSaveTemplate,
 }: {
   prospect: PipelineProspect;
   onClose: () => void;
@@ -115,19 +148,17 @@ export function ProspectDrawer({
   /** Send through Forward Email (hq 0018); null or disabled keeps the mail link path. */
   sendConfig?: SendConfig | null;
   onSend?: (req: SendRequest) => Promise<SendResult>;
+  /** The prospect's line: its screen and templates (Part C). */
+  line?: ComposeLine | null;
+  onSaveTemplate?: (t: TemplateSave) => Promise<void>;
 }) {
-  // Draft edits stay in this component: never saved, never sent anywhere.
-  const [subject, setSubject] = useState(prospect.draft?.subject ?? '');
-  const [body, setBody] = useState(prospect.draft?.body ?? '');
   const [note, setNote] = useState('');
   const [confirm, setConfirm] = useState<SuppressionStage | null>(null);
 
   useEffect(() => {
-    setSubject(prospect.draft?.subject ?? '');
-    setBody(prospect.draft?.body ?? '');
     setNote('');
     setConfirm(null);
-  }, [prospect.id, prospect.draft?.subject, prospect.draft?.body]);
+  }, [prospect.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -163,6 +194,7 @@ export function ProspectDrawer({
               {prospect.fit_score != null && <Chip>fit {prospect.fit_score} / 5</Chip>}
               {prospect.affiliation && <Chip tone="muted">{prospect.affiliation}</Chip>}
               {prospect.days_in_stage != null && <Chip tone="muted">{prospect.days_in_stage} d in stage</Chip>}
+              <EngagementChips p={prospect} />
             </div>
             <div className="flex flex-wrap gap-3 text-[11.5px]" style={{ color: 'var(--color-accent)' }}>
               {prospect.website && <ExtLink url={prospect.website}>Website</ExtLink>}
@@ -238,50 +270,27 @@ export function ProspectDrawer({
         </Section>
 
         <Section title="Draft">
-          {prospect.draft ? (
+          {prospect.draft || templatesFor(line?.templates, 1).length > 0 ? (
             <>
-              {prospect.draft.to_role && <span className="text-[11px]">For: {prospect.draft.to_role}</span>}
-              <input
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                aria-label="Subject"
-                className="rounded-md px-2 py-1.5"
-                style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
-              />
-              <textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                aria-label="Body"
-                rows={10}
-                className="rounded-md px-2 py-1.5 resize-y leading-relaxed"
-                style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
-              />
-              <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                {sendConfig?.enabled
-                  ? 'Send sends the text as edited here; edits aren’t saved back to Hermes.'
-                  : 'Edits stay on this screen; they aren’t saved or sent anywhere.'}
-              </span>
+              {prospect.draft?.to_role && <span className="text-[11px]">For: {prospect.draft.to_role}</span>}
+              {!prospect.draft && <Quiet>No Hermes draft; pick a template.</Quiet>}
               {(prospect.draft_problems?.length ?? 0) > 0 && (
                 <Quiet>Hermes flagged: {prospect.draft_problems!.join('; ')}</Quiet>
               )}
-              <MailActions
+              <DraftComposer
                 key={prospect.id}
-                contacts={contacts}
-                subject={subject}
-                body={body}
+                prospect={prospect}
+                line={line}
+                // The drawer's draft is touch 1; follow-ups send from the strip.
+                touch={1}
+                draft={prospect.draft ?? { subject: '', body: '' }}
+                sendConfig={sendConfig}
+                onSend={onSend}
                 onMarkSent={() => onMove('sent', note)}
-                send={
-                  sendConfig?.enabled && onSend
-                    ? {
-                        config: sendConfig,
-                        // The drawer's draft is touch 1; follow-ups send from the strip.
-                        blocked: nextTouch(prospect) === 1 ? null : 'Touch 1 was sent',
-                        status: touchOf(prospect, 1)?.fe_status ?? null,
-                        error: touchOf(prospect, 1)?.fe_error ?? null,
-                        onSend: (to, fromName) => onSend(sendRequest(prospect, { touch: 1, to, fromName, subject, body })),
-                      }
-                    : null
-                }
+                blocked={nextTouch(prospect) === 1 ? null : 'Touch 1 was sent'}
+                status={touchOf(prospect, 1)?.fe_status ?? null}
+                error={touchOf(prospect, 1)?.fe_error ?? null}
+                onSaveTemplate={onSaveTemplate}
               />
             </>
           ) : (
@@ -329,21 +338,8 @@ export function ProspectDrawer({
         </Section>
 
         {(prospect.touches?.length ?? 0) > 0 && (
-          <Section title="Touches">
-            <ol className="flex flex-col gap-1">
-              {prospect.touches!.map((t, i) => (
-                <li key={i} className="flex flex-wrap items-center gap-1.5" data-touch={t.n}>
-                  <span style={{ color: 'var(--color-text)' }}>Touch {t.n}</span> · {shortDateTime(t.sent_at)}
-                  {t.to_email && <span>· {t.to_email}</span>}
-                  <FeStatusChip status={t.fe_status} error={t.fe_error} />
-                  {t.fe_error && (t.fe_status === 'deferred' || t.fe_status === 'rejected') && (
-                    <span className="basis-full text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                      {t.fe_error}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ol>
+          <Section title="Engagement">
+            <EngagementTimeline prospect={prospect} />
           </Section>
         )}
 
@@ -356,6 +352,12 @@ export function ProspectDrawer({
                     <span style={{ color: 'var(--color-text)' }}>{STAGE_LABELS[h.stage] ?? h.stage}</span> · {shortDateTime(h.at)}
                   </span>
                   {h.note && <span className="italic">“{h.note}”</span>}
+                  {h.subject && (
+                    <span className="text-[11.5px]" title={h.body ?? undefined}>
+                      Sent: {h.subject}
+                      {h.draft_source && h.draft_source !== 'hermes' ? ` (${h.draft_source})` : ''}
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>

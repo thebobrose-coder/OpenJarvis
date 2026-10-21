@@ -4,8 +4,10 @@ import {
   BOARD_STAGES,
   SUPPRESSION_STAGES,
   fetchBizDevFeed,
+  archiveTemplate,
   fetchSendConfig,
   moveProspect,
+  saveTemplate,
   sendProspect,
   recheckProspect,
   researchMore,
@@ -19,6 +21,7 @@ import {
   type SendRequest,
   type SendResult,
   type StageAction,
+  type TemplateSave,
 } from '../lib/bizdev-api';
 
 const PIPELINE_POLL_MS = 2 * 60 * 1000;
@@ -217,6 +220,26 @@ export function useBizDevData() {
     [later, loadFeed],
   );
 
+  // Templates (Part C) go through the bridge; Hermes applies them within a
+  // pass of bd-requests, so the pipeline is read again after one.
+  const saveTpl = useCallback(
+    async (t: TemplateSave) => {
+      await saveTemplate(t);
+      setNotice('Template saved; it shows up within about 2 minutes.');
+      later(RECHECK_MS, () => void loadFeed('bd_pipeline'));
+    },
+    [later, loadFeed],
+  );
+
+  const archiveTpl = useCallback(
+    async (id: number) => {
+      await archiveTemplate(id);
+      setNotice('Template archived; the list updates within about 2 minutes.');
+      later(RECHECK_MS, () => void loadFeed('bd_pipeline'));
+    },
+    [later, loadFeed],
+  );
+
   const recheck = useCallback(
     async (id: number) => {
       try {
@@ -254,6 +277,8 @@ export function useBizDevData() {
     move,
     send,
     sendConfig,
+    saveTemplate: saveTpl,
+    archiveTemplate: archiveTpl,
     recheck,
     recheckDisabled: recheckBlocked || rechecksToday >= RECHECK_DAILY_CAP,
     rechecksToday,

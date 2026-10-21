@@ -1,16 +1,17 @@
 import { CalendarClock } from 'lucide-react';
 import {
   nextTouch,
-  sendRequest,
   touchOf,
   type FollowUp,
   type PipelineProspect,
   type SendConfig,
   type SendRequest,
   type SendResult,
+  type TemplateSave,
 } from '../../lib/bizdev-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { Chip } from '../shared/ui';
+import { DraftComposer, type ComposeLine } from './DraftComposer';
 import { MailActions } from './MailActions';
 
 function dueLabel(due: string): { text: string; overdue: boolean } {
@@ -31,6 +32,8 @@ export function FollowUpsStrip({
   onMarkSent,
   sendConfig = null,
   onSend,
+  line,
+  onSaveTemplate,
 }: {
   followUps: FollowUp[];
   prospectsById: Map<number, PipelineProspect>;
@@ -38,6 +41,9 @@ export function FollowUpsStrip({
   /** Send through Forward Email (hq 0018); a follow-up threads on touch 1. */
   sendConfig?: SendConfig | null;
   onSend?: (prospectId: number, req: SendRequest) => Promise<SendResult>;
+  /** The line's screen and templates (Part C). */
+  line?: ComposeLine | null;
+  onSaveTemplate?: (t: TemplateSave) => Promise<void>;
 }) {
   if (followUps.length === 0) return null;
   return (
@@ -59,35 +65,45 @@ export function FollowUpsStrip({
                 <Chip tone="accent">touch {f.touch}</Chip>
                 <Chip tone={due.overdue ? 'warning' : 'muted'}>{due.text}</Chip>
               </div>
-              <div className="text-[12px]" style={{ color: 'var(--color-text)' }}>
-                {f.draft.subject}
-              </div>
-              <MailActions
-                contacts={p?.contacts ?? []}
-                subject={f.draft.subject}
-                body={f.draft.body}
-                sentLabel={`Mark touch ${f.touch} as sent?`}
-                onMarkSent={() => onMarkSent(f.prospect_id, f.touch)}
-                send={
-                  sendConfig?.enabled && onSend
-                    ? {
-                        config: sendConfig,
-                        blocked: !p
-                          ? 'Prospect not on the board'
-                          : nextTouch(p) === f.touch
-                            ? null
-                            : `Touch ${f.touch} isn’t the next one (${nextTouch(p)})`,
-                        status: p ? (touchOf(p, f.touch)?.fe_status ?? null) : null,
-                        error: p ? (touchOf(p, f.touch)?.fe_error ?? null) : null,
-                        onSend: (to, fromName) =>
-                          onSend(
-                            f.prospect_id,
-                            sendRequest(p ?? {}, { touch: f.touch, to, fromName, subject: f.draft.subject, body: f.draft.body }),
-                          ),
-                      }
-                    : null
-                }
-              />
+              {p ? (
+                <DraftComposer
+                  prospect={p}
+                  line={line}
+                  touch={f.touch}
+                  draft={{ ...f.draft, draft_source: f.draft_source }}
+                  sendConfig={sendConfig}
+                  onSend={onSend ? (req) => onSend(f.prospect_id, req) : undefined}
+                  sentLabel={`Mark touch ${f.touch} as sent?`}
+                  onMarkSent={() => onMarkSent(f.prospect_id, f.touch)}
+                  blocked={nextTouch(p) === f.touch ? null : `Touch ${f.touch} isn’t the next one (${nextTouch(p)})`}
+                  status={touchOf(p, f.touch)?.fe_status ?? null}
+                  error={touchOf(p, f.touch)?.fe_error ?? null}
+                  onSaveTemplate={onSaveTemplate}
+                  compact
+                />
+              ) : (
+                <>
+                  <div className="text-[12px]" style={{ color: 'var(--color-text)' }}>
+                    {f.draft.subject}
+                  </div>
+                  <MailActions
+                    contacts={[]}
+                    subject={f.draft.subject}
+                    body={f.draft.body}
+                    sentLabel={`Mark touch ${f.touch} as sent?`}
+                    onMarkSent={() => onMarkSent(f.prospect_id, f.touch)}
+                    send={
+                      sendConfig?.enabled && onSend
+                        ? {
+                            config: sendConfig,
+                            blocked: 'Prospect not on the board',
+                            onSend: () => Promise.reject(new Error('Prospect not on the board')),
+                          }
+                        : null
+                    }
+                  />
+                </>
+              )}
             </article>
           );
         })}

@@ -284,6 +284,44 @@ as before: the mail link, the copy buttons and "Mark as sent".
   sender to show. A deferred or rejected touch shows Forward Email's reason
   (`fe_error`) on its status chip.
 
+**Business Development: engagement and templates** (hq decision 0018,
+contract v0.10.2, Parts B and C).
+- **Open pixel (Part B):** with `BD_TRACK_BASE_URL` set (an https origin;
+  anything else turns Send off and is named in `missing`), each mail's `html`
+  ends with the engagement stack's 1×1 pixel, and the `sent` flag carries its
+  32-hex token. The `text` part never has it, and links stay as written.
+- **Engagement on the card:** the drawer's Engagement timeline shows each
+  touch's delivery status, then opens (proxy prefetches marked), auto-replies,
+  replies (a reply from another address is "referred"), bounces and
+  unsubscribes, in time order. Board cards and the drawer get Opened (only
+  for a non-proxy open), Replied, Referred, Auto-reply, Bounced and
+  Unsubscribed chips. Insights adds `bd_stats.engagement`: sends, delivery,
+  non-proxy opens, median time to reply, reply rate by touch and by draft
+  source (by template name), the week's bounce rate, and the send-slot table
+  once Hermes publishes it.
+- **Templates (Part C):**
+  - The drawer and the follow-ups strip share one composer. Its **Template**
+    choice lists "Hermes draft" first, then the line's current templates for
+    that touch and for any touch. A template fills in with its merge fields
+    resolved from the card, as Hermes resolves them; a field the card can't
+    fill stays as `{{field}}` and blocks Send with its name.
+  - The line's footer is out of the editable text and shown read-only, as
+    it will be sent.
+  - To starts at the contact Hermes wrote the draft for.
+  - **Save as template…** saves the current text without its footer.
+  - A **Templates** tab lists the line's templates with uses and replies;
+    each can be edited or archived, and new ones made there.
+  - `POST /api/bizdev/templates` and `/templates/<id>/archive` (local only)
+    check Hermes's save rules before the bridge: touch, default-for-touch,
+    caps, known merge fields only.
+- **Send's server-side checks (Part C):**
+  - The line's published `screen.patterns` run on the final subject and body
+    minus the footer, and a match refuses with its reason. A pattern that
+    doesn't compile refuses the send.
+  - A `template:<id>` source must be a current template.
+  - The page's `draft_edited` count travels in the flag's `meta`.
+- **New setting:** `BD_SENDER_TITLE` fills `{{sender_title}}`.
+
 **Breaking list: cloud notices move to Stack health** (hq decision 0017
 A3.1). Quiet `aws` / `google` rows (below severity 9) no longer show in the
 sidebar's breaking list; they are dropped before the three-row cap, and the

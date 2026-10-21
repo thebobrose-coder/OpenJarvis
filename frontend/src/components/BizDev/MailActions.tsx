@@ -50,6 +50,8 @@ export function MailActions({
   onMarkSent,
   sentLabel = 'Mark as sent?',
   send,
+  to: toProp,
+  onToChange,
 }: {
   contacts: Contact[];
   subject: string;
@@ -57,9 +59,17 @@ export function MailActions({
   onMarkSent: () => void;
   sentLabel?: string;
   send?: SendMode | null;
+  /** The recipient, when the caller merges fields for it (DraftComposer). */
+  to?: string;
+  onToChange?: (to: string) => void;
 }) {
   const withEmail = contacts.filter((c) => c.email);
-  const [to, setTo] = useState(withEmail[0]?.email ?? '');
+  const [toLocal, setToLocal] = useState(withEmail[0]?.email ?? '');
+  const to = toProp ?? toLocal;
+  const setTo = (v: string) => {
+    setToLocal(v);
+    onToChange?.(v);
+  };
   const [askSent, setAskSent] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [more, setMore] = useState(false);

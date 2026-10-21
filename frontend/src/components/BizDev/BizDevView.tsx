@@ -7,6 +7,7 @@ import {
   type SendRequest,
   type SendResult,
   type StageAction,
+  type TemplateSave,
 } from '../../lib/bizdev-api';
 import { applyMoves, type BizDevFeedStates, type PendingMove } from '../../hooks/useBizDevData';
 import { BizDevHeader } from './BizDevHeader';
@@ -14,6 +15,10 @@ import { FollowUpsStrip } from './FollowUpsStrip';
 import { InsightsPanel, ResearchLog } from './InsightsPanel';
 import { PipelineBoard } from './PipelineBoard';
 import { ProspectDrawer } from './ProspectDrawer';
+import { TemplatesPanel } from './Templates';
+import { Segmented } from '../shared/ui';
+
+export type BizDevTab = 'pipeline' | 'templates';
 
 export interface BizDevViewProps {
   feeds: BizDevFeedStates;
@@ -34,6 +39,11 @@ export interface BizDevViewProps {
   /** Send through Forward Email (hq 0018); null keeps the mail link path. */
   sendConfig?: SendConfig | null;
   onSend?: (id: number, req: SendRequest) => Promise<SendResult>;
+  /** Templates (Part C): the Templates tab and "Save as template…". */
+  tab?: BizDevTab;
+  onTab?: (tab: BizDevTab) => void;
+  onSaveTemplate?: (t: TemplateSave) => Promise<void>;
+  onArchiveTemplate?: (id: number) => Promise<void>;
 }
 
 /**
@@ -63,6 +73,10 @@ export function BizDevView(props: BizDevViewProps) {
   const byId = new Map<number, PipelineProspect>();
   for (const s of BOARD_STAGES) for (const p of stages[s]) byId.set(p.id, p);
   const open = props.openProspectId != null ? byId.get(props.openProspectId) : undefined;
+  const compose = line ? { line: line.line, screen: line.screen, templates: line.templates } : null;
+  const templates = line?.templates ?? [];
+  const tab = props.tab ?? 'pipeline';
+  const liveTemplates = templates.filter((t) => !t.archived_at).length;
 
   return (
     <div className="max-w-[1800px] mx-auto">
@@ -93,35 +107,64 @@ export function BizDevView(props: BizDevViewProps) {
         </div>
       )}
 
-      {followUps.length > 0 && (
-        <div className="grid grid-cols-12 gap-4 mb-4">
-          <FollowUpsStrip
-            followUps={followUps}
-            prospectsById={byId}
-            onMarkSent={(id, touch) => props.onMove(id, 'sent', '', touch)}
-            sendConfig={props.sendConfig}
-            onSend={props.onSend}
+      {props.onTab && (
+        <div className="mb-4">
+          <Segmented<BizDevTab>
+            ariaLabel="Business Development view"
+            value={tab}
+            onChange={props.onTab}
+            options={[
+              { value: 'pipeline', label: 'Pipeline' },
+              { value: 'templates', label: `Templates${liveTemplates ? ` (${liveTemplates})` : ''}` },
+            ]}
           />
         </div>
       )}
 
-      <div className="grid grid-cols-12 gap-4 mb-4">
-        <PipelineBoard
-          stages={stages}
-          suppressed={suppressed}
-          empty={!line}
-          onOpen={(p) => props.onOpenProspect(p.id)}
-          onMove={(id, stage) => stage !== 'new' && props.onMove(id, stage)}
-          loading={feeds.bd_pipeline.loading}
-          error={feeds.bd_pipeline.error}
-          speech={bdSpeech(pipeline, feeds.bd_prospects.data)}
-        />
-      </div>
+      {tab === 'templates' ? (
+        <div className="grid grid-cols-12 gap-4 mb-10">
+          <TemplatesPanel
+            line={line?.line ?? null}
+            templates={templates}
+            onSave={props.onSaveTemplate ?? (() => Promise.reject(new Error('Templates are read-only here')))}
+            onArchive={props.onArchiveTemplate ?? (() => Promise.reject(new Error('Templates are read-only here')))}
+          />
+        </div>
+      ) : (
+        <>
+          {followUps.length > 0 && (
+            <div className="grid grid-cols-12 gap-4 mb-4">
+              <FollowUpsStrip
+                followUps={followUps}
+                prospectsById={byId}
+                onMarkSent={(id, touch) => props.onMove(id, 'sent', '', touch)}
+                sendConfig={props.sendConfig}
+                onSend={props.onSend}
+                line={compose}
+                onSaveTemplate={props.onSaveTemplate}
+              />
+            </div>
+          )}
 
-      <div className="grid grid-cols-12 gap-4 mb-10">
-        <InsightsPanel stats={stats} loading={feeds.bd_stats.loading} error={feeds.bd_stats.error} />
-        <ResearchLog prospects={feeds.bd_prospects.data} loading={feeds.bd_prospects.loading} error={feeds.bd_prospects.error} />
-      </div>
+          <div className="grid grid-cols-12 gap-4 mb-4">
+            <PipelineBoard
+              stages={stages}
+              suppressed={suppressed}
+              empty={!line}
+              onOpen={(p) => props.onOpenProspect(p.id)}
+              onMove={(id, stage) => stage !== 'new' && props.onMove(id, stage)}
+              loading={feeds.bd_pipeline.loading}
+              error={feeds.bd_pipeline.error}
+              speech={bdSpeech(pipeline, feeds.bd_prospects.data)}
+            />
+          </div>
+
+          <div className="grid grid-cols-12 gap-4 mb-10">
+            <InsightsPanel stats={stats} loading={feeds.bd_stats.loading} error={feeds.bd_stats.error} templates={templates} />
+            <ResearchLog prospects={feeds.bd_prospects.data} loading={feeds.bd_prospects.loading} error={feeds.bd_prospects.error} />
+          </div>
+        </>
+      )}
 
       {open && (
         <ProspectDrawer
@@ -134,6 +177,8 @@ export function BizDevView(props: BizDevViewProps) {
           recheckCap={props.recheckCap}
           sendConfig={props.sendConfig}
           onSend={props.onSend ? (req) => props.onSend!(open.id, req) : undefined}
+          line={compose}
+          onSaveTemplate={props.onSaveTemplate}
         />
       )}
     </div>

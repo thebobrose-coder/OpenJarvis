@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BizDevView } from '../components/BizDev/BizDevView';
+import { BizDevView, type BizDevTab } from '../components/BizDev/BizDevView';
 import { RECHECK_DAILY_CAP, useBizDevData } from '../hooks/useBizDevData';
 
 /** Hermes's bd-researcher pipeline on one page: see components/BizDev. */
@@ -7,6 +7,7 @@ export function BizDevPage() {
   const data = useBizDevData();
   const [line, setLine] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
+  const [tab, setTab] = useState<BizDevTab>('pipeline');
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-10">
@@ -28,6 +29,10 @@ export function BizDevPage() {
         onClearNotice={data.clearNotice}
         sendConfig={data.sendConfig}
         onSend={data.send}
+        tab={tab}
+        onTab={setTab}
+        onSaveTemplate={data.saveTemplate}
+        onArchiveTemplate={data.archiveTemplate}
       />
     </div>
   );
