@@ -604,6 +604,12 @@ themselves stay; upstream code still uses them.
 
 ### Fixed
 
+**Business Development delivery status reaches the card.** A send logged
+Forward Email's first answer (`queued`) while Hermes recorded the touch as
+`pending`, so that answer was never relayed; the log now starts at `pending`.
+A mail the recipient's server refused comes back as `bounced`, which the poll
+kept raw and never relayed; it now relays as `rejected`.
+
 **Unknown `/api/...` paths return 404.** The SPA catch-all answered any
 unmatched GET, API paths included, with `index.html` and a 200; retired or
 mistyped API routes now 404, while app routes still fall back to the SPA.

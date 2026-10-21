@@ -192,7 +192,8 @@ def test_send_posts_the_mail_and_the_exact_v010_flag(env):
     assert flag["from"] == mail["from"] and flag["reply_to"] == SENDER
     # The log keeps ids and status, not the prospect's text, once recorded.
     (entry,) = bs.load_log()
-    assert entry["flag"] is None and entry["fe_status"] == "queued"
+    assert entry["flag"] is None and entry["fe_status"] == "pending"
+    assert entry["fe_raw"] == "queued"
 
 
 FILLED = (
@@ -478,6 +479,36 @@ def test_poll_relays_why_a_mail_was_deferred(env):
             "fe_error": "Newsletter usage is not yet approved",
         }
     ]
+
+
+def test_poll_relays_the_first_answer_after_a_send(env):
+    with _bridge(_card()):
+        _client().post("/api/bizdev/prospects/42/send", json=_body())
+    seen: list = []
+    with _bridge(_card(), seen=seen):
+        asyncio.run(bs.poll_once(client=env["fe"]))
+    assert _flags(seen, "status") == [
+        {"touch": 1, "fe_id": "fe0001", "fe_status": "queued"}
+    ]
+
+
+def test_poll_relays_a_bounced_mail_as_rejected(env):
+    _log(env)
+    env["fe"].st = "bounced"
+    env["fe"].rejected = [{"message": "550-5.1.1 The email account does not exist"}]
+    seen: list = []
+    with _bridge(_card(), seen=seen):
+        asyncio.run(bs.poll_once(client=env["fe"]))
+    assert _flags(seen, "status") == [
+        {
+            "touch": 1,
+            "fe_id": "fe0001",
+            "fe_status": "rejected",
+            "fe_error": "550-5.1.1 The email account does not exist",
+        }
+    ]
+    entry = bs.load_log()[0]
+    assert entry["fe_raw"] == "bounced" and entry["fe_status"] == "rejected"
 
 
 @pytest.mark.parametrize("raw", ["mystery", "delivered"])

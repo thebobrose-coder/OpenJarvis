@@ -77,6 +77,9 @@ TRANSIENT = frozenset({"pending", "queued", "deferred"})
 # outside the contract's set is kept raw in the send log (`fe_raw`) and never
 # relayed.
 DELIVERED = frozenset({"sent"})
+# A mail the recipient's server refused (a 550 at delivery) comes back as
+# `bounced`; for the touch that is a rejection (hq 0018 A1).
+REFUSED = frozenset({"bounced"})
 _ON = frozenset({"1", "true", "yes", "on"})
 RETENTION = timedelta(days=7)  # Forward Email keeps a mail 7 days
 POLL_S = 300
@@ -214,6 +217,8 @@ def normalise(raw: Any) -> str | None:
         return v
     if v in DELIVERED:
         return "sent"
+    if v in REFUSED:
+        return "rejected"
     return None
 
 
@@ -609,7 +614,9 @@ async def send(prospect_id: int, raw: dict) -> dict:
             "touch": touch,
             "fe_id": result["id"],
             "message_id": payload["messageId"],
-            "fe_status": fe_status,
+            # Hermes records every new touch as `pending`, so the poll starts
+            # from there and relays Forward Email's first answer too.
+            "fe_status": "pending",
             "fe_raw": result["status"],
             "sent_at": _iso(_now()),
             "flag": flag,
