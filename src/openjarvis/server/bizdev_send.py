@@ -8,8 +8,9 @@ Hermes holds no Forward Email token).
 
 Invariants (0018): Send only on a click and only from this machine; a second
 send of a touch is refused unless the earlier one was `rejected`; a failed
-call never records a send or moves a stage; every mail carries the footer
-with the machine-local postal address and the reply-"unsubscribe" line. The
+call never records a send or moves a stage; every mail carries the line's
+footer exactly once, its name and postal-address placeholders filled from
+local config (the fallback footer when a line publishes none). The
 sender identity and the key file are local config (`[bizdev]` in
 credentials.toml); with the key file unset the page behaves as before.
 List-Unsubscribe is off unless `BD_LIST_UNSUBSCRIBE` is set: Forward Email
@@ -182,12 +183,17 @@ def normalise(raw: Any) -> str | None:
 
 
 def find_card(pipeline: dict, prospect_id: int) -> dict | None:
+    return find(pipeline, prospect_id)[0]
+
+
+def find(pipeline: dict, prospect_id: int) -> tuple[dict | None, dict | None]:
+    """(card, its line) from `bd_pipeline`."""
     for line in pipeline.get("lines") or []:
         for cards in (line.get("stages") or {}).values():
             for card in cards or []:
                 if isinstance(card, dict) and card.get("id") == prospect_id:
-                    return card
-    return None
+                    return card, line
+    return None, None
 
 
 def next_touch(card: dict) -> int:
@@ -228,11 +234,47 @@ def _first_message_id(card: dict, sends: list[dict], pid: int) -> str | None:
 
 
 def footer(cfg: dict[str, str]) -> str:
+    """The fallback footer, for a line that publishes no `screen.footer`."""
     who = " · ".join(v for v in (cfg["BD_SENDER_ORG"], cfg["BD_POSTAL_ADDRESS"]) if v)
     return (
         f"\n\n--\n{cfg['BD_SENDER_NAME']}\n{who}\n"
         'To stop these emails, reply "unsubscribe".'
     )
+
+
+# The placeholders in a line's published footer (contract v0.10 `screen.footer`),
+# which Hermes's drafts carry unfilled: the sender fills them from local config.
+NAME_SLOT = "[Your name]"
+POSTAL_SLOT = "[postal address]"
+
+
+def published_footer(line: dict | None) -> str | None:
+    screen_ = (line or {}).get("screen")
+    tmpl = screen_.get("footer") if isinstance(screen_, dict) else None
+    return tmpl if isinstance(tmpl, str) and tmpl.strip() else None
+
+
+def fill(text: str, cfg: dict[str, str], name: str) -> str:
+    return text.replace(NAME_SLOT, name).replace(POSTAL_SLOT, cfg["BD_POSTAL_ADDRESS"])
+
+
+def compose(cfg: dict[str, str], line: dict | None, body: str, name: str) -> str:
+    """The sent text: the body with the line's footer exactly once, filled.
+
+    A Hermes draft (and a template follow-up Hermes merged) already ends with
+    the published footer, placeholders and all; a template saved on the page
+    has none. Either way the footer comes off the end, any placeholder left in
+    the body is filled, and the filled footer is appended once.
+    """
+    tmpl = published_footer(line)
+    text = body.rstrip()
+    if not tmpl:
+        return fill(text, cfg, name) + footer(cfg)
+    for tail in (tmpl.strip(), fill(tmpl, cfg, name).strip()):
+        if text.endswith(tail):
+            text = text[: -len(tail)].rstrip()
+            break
+    return fill(text, cfg, name) + "\n\n" + fill(tmpl, cfg, name).lstrip("\n")
 
 
 def to_html(text: str) -> str:
@@ -257,13 +299,15 @@ def render(
     from_name: str | None,
     reply_to: str | None,
     in_reply_to: str | None,
+    line: dict | None = None,
 ) -> dict:
     sender = cfg["BD_SENDER_ADDRESS"]
     domain = sender.rsplit("@", 1)[1]
-    text = body.rstrip() + footer(cfg)
+    name = from_name or cfg["BD_SENDER_NAME"]
+    text = compose(cfg, line, body, name)
     message_id = f"<bd-{prospect_id}-{touch}-{secrets.token_hex(4)}@{domain}>"
     payload = {
-        "from": f"{from_name or cfg['BD_SENDER_NAME']} <{sender}>",
+        "from": f"{name} <{sender}>",
         "to": to_email,
         "replyTo": reply_to or cfg["BD_REPLY_TO"] or sender,
         "subject": subject,
@@ -387,7 +431,7 @@ async def send(prospect_id: int, raw: dict) -> dict:
     screen(req)
 
     async with _lock:  # one send at a time: a double click can't send twice
-        card = find_card(await _pipeline(), prospect_id)
+        card, line = find(await _pipeline(), prospect_id)
         if card is None:
             raise HTTPException(status_code=404, detail="Prospect not in the pipeline")
         emails = {
@@ -433,6 +477,7 @@ async def send(prospect_id: int, raw: dict) -> dict:
                 from_name=req["from_name"],
                 reply_to=req["reply_to"],
                 in_reply_to=in_reply_to,
+                line=line,
             )
             result = await client.send(payload)
         except ForwardEmailError as exc:

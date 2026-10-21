@@ -256,8 +256,12 @@ as before: the mail link, the copy buttons and "Mark as sent".
   route:
   - screens for an empty body or an unresolved `{{field}}`;
   - checks Forward Email's daily limit (429 at the cap);
-  - renders the mail with the footer (its reply-"unsubscribe" line is the
-    opt-out), `Reply-To`, its own `Message-ID`, and `In-Reply-To` /
+  - renders the mail with the line's published footer exactly once, its
+    `[Your name]` and `[postal address]` placeholders filled from config
+    (Hermes drafts already end with the unfilled footer; it is taken off and
+    re-added filled; a line with no published footer gets a fallback footer
+    whose reply-"unsubscribe" line is the opt-out), `Reply-To`, its own
+    `Message-ID`, and `In-Reply-To` /
     `References` on follow-ups. `List-Unsubscribe` is added only with
     `BD_LIST_UNSUBSCRIBE` on: Forward Email defers mail carrying it as a
     newsletter (421) until the account is approved for newsletters;

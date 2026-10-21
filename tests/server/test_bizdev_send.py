@@ -38,7 +38,15 @@ def _card(**over) -> dict:
     }
 
 
-def _pipeline(card: dict) -> dict:
+# A line's published footer (contract v0.10 `screen.footer`), placeholders
+# unfilled, as Hermes's drafts carry it.
+FOOTER = (
+    "\n\n--\n[Your name]\nSample Org LLC · [postal address]\n"
+    "If this isn't useful, reply \"no thanks\" and I won't follow up."
+)
+
+
+def _pipeline(card: dict, line: dict | None = None) -> dict:
     return {
         "feed": "bd_pipeline",
         "generated_at": "2026-10-20T12:00:00Z",
@@ -48,6 +56,7 @@ def _pipeline(card: dict) -> dict:
                     "line": "sample",
                     "stages": {"drafted": [card], "sent": []},
                     "follow_ups_due": [],
+                    **(line or {}),
                 }
             ]
         },
@@ -93,12 +102,12 @@ def env(tmp_path, monkeypatch):
     return {"cfg": cfg, "fe": fe, "key": key}
 
 
-def _bridge(card: dict, *, flag_status=202, seen=None):
+def _bridge(card: dict, *, flag_status=202, seen=None, line=None):
     def handler(req: httpx.Request):
         if seen is not None:
             seen.append(req)
         if req.method == "GET" and req.url.path == "/panels/bd_pipeline":
-            return httpx.Response(200, json=_pipeline(card))
+            return httpx.Response(200, json=_pipeline(card, line))
         if req.method == "POST" and req.url.path.startswith("/bd/prospects/"):
             return httpx.Response(flag_status, json={"queued": True})
         return httpx.Response(404)
@@ -184,6 +193,46 @@ def test_send_posts_the_mail_and_the_exact_v010_flag(env):
     # The log keeps ids and status, not the prospect's text, once recorded.
     (entry,) = bs.load_log()
     assert entry["flag"] is None and entry["fe_status"] == "queued"
+
+
+FILLED = (
+    "--\nS. Sender\nSample Org LLC · 1 Example St, Sample City\n"
+    "If this isn't useful, reply \"no thanks\" and I won't follow up."
+)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Hello,\n\nA sample paragraph." + FOOTER,  # a Hermes draft
+        "Hello,\n\nA sample paragraph.",  # a template saved on the page
+        "Hello,\n\nA sample paragraph.\n\n" + FOOTER.strip()[:-1] + ".\n",
+    ],
+)
+def test_the_published_footer_is_sent_once_and_filled(env, body):
+    line = {"screen": {"patterns": [], "footer": FOOTER}}
+    with _bridge(_card(), line=line):
+        resp = _client().post(
+            "/api/bizdev/prospects/42/send",
+            json=_body(body=body, from_name="S. Sender"),
+        )
+    assert resp.status_code == 200, resp.text
+    text = env["fe"].sent[0]["text"]
+    assert text.endswith(FILLED) and text.count("\n--\n") == 1
+    assert "[Your name]" not in text and "[postal address]" not in text
+    assert text.startswith("Hello,\n\nA sample paragraph.\n\n--\n")
+
+
+def test_a_placeholder_left_in_the_body_is_filled(env):
+    line = {"screen": {"patterns": [], "footer": FOOTER}}
+    with _bridge(_card(), line=line):
+        _client().post(
+            "/api/bizdev/prospects/42/send",
+            json=_body(body="Hello,\n\nBest,\n[Your name]"),
+        )
+    text = env["fe"].sent[0]["text"]
+    assert text.startswith("Hello,\n\nBest,\nSample Sender\n\n--\nSample Sender\n")
+    assert "[Your name]" not in text
 
 
 @pytest.mark.parametrize("value", ["1", "true", "on"])
