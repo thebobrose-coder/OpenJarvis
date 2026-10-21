@@ -1,7 +1,7 @@
-"""Tests for Business Development Send (hq 0018, contract v0.10 BD, Part A):
-the send route, the Forward Email client's handling and the delivery-status
-poll. Forward Email and the bridge are stubbed. Invented fixtures only
-(example.edu / example.org): this repo is public."""
+"""Tests for Business Development Send (hq 0018, contract v0.10 BD, Parts
+A-C): the send route, the template routes, the Forward Email client and the
+delivery-status poll. Forward Email and the bridge are stubbed. Invented
+fixtures only (example.edu / example.org): this repo is public."""
 
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ def _bridge(card: dict, *, flag_status=202, seen=None, line=None):
             seen.append(req)
         if req.method == "GET" and req.url.path == "/panels/bd_pipeline":
             return httpx.Response(200, json=_pipeline(card, line))
-        if req.method == "POST" and req.url.path.startswith("/bd/prospects/"):
+        if req.method == "POST" and req.url.path.startswith("/bd/"):
             return httpx.Response(flag_status, json={"queued": True})
         return httpx.Response(404)
 
@@ -373,6 +373,8 @@ def test_unconfigured_send_is_503_and_config_says_disabled(env, monkeypatch):
         "sender_name": None,
         "sender_address": None,
         "reply_to": None,
+        "sender_title": None,
+        "tracking": False,
         "missing": [],
     }
 
@@ -549,3 +551,198 @@ def test_client_retries_once_on_5xx_never_on_4xx_and_hides_the_token():
     assert isinstance(err, ForwardEmailError) and len(calls) == 2
     assert "tok-secret" not in err.message
     assert calls[0].headers["authorization"].startswith("Basic ")
+
+
+# -- Part B: the open pixel ----------------------------------------------------
+
+
+def test_the_pixel_is_in_html_only_and_its_token_in_the_flag(env):
+    env["cfg"]["BD_TRACK_BASE_URL"] = "https://t.example.org"
+    seen: list = []
+    with _bridge(_card(), seen=seen):
+        resp = _client().post("/api/bizdev/prospects/42/send", json=_body())
+    assert resp.status_code == 200, resp.text
+    mail = env["fe"].sent[0]
+    (flag,) = _flags(seen, "sent")
+    token = flag["token"]
+    assert len(token) == 32 and all(c in "0123456789abcdef" for c in token)
+    assert mail["html"].endswith(
+        f'<img src="https://t.example.org/o/{token}.gif" width="1" height="1" alt="">'
+    )
+    assert token not in mail["text"] and "<img" not in mail["text"]
+    assert "href" not in mail["html"]  # D4: no link rewriting
+
+
+def test_no_pixel_and_an_empty_token_without_a_track_url(env):
+    seen: list = []
+    with _bridge(_card(), seen=seen):
+        _client().post("/api/bizdev/prospects/42/send", json=_body())
+    assert "<img" not in env["fe"].sent[0]["html"]
+    assert _flags(seen, "sent")[0]["token"] == ""
+
+
+@pytest.mark.parametrize(
+    "url", ["http://t.example.org", "https://t.example.org/o?x=1", "javascript:x"]
+)
+def test_a_track_url_that_isnt_plain_https_turns_send_off(env, url):
+    env["cfg"]["BD_TRACK_BASE_URL"] = url
+    with _bridge(_card()):
+        cfg = _client().get("/api/bizdev/send-config").json()
+        resp = _client().post("/api/bizdev/prospects/42/send", json=_body())
+    assert not cfg["enabled"] and cfg["missing"] == ["BD_TRACK_BASE_URL"]
+    assert resp.status_code == 503 and env["fe"].sent == []
+
+
+# -- Part C: the line's screen, templates, draft_edited ---------------------------
+
+SCREEN = {
+    "patterns": [
+        {"regex": r"(?i)\btrusted by\b", "reason": "reference claim (rule 1)"},
+        {"regex": r"(?i)no thanks", "reason": "never matches the body here"},
+    ],
+    "footer": FOOTER,
+}
+
+
+def test_a_forbidden_pattern_refuses_with_its_reason_and_sends_nothing(env):
+    line = {"screen": SCREEN}
+    with _bridge(_card(), line=line):
+        resp = _client().post(
+            "/api/bizdev/prospects/42/send",
+            json=_body(body="Hello,\n\nTrusted by many." + FOOTER),
+        )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "Withheld by the screen: reference claim (rule 1)"
+    assert env["fe"].sent == []
+
+
+@pytest.mark.parametrize(
+    "over,status",
+    [
+        ({"body": "Hello." + FOOTER}, 200),  # the footer says "no thanks"
+        ({"subject": "Trusted by schools"}, 422),
+    ],
+)
+def test_the_screen_reads_the_subject_too_but_never_the_footer(env, over, status):
+    with _bridge(_card(), line={"screen": SCREEN}):
+        resp = _client().post("/api/bizdev/prospects/42/send", json=_body(**over))
+    assert resp.status_code == status, resp.text
+
+
+def test_a_pattern_that_doesnt_compile_refuses_the_send(env):
+    line = {"screen": {"patterns": [{"regex": "(", "reason": "x"}], "footer": FOOTER}}
+    with _bridge(_card(), line=line):
+        resp = _client().post("/api/bizdev/prospects/42/send", json=_body())
+    assert resp.status_code == 503 and env["fe"].sent == []
+
+
+def _templates(**over):
+    return [
+        {"id": 7, "name": "Short", "touch": 1, "archived_at": None, **over},
+        {"id": 8, "name": "Old", "touch": 1, "archived_at": "2026-10-19T00:00:00Z"},
+    ]
+
+
+@pytest.mark.parametrize(
+    "source,status", [("template:7", 200), ("template:8", 422), ("template:9", 422)]
+)
+def test_a_template_source_must_be_a_current_template(env, source, status):
+    line = {"screen": SCREEN, "templates": _templates()}
+    with _bridge(_card(), line=line):
+        resp = _client().post(
+            "/api/bizdev/prospects/42/send", json=_body(draft_source=source)
+        )
+    assert resp.status_code == status, resp.text
+    assert len(env["fe"].sent) == (1 if status == 200 else 0)
+
+
+def test_draft_edited_travels_in_the_flags_meta(env):
+    seen: list = []
+    with _bridge(_card(), seen=seen):
+        resp = _client().post(
+            "/api/bizdev/prospects/42/send", json=_body(draft_edited=14)
+        )
+    assert resp.status_code == 200
+    assert _flags(seen, "sent")[0]["meta"] == {"draft_edited": 14}
+
+
+@pytest.mark.parametrize("value", [-1, True, "3", 1.5])
+def test_a_bad_draft_edited_is_400(env, value):
+    with _bridge(_card()):
+        resp = _client().post(
+            "/api/bizdev/prospects/42/send", json=_body(draft_edited=value)
+        )
+    assert resp.status_code == 400 and env["fe"].sent == []
+
+
+def _template(**over) -> dict:
+    return {
+        "line": "sample",
+        "name": "Short intro",
+        "touch": 1,
+        "subject": "A note for {{institution}}",
+        "body": "Hi {{first_name}},\n\nA line.\n\n{{sender_name}}",
+        **over,
+    }
+
+
+def test_a_template_save_posts_the_checked_body_to_the_bridge(env):
+    seen: list = []
+    with _bridge(_card(), seen=seen):
+        resp = _client().post(
+            "/api/bizdev/templates",
+            json=_template(name=" Short\nintro ", default_for_touch=1),
+        )
+    assert resp.status_code == 202, resp.text
+    (req,) = [r for r in seen if r.url.path == "/bd/templates"]
+    assert json.loads(req.content) == {
+        "line": "sample",
+        "touch": 1,
+        "name": "Short intro",
+        "subject": "A note for {{institution}}",
+        "body": "Hi {{first_name}},\n\nA line.\n\n{{sender_name}}",
+        "default_for_touch": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    "over,status",
+    [
+        ({"touch": 4}, 400),
+        ({"touch": "1"}, 400),
+        ({"line": "../x"}, 400),
+        ({"name": "  "}, 422),
+        ({"name": "x" * 81}, 422),
+        ({"body": "x" * 6001}, 422),
+        ({"default_for_touch": 2}, 422),  # touch 1 template
+        ({"body": "Hi {{nickname}}"}, 422),
+        ({"subject": "Re: {{first_subject}}", "default_for_touch": 1}, 422),
+        ({"id": 0}, 400),
+    ],
+)
+def test_a_bad_template_is_refused_before_the_bridge(env, over, status):
+    seen: list = []
+    with _bridge(_card(), seen=seen):
+        resp = _client().post("/api/bizdev/templates", json=_template(**over))
+    assert resp.status_code == status, resp.text
+    assert not [r for r in seen if r.url.path.startswith("/bd/")]
+
+
+def test_an_any_touch_template_may_default_for_any_touch(env):
+    with _bridge(_card()):
+        resp = _client().post(
+            "/api/bizdev/templates",
+            json=_template(touch="any", default_for_touch=3),
+        )
+    assert resp.status_code == 202
+
+
+def test_archive_posts_to_the_bridge_and_templates_are_local_only(env):
+    seen: list = []
+    with _bridge(_card(), seen=seen):
+        assert _client().post("/api/bizdev/templates/7/archive").status_code == 202
+        assert _client().post("/api/bizdev/templates/x/archive").status_code == 400
+        remote = _client("192.168.1.20")
+        assert remote.post("/api/bizdev/templates", json=_template()).status_code == 403
+        assert remote.post("/api/bizdev/templates/7/archive").status_code == 403
+    assert [r.url.path for r in seen] == ["/bd/templates/7/archive"]

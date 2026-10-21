@@ -13,6 +13,11 @@ Send (hq 0018, contract v0.10): `GET /send-config` and
 sends through Forward Email and records the touch with the `sent` flag. Both
 answer only requests from this machine.
 
+Templates (contract v0.10 `templates[]`): `POST /templates` and
+`POST /templates/<id>/archive` forward to the bridge's template routes after
+the checks Hermes applies on save, so a bad save is refused here rather than
+dropped later by `bd-requests`. Local only, like Send.
+
 Prospect documents carry official-directory work contacts. They are passed
 through to the page for display only: nothing here logs or stores them
 beyond the in-memory last-known copy that keeps the page up when the bridge
@@ -116,6 +121,80 @@ async def _post(path: str, body: Any = None) -> JSONResponse:
         raise HTTPException(status_code=503, detail="Hermes bridge unavailable")
 
 
+TEMPLATE_MAX = 8 * 1024
+TEMPLATE_CAPS = {"name": 80, "subject": 300, "body": 6000}
+_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+# A touch-1 default merges before any touch exists.
+_AFTER_FIRST = frozenset({"first_subject", "days_since_first"})
+
+
+def validate_template(body: dict) -> dict:
+    """Hermes's save rules (contract v0.10.2), checked before the flag."""
+    out: dict[str, Any] = {}
+    tid = body.get("id")
+    if tid is not None:
+        if isinstance(tid, bool) or not isinstance(tid, int) or tid < 1:
+            raise HTTPException(status_code=400, detail="Invalid id")
+        out["id"] = tid
+    line = body.get("line")
+    if not isinstance(line, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", line):
+        raise HTTPException(status_code=400, detail="Invalid line")
+    out["line"] = line
+    touch = body.get("touch")
+    if touch not in (1, 2, 3, "any") or isinstance(touch, bool):
+        raise HTTPException(status_code=400, detail='touch must be 1, 2, 3 or "any"')
+    out["touch"] = touch
+    for key, cap in TEMPLATE_CAPS.items():
+        value = body.get(key)
+        if not isinstance(value, str):
+            raise HTTPException(status_code=400, detail=f"Invalid {key}")
+        value = _CTRL.sub(" ", value)
+        if key != "body":
+            value = value.replace("\n", " ")
+        value = value.strip()
+        if not value:
+            raise HTTPException(status_code=422, detail=f"Empty {key}")
+        if len(value) > cap:
+            raise HTTPException(
+                status_code=422, detail=f"The {key} is over {cap} characters"
+            )
+        out[key] = value
+    default = body.get("default_for_touch")
+    if default is not None:
+        if default not in (1, 2, 3) or isinstance(default, bool):
+            raise HTTPException(status_code=400, detail="Invalid default_for_touch")
+        if touch != "any" and default != touch:
+            raise HTTPException(
+                status_code=422, detail="A default must be for the template's own touch"
+            )
+        out["default_for_touch"] = default
+    fields = set(bizdev_send.unresolved(out["subject"], out["body"]))
+    unknown = sorted(fields - bizdev_send.MERGE_FIELDS)
+    if unknown:
+        names = ", ".join("{{" + f + "}}" for f in unknown)
+        raise HTTPException(status_code=422, detail=f"Unknown merge field: {names}")
+    if default == 1 and fields & _AFTER_FIRST:
+        raise HTTPException(
+            status_code=422,
+            detail="A touch-1 default can't use "
+            "{{first_subject}} or {{days_since_first}}",
+        )
+    return out
+
+
+async def _local_json(request: Request, limit: int) -> dict:
+    raw = await request.body()
+    if len(raw) > limit:
+        raise HTTPException(status_code=413, detail=f"Body over {limit // 1024} KB")
+    try:
+        body = json.loads(raw or b"null")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Body is not JSON")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body must be a JSON object")
+    return body
+
+
 # Registered before the feed and stage routes, so "send-config" is never read
 # as a feed nor "send" as a stage.
 @bizdev_router.get("/send-config")
@@ -130,17 +209,26 @@ async def send_prospect(prospect_id: str, request: Request) -> JSONResponse:
     """Send one touch to one of the prospect's contacts (the operator's click)."""
     _local_only(request)
     _check_id(prospect_id)
-    raw = await request.body()
-    if len(raw) > bizdev_send.REQUEST_MAX:
-        raise HTTPException(status_code=413, detail="Body over 16 KB")
-    try:
-        body = json.loads(raw or b"null")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Body is not JSON")
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="Body must be a JSON object")
+    body = await _local_json(request, bizdev_send.REQUEST_MAX)
     result = await bizdev_send.send(int(prospect_id), body)
     return JSONResponse(status_code=200, content=result)
+
+
+@bizdev_router.post("/templates")
+async def save_template(request: Request) -> JSONResponse:
+    """Create or update a line's template (bridge flag `bdtemplate__`)."""
+    _local_only(request)
+    body = await _local_json(request, TEMPLATE_MAX)
+    return await _post("/bd/templates", validate_template(body))
+
+
+@bizdev_router.post("/templates/{template_id}/archive")
+async def archive_template(template_id: str, request: Request) -> JSONResponse:
+    """Archive a template; it stays listed, archived, and loses its default."""
+    _local_only(request)
+    if not _ID.fullmatch(template_id):
+        raise HTTPException(status_code=400, detail="Invalid template id")
+    return await _post(f"/bd/templates/{template_id}/archive")
 
 
 @bizdev_router.get("/{feed}")

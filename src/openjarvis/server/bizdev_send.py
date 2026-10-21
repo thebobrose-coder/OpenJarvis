@@ -1,4 +1,4 @@
-"""Business Development Send (hq decision 0018, contract v0.10 BD, Part A).
+"""Business Development Send (hq decision 0018, contract v0.10 BD, Parts A-C).
 
 The operator clicks Send on a prospect; this module renders the mail, sends
 it through Forward Email (`forwardemail.py`), and records the touch with the
@@ -17,6 +17,14 @@ List-Unsubscribe is off unless `BD_LIST_UNSUBSCRIBE` is set: Forward Email
 treats a mail carrying it as a newsletter and defers it (421, "Newsletter
 usage is not yet approved") until the account is approved for that (0018
 Phase 0); the footer's reply-"unsubscribe" line is the opt-out.
+
+Part B: with `BD_TRACK_BASE_URL` set, each mail's `html` ends with the open
+pixel of the engagement stack (`<base>/o/<32 hex>.gif`) and the flag carries
+its token; the `text` part never has it, and links stay as written (D4).
+Part C: the line's published `screen.patterns` run server-side on the final
+subject and body (a match refuses with its `reason`), a `template:<id>`
+source must be one of the line's current templates, and the page's
+`draft_edited` count travels in the flag's `meta`.
 
 A small send log (`<config dir>/bizdev/sends.json`, never in the repo) keeps
 each send's ids and status for the poll and for the duplicate check while
@@ -56,6 +64,7 @@ CONFIG_KEYS = (
     "BD_SENDER_NAME",
     "BD_SENDER_ADDRESS",
     "BD_SENDER_ORG",
+    "BD_SENDER_TITLE",
     "BD_REPLY_TO",
     "BD_POSTAL_ADDRESS",
     "BD_TRACK_BASE_URL",
@@ -79,7 +88,31 @@ _MSGID = re.compile(r"^<[^<>\s]{3,250}>$")
 _SUBJECT_MAX = 300
 _BODY_MAX = 10_000
 _NAME_MAX = 100
+_EDITED_MAX = 1_000_000
 REQUEST_MAX = 16 * 1024
+_TRACK = re.compile(r"^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$")
+
+# Contract v0.10 merge fields; the page resolves them from the card.
+MERGE_FIELDS = frozenset(
+    {
+        "first_name",
+        "last_name",
+        "title",
+        "institution",
+        "short_name",
+        "association",
+        "division",
+        "conference",
+        "state",
+        "platform",
+        "signal_1",
+        "sport_hint",
+        "sender_name",
+        "sender_title",
+        "first_subject",
+        "days_since_first",
+    }
+)
 
 _lock = asyncio.Lock()
 
@@ -101,6 +134,8 @@ def missing(cfg: dict[str, str]) -> list[str]:
         out.append(KEY_FILE)
     if cfg.get("BD_SENDER_ADDRESS") and not _EMAIL.match(cfg["BD_SENDER_ADDRESS"]):
         out.append("BD_SENDER_ADDRESS")
+    if cfg.get("BD_TRACK_BASE_URL") and not _TRACK.match(cfg["BD_TRACK_BASE_URL"]):
+        out.append("BD_TRACK_BASE_URL")  # an https origin (and path), nothing else
     return sorted(set(out))
 
 
@@ -113,6 +148,9 @@ def public_config() -> dict[str, Any]:
         "sender_name": cfg["BD_SENDER_NAME"] or None,
         "sender_address": cfg["BD_SENDER_ADDRESS"] or None,
         "reply_to": cfg["BD_REPLY_TO"] or cfg["BD_SENDER_ADDRESS"] or None,
+        "sender_title": cfg["BD_SENDER_TITLE"] or None,
+        # Part B: whether mails carry the open pixel (never the URL itself).
+        "tracking": bool(cfg["BD_TRACK_BASE_URL"]),
         # Only the key file being unset means "not configured"; any other gap
         # is a misconfiguration worth naming.
         "missing": gaps if cfg.get(KEY_FILE) else [],
@@ -258,23 +296,35 @@ def fill(text: str, cfg: dict[str, str], name: str) -> str:
     return text.replace(NAME_SLOT, name).replace(POSTAL_SLOT, cfg["BD_POSTAL_ADDRESS"])
 
 
-def compose(cfg: dict[str, str], line: dict | None, body: str, name: str) -> str:
-    """The sent text: the body with the line's footer exactly once, filled.
+def strip_footer(cfg: dict[str, str], line: dict | None, body: str, name: str) -> str:
+    """The body without the line's footer, its placeholders filled.
 
     A Hermes draft (and a template follow-up Hermes merged) already ends with
     the published footer, placeholders and all; a template saved on the page
-    has none. Either way the footer comes off the end, any placeholder left in
-    the body is filled, and the filled footer is appended once.
+    has none.
     """
     tmpl = published_footer(line)
     text = body.rstrip()
+    if tmpl:
+        for tail in (tmpl.strip(), fill(tmpl, cfg, name).strip()):
+            if text.endswith(tail):
+                text = text[: -len(tail)].rstrip()
+                break
+    return fill(text, cfg, name)
+
+
+def compose(cfg: dict[str, str], line: dict | None, body: str, name: str) -> str:
+    """The sent text: the body with the line's footer exactly once, filled."""
+    text = strip_footer(cfg, line, body, name)
+    tmpl = published_footer(line)
     if not tmpl:
-        return fill(text, cfg, name) + footer(cfg)
-    for tail in (tmpl.strip(), fill(tmpl, cfg, name).strip()):
-        if text.endswith(tail):
-            text = text[: -len(tail)].rstrip()
-            break
-    return fill(text, cfg, name) + "\n\n" + fill(tmpl, cfg, name).lstrip("\n")
+        return text + footer(cfg)
+    return text + "\n\n" + fill(tmpl, cfg, name).lstrip("\n")
+
+
+def pixel(cfg: dict[str, str], token: str) -> str:
+    base = cfg["BD_TRACK_BASE_URL"].rstrip("/")
+    return f'<img src="{html.escape(base)}/o/{token}.gif" width="1" height="1" alt="">'
 
 
 def to_html(text: str) -> str:
@@ -300,6 +350,7 @@ def render(
     reply_to: str | None,
     in_reply_to: str | None,
     line: dict | None = None,
+    token: str = "",
 ) -> dict:
     sender = cfg["BD_SENDER_ADDRESS"]
     domain = sender.rsplit("@", 1)[1]
@@ -312,7 +363,7 @@ def render(
         "replyTo": reply_to or cfg["BD_REPLY_TO"] or sender,
         "subject": subject,
         "text": text,
-        "html": to_html(text),
+        "html": to_html(text) + (pixel(cfg, token) if token else ""),
         "messageId": message_id,
     }
     if cfg.get("BD_LIST_UNSUBSCRIBE", "").lower() in _ON:
@@ -366,6 +417,13 @@ def validate(body: dict) -> dict:
             raise HTTPException(
                 status_code=400, detail="Invalid in_reply_to_message_id"
             )
+    edited = body.get("draft_edited")
+    if edited is not None and (
+        isinstance(edited, bool)
+        or not isinstance(edited, int)
+        or not 0 <= edited <= _EDITED_MAX
+    ):
+        raise HTTPException(status_code=400, detail="Invalid draft_edited")
     return {
         "to_email": to_email,
         "subject": _text(body, "subject", _SUBJECT_MAX, required=True).strip(),
@@ -375,16 +433,56 @@ def validate(body: dict) -> dict:
         "reply_to": reply_to,
         "draft_source": source,
         "in_reply_to": in_reply_to,
+        "draft_edited": edited,
     }
 
 
 def screen(req: dict) -> None:
-    """Part A's screen: a non-empty body (validate) and no unresolved merge
-    field. The line's published patterns arrive with Part C."""
+    """Before the card is read: a non-empty body (validate) and no unresolved
+    merge field."""
     fields = unresolved(req["subject"], req["body"])
     if fields:
         names = ", ".join("{{" + f + "}}" for f in fields)
         raise HTTPException(status_code=422, detail=f"Unresolved merge field: {names}")
+
+
+def screen_line(line: dict | None, subject: str, body: str) -> None:
+    """The line's published forbidden patterns (contract v0.10 `screen`), on
+    the text as sent minus its footer, the way Hermes's `screen_draft` reads a
+    draft. A pattern that doesn't compile refuses the send: unscreened mail
+    never goes out."""
+    screen_ = (line or {}).get("screen")
+    patterns = screen_.get("patterns") if isinstance(screen_, dict) else None
+    text = f"{subject}\n{body}"
+    for pat in patterns or []:
+        regex = pat.get("regex") if isinstance(pat, dict) else None
+        if not isinstance(regex, str):
+            continue
+        reason = str(pat.get("reason") or "the line's screen")[:200]
+        try:
+            hit = re.search(regex, text)
+        except re.error:
+            raise HTTPException(
+                status_code=503,
+                detail="The line's screen has a pattern that doesn't compile",
+            ) from None
+        if hit:
+            raise HTTPException(
+                status_code=422, detail=f"Withheld by the screen: {reason}"
+            )
+
+
+def check_template(line: dict | None, source: str) -> None:
+    """A `template:<id>` source names one of the line's current templates."""
+    if not source.startswith("template:"):
+        return
+    tid = int(source.split(":", 1)[1])
+    for t in (line or {}).get("templates") or []:
+        if isinstance(t, dict) and t.get("id") == tid and not t.get("archived_at"):
+            return
+    raise HTTPException(
+        status_code=422, detail=f"Template {tid} isn't a current template"
+    )
 
 
 # -- bridge ---------------------------------------------------------------------
@@ -457,6 +555,10 @@ async def send(prospect_id: int, raw: dict) -> dict:
         in_reply_to = req["in_reply_to"]
         if touch > 1 and not in_reply_to:
             in_reply_to = _first_message_id(card, sends, prospect_id)
+        check_template(line, req["draft_source"])
+        name = req["from_name"] or cfg["BD_SENDER_NAME"]
+        screen_line(line, req["subject"], strip_footer(cfg, line, req["body"], name))
+        token = secrets.token_hex(16) if cfg["BD_TRACK_BASE_URL"] else ""
 
         try:
             client = _client(cfg)
@@ -478,6 +580,7 @@ async def send(prospect_id: int, raw: dict) -> dict:
                 reply_to=req["reply_to"],
                 in_reply_to=in_reply_to,
                 line=line,
+                token=token,
             )
             result = await client.send(payload)
         except ForwardEmailError as exc:
@@ -490,7 +593,7 @@ async def send(prospect_id: int, raw: dict) -> dict:
             "touch": touch,
             "fe_id": result["id"],
             "message_id": payload["messageId"],
-            "token": "",  # Part B: the open pixel's token
+            "token": token,  # the open pixel's; empty without BD_TRACK_BASE_URL
             "to_email": req["to_email"],
             "draft_source": req["draft_source"],
             "subject": req["subject"],
@@ -498,6 +601,9 @@ async def send(prospect_id: int, raw: dict) -> dict:
             "from": payload["from"],
             "reply_to": payload["replyTo"],
         }
+        if req["draft_edited"] is not None:
+            # Hermes phase 3 reads it; earlier phases ignore the key.
+            flag["meta"] = {"draft_edited": req["draft_edited"]}
         entry = {
             "prospect_id": prospect_id,
             "touch": touch,
