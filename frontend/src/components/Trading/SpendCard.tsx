@@ -1,5 +1,5 @@
 import { CalendarClock, Wallet } from 'lucide-react';
-import { fmtUsdc, money, OVER_CAP, spendTone, type TradingStatus } from '../../lib/trading-api';
+import { fmtUsdc, localTime, money, OVER_CAP, spendTone, type TradingStatus } from '../../lib/trading-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num, shortDateTime } from '../shared/format';
 import { Quiet, Tile } from '../shared/ui';
@@ -43,7 +43,8 @@ export function SpendCard({ status, loading, error }: { status: TradingStatus | 
 export function NightlyCard({ status, loading, error }: { status: TradingStatus | null; loading?: boolean; error?: string | null }) {
   const n = status?.nightly;
   return (
-    <DashboardPanel icon={CalendarClock} title="Nightly" tag="05:20 UTC" size="third" loading={loading} error={error}>
+    // The trader runs it at 05:20 UTC; the tag says when that is here.
+    <DashboardPanel icon={CalendarClock} title="Nightly" tag={localTime(n?.next_run) ?? '05:20 UTC'} size="third" loading={loading} error={error}>
       {!n ? (
         <Quiet>No nightly report yet.</Quiet>
       ) : (

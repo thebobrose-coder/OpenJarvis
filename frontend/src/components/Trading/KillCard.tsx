@@ -1,5 +1,5 @@
 import { ExternalLink, OctagonX } from 'lucide-react';
-import type { TradingConfig, TradingStatus } from '../../lib/trading-api';
+import { localizeStamps, type TradingConfig, type TradingStatus } from '../../lib/trading-api';
 import { openExternal } from '../../lib/open-external';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { shortDateTime } from '../shared/format';
@@ -54,7 +54,7 @@ export function KillCard({ status, config, loading, error }: { status: TradingSt
         <Indicator testId="local-file" label="Local file" on={kill ? kill.local_file : null} rule={LOCAL_FILE_RULE} />
         {kill?.last_cause && (
           <p className="text-[11.5px]" data-kill-cause style={{ color: 'var(--color-text-secondary)' }}>
-            Last cause: {kill.last_cause}
+            Last cause: {localizeStamps(kill.last_cause)}
             {kill.cleared_at ? ` · cleared ${shortDateTime(kill.cleared_at)}` : ''}
           </p>
         )}

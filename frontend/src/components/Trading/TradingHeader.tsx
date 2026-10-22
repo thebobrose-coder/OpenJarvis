@@ -3,6 +3,7 @@ import {
   haltTone,
   killCause,
   killWhen,
+  sleeveColor,
   sleeveLabel,
   sleeveNames,
   staleness,
@@ -14,6 +15,17 @@ import { shortDateTime } from '../shared/format';
 import { Chip } from '../shared/ui';
 
 export const STALE_BANNER = 'Status is stale: the trader may be silent. Check the sleeves in WSL and the approval page.';
+
+/** A sleeve's name with its colour swatch, the same colour as its card
+ * icon, its curve line and its events. The name always goes with it. */
+export function SleeveName({ name, muted }: { name: string; muted?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5" data-sleeve-name={name}>
+      <span className="inline-block h-2 w-2 rounded-full shrink-0" style={{ background: sleeveColor(name) }} aria-hidden />
+      <span style={{ color: muted ? 'var(--color-text-tertiary)' : 'var(--color-text)' }}>{sleeveLabel(name)}</span>
+    </span>
+  );
+}
 
 /** A halt state as a pill: icon plus word, never color alone. */
 export function HaltPill({ state, children }: { state: HaltState | null | undefined; children?: React.ReactNode }) {
@@ -74,7 +86,7 @@ export function TradingHeader({ status, now }: { status: TradingStatus | null; n
             const cause = s?.halt_state === 'KILL' ? killCause(status) : null;
             return (
               <span key={name} className="inline-flex items-center gap-1.5" data-sleeve-pill={name}>
-                <span style={{ color: 'var(--color-text)' }}>{sleeveLabel(name)}</span>
+                <SleeveName name={name} />
                 <HaltPill state={s?.halt_state}>
                   {s?.halt_state === 'KILL' && (cause || when) && (
                     <span className="font-normal" data-kill-detail>

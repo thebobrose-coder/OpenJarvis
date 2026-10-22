@@ -1,12 +1,14 @@
 import type { ComponentType, ReactNode } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 
-export type PanelSize = 'hero' | 'tall' | 'third' | 'half' | 'wide' | 'quarter' | 'full';
+export type PanelSize = 'hero' | 'tall' | 'third' | 'trio' | 'half' | 'wide' | 'quarter' | 'full';
 
 const SIZE_CLASSES: Record<PanelSize, string> = {
   hero: 'col-span-12 lg:col-span-5',
   tall: 'col-span-12 md:col-span-6 lg:col-span-4',
   third: 'col-span-12 sm:col-span-6 lg:col-span-4',
+  /** A row of exactly three: stacked, then three across, never 2 + 1. */
+  trio: 'col-span-12 lg:col-span-4',
   half: 'col-span-12 lg:col-span-6',
   wide: 'col-span-12 lg:col-span-8',
   quarter: 'col-span-6 lg:col-span-3',
@@ -30,6 +32,9 @@ interface DashboardPanelProps {
   onTitleClick?: () => void;
   /** Extra header controls, e.g. a speaker button. */
   actions?: ReactNode;
+  /** The header icon's colour, when the panel stands for one series (a
+   * trading sleeve); the accent otherwise. */
+  iconColor?: string;
   children: ReactNode;
 }
 
@@ -52,6 +57,7 @@ export function DashboardPanel({
   priority,
   onTitleClick,
   actions,
+  iconColor,
   children,
 }: DashboardPanelProps) {
   return (
@@ -70,7 +76,7 @@ export function DashboardPanel({
           className="flex items-center gap-2 min-w-0"
           style={{ cursor: onTitleClick ? 'pointer' : 'default', background: 'transparent', border: 'none', padding: 0 }}
         >
-          <Icon size={14} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+          <Icon size={14} style={{ color: iconColor ?? 'var(--color-accent)', flexShrink: 0 }} />
           <span
             className="text-[13px] font-semibold truncate text-left"
             style={{ color: 'var(--color-text)' }}
