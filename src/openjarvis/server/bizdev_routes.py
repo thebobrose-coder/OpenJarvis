@@ -13,6 +13,12 @@ Send (hq 0018, contract v0.10): `GET /send-config` and
 sends through Forward Email and records the touch with the `sent` flag. Both
 answer only requests from this machine.
 
+Add recipient (contract v0.10.7, hq 0018 A3): `POST /prospects/<id>/contact`
+checks the address's shape and length and that the card is on the board,
+then forwards to the bridge's `bdcontact__` route. Hermes applies the other
+rules (free-mail, duplicates, the 3-contact cap, the daily cap) and drops a
+refused add with a line in its own log. Local only, like Send.
+
 Templates (contract v0.10 `templates[]`): `POST /templates` and
 `POST /templates/<id>/archive` forward to the bridge's template routes after
 the checks Hermes applies on save, so a bad save is refused here rather than
@@ -182,6 +188,41 @@ def validate_template(body: dict) -> dict:
     return out
 
 
+CONTACT_FIELD_MAX = 120
+EMAIL_MAX = 254
+
+
+def validate_contact(body: dict) -> dict:
+    """One syntactically valid address of at most 254 characters, and an
+    optional name and title of at most 120 (contract v0.10.7)."""
+    email = body.get("email")
+    if not isinstance(email, str) or not email.strip():
+        raise HTTPException(status_code=400, detail="An email address is required")
+    email = email.strip()
+    if len(email) > EMAIL_MAX:
+        raise HTTPException(
+            status_code=422, detail=f"The address is over {EMAIL_MAX} characters"
+        )
+    if not bizdev_send._EMAIL.match(email):
+        raise HTTPException(status_code=422, detail="Enter one valid email address")
+    out = {"email": email}
+    for key in ("name", "title"):
+        value = body.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise HTTPException(status_code=400, detail=f"Invalid {key}")
+        value = _CTRL.sub(" ", value).strip()
+        if len(value) > CONTACT_FIELD_MAX:
+            raise HTTPException(
+                status_code=422,
+                detail=f"The {key} is over {CONTACT_FIELD_MAX} characters",
+            )
+        if value:
+            out[key] = value
+    return out
+
+
 async def _local_json(request: Request, limit: int) -> dict:
     raw = await request.body()
     if len(raw) > limit:
@@ -212,6 +253,20 @@ async def send_prospect(prospect_id: str, request: Request) -> JSONResponse:
     body = await _local_json(request, bizdev_send.REQUEST_MAX)
     result = await bizdev_send.send(int(prospect_id), body)
     return JSONResponse(status_code=200, content=result)
+
+
+@bizdev_router.post("/prospects/{prospect_id}/contact")
+async def add_contact(prospect_id: str, request: Request) -> JSONResponse:
+    """Add a recipient to a card (bridge flag `bdcontact__`)."""
+    _local_only(request)
+    _check_id(prospect_id)
+    contact = validate_contact(await _local_json(request, _BODY_MAX))
+    # Suppressed cards leave the board: nothing to add a recipient to.
+    if bizdev_send.find_card(await bizdev_send._pipeline(), int(prospect_id)) is None:
+        raise HTTPException(
+            status_code=409, detail="This prospect isn't on the board (suppressed?)"
+        )
+    return await _post(f"/bd/prospects/{prospect_id}/contact", contact)
 
 
 @bizdev_router.post("/templates")

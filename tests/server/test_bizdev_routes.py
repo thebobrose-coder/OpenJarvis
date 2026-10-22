@@ -288,3 +288,157 @@ def test_actions_with_bridge_down_are_503():
     with patcher:
         assert client.post("/api/bizdev/prospects/42/sent").status_code == 503
         assert client.post("/api/bizdev/research/refresh").status_code == 503
+
+
+# -- Add recipient (contract v0.10.7, hq 0018 A3) -----------------------------
+
+
+def _board(stage: str = "drafted") -> dict:
+    card = {"id": 42, "name": "Example College", "contacts": [], "touches": []}
+    stages = {"drafted": [], "sent": []}
+    if stage in stages:
+        stages[stage] = [card]
+    return {
+        "feed": "bd_pipeline",
+        "generated_at": "2026-10-22T12:00:00Z",
+        "data": {"lines": [{"line": "line-a", "stages": stages}]},
+    }
+
+
+def _contact_client(stage: str = "drafted", post=None):
+    """A loopback client over a bridge that serves the board and answers the
+    contact route like the live one (202 with the action)."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    def handler(req: httpx.Request):
+        if req.method == "GET" and req.url.path == "/panels/bd_pipeline":
+            return httpx.Response(200, json=_board(stage))
+        if post is not None:
+            return post(req)
+        return httpx.Response(202, json={"id": 42, "action": "contact", "queued": True})
+
+    app = FastAPI()
+    app.include_router(br.bizdev_router)
+    real_client = httpx.AsyncClient
+    seen: list[httpx.Request] = []
+
+    def fake_client(*args, **kwargs):
+        def recording(req):
+            seen.append(req)
+            return handler(req)
+
+        kwargs["transport"] = httpx.MockTransport(recording)
+        return real_client(*args, **kwargs)
+
+    patcher = patch.object(br.httpx, "AsyncClient", side_effect=fake_client)
+    return TestClient(app, client=("127.0.0.1", 50000)), patcher, seen
+
+
+def _posts(seen: list[httpx.Request]) -> list[httpx.Request]:
+    return [r for r in seen if r.method == "POST"]
+
+
+def test_add_contact_validates_and_forwards_once():
+    client, patcher, seen = _contact_client()
+    with patcher:
+        resp = client.post(
+            "/api/bizdev/prospects/42/contact",
+            json={
+                "name": "  A Person ",
+                "title": "Sports Information Director",
+                "email": " a.person@example.edu ",
+                "extra": "dropped",
+            },
+        )
+    assert resp.status_code == 202
+    assert resp.json() == {"id": 42, "action": "contact", "queued": True}
+    posts = _posts(seen)
+    assert len(posts) == 1
+    assert posts[0].url.path == "/bd/prospects/42/contact"
+    assert json.loads(posts[0].content) == {
+        "email": "a.person@example.edu",
+        "name": "A Person",
+        "title": "Sports Information Director",
+    }
+
+
+def test_add_contact_leaves_out_empty_name_and_title():
+    client, patcher, seen = _contact_client()
+    with patcher:
+        resp = client.post(
+            "/api/bizdev/prospects/42/contact",
+            json={"name": "", "email": "b.person@example.org"},
+        )
+    assert resp.status_code == 202
+    assert json.loads(_posts(seen)[0].content) == {"email": "b.person@example.org"}
+
+
+@pytest.mark.parametrize(
+    "body,status",
+    [
+        ({}, 400),
+        ({"email": 7}, 400),
+        ({"email": "not-an-address"}, 422),
+        ({"email": "a@example.edu, b@example.edu"}, 422),
+        ({"email": "a person@example.edu"}, 422),
+        ({"email": "a" * 243 + "@example.edu"}, 422),  # 255 characters
+        ({"email": "a@example.edu", "name": "n" * 121}, 422),
+        ({"email": "a@example.edu", "title": "t" * 121}, 422),
+        ({"email": "a@example.edu", "name": ["x"]}, 400),
+    ],
+)
+def test_a_bad_contact_is_refused_before_the_bridge(body, status):
+    client, patcher, seen = _contact_client()
+    with patcher:
+        resp = client.post("/api/bizdev/prospects/42/contact", json=body)
+    assert resp.status_code == status
+    assert seen == []
+
+
+def test_an_address_of_254_characters_is_accepted():
+    client, patcher, seen = _contact_client()
+    with patcher:
+        resp = client.post(
+            "/api/bizdev/prospects/42/contact",
+            json={"email": "a" * 242 + "@example.edu"},
+        )
+    assert resp.status_code == 202 and len(_posts(seen)) == 1
+
+
+def test_a_suppressed_card_gets_nothing_forwarded():
+    client, patcher, seen = _contact_client(stage="bounced")
+    with patcher:
+        resp = client.post(
+            "/api/bizdev/prospects/42/contact", json={"email": "a@example.edu"}
+        )
+    assert resp.status_code == 409
+    assert _posts(seen) == []
+
+
+def test_a_bridge_5xx_on_add_contact_is_relayed():
+    client, patcher, seen = _contact_client(
+        post=lambda r: httpx.Response(500, json={"detail": "bridge error"})
+    )
+    with patcher:
+        resp = client.post(
+            "/api/bizdev/prospects/42/contact", json={"email": "a@example.edu"}
+        )
+    assert resp.status_code == 500
+    assert len(_posts(seen)) == 1
+
+
+def test_add_contact_is_local_only():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(br.bizdev_router)
+    resp = TestClient(app, client=("203.0.113.9", 50000)).post(
+        "/api/bizdev/prospects/42/contact", json={"email": "a@example.edu"}
+    )
+    assert resp.status_code == 403
+
+
+def test_contact_is_never_read_as_a_stage():
+    assert "contact" not in br.STAGES

@@ -290,7 +290,8 @@ def test_a_sent_touch_on_the_card_is_409_unless_rejected(env):
 def test_the_touch_must_be_the_cards_next(env):
     with _bridge(_card()):
         resp = _client().post("/api/bizdev/prospects/42/send", json=_body(touch=2))
-    assert resp.status_code == 409 and "next touch is 1" in resp.json()["detail"]
+    assert resp.status_code == 409
+    assert "next touch to this address is 1" in resp.json()["detail"]
 
 
 def test_a_follow_up_threads_on_touch_one(env):
@@ -777,3 +778,133 @@ def test_archive_posts_to_the_bridge_and_templates_are_local_only(env):
         assert remote.post("/api/bizdev/templates", json=_template()).status_code == 403
         assert remote.post("/api/bizdev/templates/7/archive").status_code == 403
     assert [r.url.path for r in seen] == ["/bd/templates/7/archive"]
+
+
+# -- A2: several recipients on one card (contract v0.10.7) ----------------------
+
+B = "b.person@example.edu"
+
+
+def _sent(n, to, status="sent", fe_id="fe9", message_id=None) -> dict:
+    t = {"n": n, "sent_at": f"2026-10-2{n}T10:00:00Z", "fe_id": fe_id}
+    t.update(fe_status=status, to_email=to)
+    if message_id:
+        t["message_id"] = message_id
+    return t
+
+
+def _post(card, **over):
+    with _bridge(card):
+        return _client().post("/api/bizdev/prospects/42/send", json=_body(**over))
+
+
+def test_touch_numbers_count_per_recipient(env):
+    card = _card(stage="sent", touches=[_sent(1, TO)])
+    assert bs.next_touch(card, TO) == 2
+    assert bs.next_touch(card, B.upper()) == 1
+    assert _post(card, to_email=B, touch=1).status_code == 200
+    assert _post(card, to_email=TO, touch=1).status_code == 409
+
+
+def test_a_bare_touch_counts_for_the_first_recipient(env):
+    # An old stage move has no to_email: it is the first recipient's.
+    card = _card(stage="sent", touches=[{"n": 1, "sent_at": "x"}])
+    assert bs.next_touch(card, TO) == 2
+    assert bs.next_touch(card, B) == 1
+
+
+def test_a_rejected_touch_is_replaced_for_that_pair_only(env):
+    card = _card(
+        stage="sent", touches=[_sent(1, TO, "rejected"), _sent(1, B, "sent", "fe8")]
+    )
+    assert bs.next_touch(card, TO) == 1
+    assert bs.next_touch(card, B) == 2
+    assert _post(card, to_email=TO, touch=1).status_code == 200
+
+
+def test_a_hard_bounced_contact_is_refused(env):
+    card = _card(
+        contacts=[
+            {"name": "A Person", "email": TO, "bounce_hard_at": "2026-10-21T00:00:00Z"},
+            {"name": "B Person", "email": B},
+        ]
+    )
+    resp = _post(card, to_email=TO)
+    assert resp.status_code == 422 and "hard-bounced" in resp.json()["detail"]
+    assert env["fe"].sent == []
+
+
+def test_a_fourth_recipient_is_refused(env):
+    others = ["c@example.edu", "d@example.edu", "e@example.edu"]
+    card = _card(
+        stage="sent",
+        contacts=[{"name": "X", "email": a} for a in [*others, TO]],
+        touches=[_sent(1, a, fe_id=f"fe{i}") for i, a in enumerate(others)],
+    )
+    resp = _post(card, to_email=TO)
+    assert resp.status_code == 409 and "3 recipients" in resp.json()["detail"]
+    assert _post(card, to_email=others[0], touch=2).status_code == 200
+
+
+def test_the_log_blocks_a_repeat_per_address_and_never_stores_one(env):
+    card = _card()
+    assert _post(card, to_email=TO).status_code == 200
+    # Hermes hasn't applied the flag yet: the log alone holds the touch.
+    assert _post(card, to_email=TO).status_code == 409
+    assert _post(card, to_email=B).status_code == 200
+    raw = bs._log_path().read_text(encoding="utf-8")
+    assert TO not in raw and B not in raw
+    keys = [s["to_key"] for s in bs.load_log()]
+    assert keys == [bs.to_key(TO), bs.to_key(B.upper())]
+
+
+def test_a_log_entry_from_before_v0107_counts_for_the_first_recipient(env):
+    bs.save_log(
+        [
+            {
+                "prospect_id": 42,
+                "touch": 1,
+                "fe_id": "fe0",
+                "message_id": "<m>",
+                "fe_status": "sent",
+                "sent_at": bs._iso(bs._now()),
+                "flag": None,
+            }
+        ]
+    )
+    card = _card(stage="sent", touches=[_sent(1, TO, fe_id="fe0")])
+    assert _post(card, to_email=B).status_code == 200
+    assert _post(card, to_email=TO, touch=1).status_code == 409
+
+
+def test_a_follow_up_threads_on_its_own_recipients_touch_one(env):
+    a_first, b_first = (
+        "<bd-42-1-aaaaaaaa@example.org>",
+        "<bd-42-1-bbbbbbbb@example.org>",
+    )
+    card = _card(
+        stage="sent",
+        touches=[
+            _sent(1, TO, fe_id="fe1", message_id=a_first),
+            _sent(1, B, fe_id="fe2", message_id=b_first),
+        ],
+    )
+    assert _post(card, to_email=B, touch=2).status_code == 200
+    mail = env["fe"].sent[0]
+    assert mail["to"] == B and mail["inReplyTo"] == b_first
+    assert mail["messageId"].startswith("<bd-42-2-")
+
+
+def test_the_status_poll_keys_by_fe_id_with_two_recipients(env):
+    card = _card()
+    assert _post(card, to_email=TO).status_code == 200
+    log = bs.load_log()
+    log.append({**log[0], "fe_id": "fe0002", "to_key": bs.to_key(B)})
+    bs.save_log(log)
+    env["fe"].st = "sent"
+    seen: list[httpx.Request] = []
+    with _bridge(card, seen=seen):
+        asyncio.run(bs.poll_once(env["fe"]))
+    bodies = [json.loads(r.content) for r in seen if r.url.path.endswith("/status")]
+    assert sorted(b["fe_id"] for b in bodies) == ["fe0001", "fe0002"]
+    assert all(b["fe_status"] == "sent" and b["touch"] == 1 for b in bodies)

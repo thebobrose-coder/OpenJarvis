@@ -30,11 +30,18 @@ A small send log (`<config dir>/bizdev/sends.json`, never in the repo) keeps
 each send's ids and status for the poll and for the duplicate check while
 Hermes has not yet applied the flag. A flag the bridge did not accept is
 kept there with its body and retried by the poll, then the body is dropped.
+
+A2 (contract v0.10.7): a touch is an `(n, to_email)` pair. The touch number
+counts per recipient, a card goes to at most 3 distinct addresses, and a
+contact with `bounce_hard_at` is refused. The log keeps a hash of each
+send's address (`to_key`), never the address; an entry without one (from
+before v0.10.7) counts for the card's first recipient.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import html
 import json
 import logging
@@ -93,6 +100,7 @@ _BODY_MAX = 10_000
 _NAME_MAX = 100
 _EDITED_MAX = 1_000_000
 REQUEST_MAX = 16 * 1024
+MAX_RECIPIENTS = 3
 _TRACK = re.compile(r"^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$")
 
 # Contract v0.10 merge fields; the page resolves them from the card.
@@ -239,10 +247,57 @@ def find(pipeline: dict, prospect_id: int) -> tuple[dict | None, dict | None]:
     return None, None
 
 
-def next_touch(card: dict) -> int:
-    """1 for a card never sent; the same touch again when its last send was
-    rejected; otherwise the touch after the last."""
-    touches = [t for t in card.get("touches") or [] if isinstance(t, dict)]
+def _addr(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def to_key(address: str) -> str:
+    """The send log's stand-in for an address: it never stores one."""
+    return hashlib.sha256(_addr(address).encode()).hexdigest()[:16]
+
+
+def _touches(card: dict) -> list[dict]:
+    return [t for t in card.get("touches") or [] if isinstance(t, dict)]
+
+
+def first_recipient(card: dict) -> str:
+    """Touch 1's address, else the earliest touch's with one, else the
+    draft's, else the first contact's."""
+    sent = sorted(
+        (t for t in _touches(card) if t.get("to_email")),
+        key=lambda t: (int(t.get("n") or 0), str(t.get("sent_at") or "")),
+    )
+    if sent:
+        return _addr(sent[0]["to_email"])
+    draft = card.get("draft") if isinstance(card.get("draft"), dict) else {}
+    if draft.get("to_email"):
+        return _addr(draft["to_email"])
+    for c in card.get("contacts") or []:
+        if isinstance(c, dict) and c.get("email"):
+            return _addr(c["email"])
+    return ""
+
+
+def _recipient(card: dict, touch: dict) -> str:
+    """A touch's address; one without (an old stage move) is the first
+    recipient's."""
+    return _addr(touch.get("to_email")) or first_recipient(card)
+
+
+def recipients(card: dict) -> list[str]:
+    out: list[str] = []
+    for t in _touches(card):
+        a = _recipient(card, t)
+        if a and a not in out:
+            out.append(a)
+    return out
+
+
+def next_touch(card: dict, to_email: str) -> int:
+    """1 for an address never sent to; the same touch again when its last
+    send was rejected; otherwise the touch after its last."""
+    want = _addr(to_email)
+    touches = [t for t in _touches(card) if _recipient(card, t) == want]
     if not touches:
         return 1
     last = max(touches, key=lambda t: int(t.get("n") or 0))
@@ -250,25 +305,57 @@ def next_touch(card: dict) -> int:
     return n if last.get("fe_status") == "rejected" else n + 1
 
 
-def _touch_taken(card: dict, sends: list[dict], pid: int, touch: int) -> bool:
-    for t in card.get("touches") or []:
-        if isinstance(t, dict) and int(t.get("n") or 0) == touch:
+def _log_key(card: dict, s: dict) -> str:
+    return s.get("to_key") or to_key(first_recipient(card))
+
+
+def _touch_taken(
+    card: dict, sends: list[dict], pid: int, touch: int, to_email: str
+) -> bool:
+    want = _addr(to_email)
+    for t in _touches(card):
+        if int(t.get("n") or 0) == touch and _recipient(card, t) == want:
             if t.get("fe_id") and t.get("fe_status") != "rejected":
                 return True
+    key = to_key(want)
     return any(
         s.get("prospect_id") == pid
         and s.get("touch") == touch
+        and _log_key(card, s) == key
         and s.get("fe_status") != "rejected"
         for s in sends
     )
 
 
-def _first_message_id(card: dict, sends: list[dict], pid: int) -> str | None:
-    for t in card.get("touches") or []:
-        if isinstance(t, dict) and int(t.get("n") or 0) == 1 and t.get("message_id"):
+def _over_cap(card: dict, sends: list[dict], pid: int, to_email: str) -> bool:
+    """A 4th distinct recipient (A2-D1), counting sends Hermes hasn't applied."""
+    keys = {to_key(a) for a in recipients(card)}
+    keys |= {
+        _log_key(card, s)
+        for s in sends
+        if s.get("prospect_id") == pid and s.get("fe_status") != "rejected"
+    }
+    return to_key(to_email) not in keys and len(keys) >= MAX_RECIPIENTS
+
+
+def _first_message_id(
+    card: dict, sends: list[dict], pid: int, to_email: str
+) -> str | None:
+    want = _addr(to_email)
+    for t in _touches(card):
+        if (
+            int(t.get("n") or 0) == 1
+            and t.get("message_id")
+            and _recipient(card, t) == want
+        ):
             return str(t["message_id"])
+    key = to_key(want)
     for s in sends:
-        if s.get("prospect_id") == pid and s.get("touch") == 1:
+        if (
+            s.get("prospect_id") == pid
+            and s.get("touch") == 1
+            and _log_key(card, s) == key
+        ):
             return s.get("message_id")
     return None
 
@@ -537,29 +624,42 @@ async def send(prospect_id: int, raw: dict) -> dict:
         card, line = find(await _pipeline(), prospect_id)
         if card is None:
             raise HTTPException(status_code=404, detail="Prospect not in the pipeline")
-        emails = {
-            str(c.get("email")).strip().lower()
-            for c in card.get("contacts") or []
-            if isinstance(c, dict) and c.get("email")
-        }
-        if req["to_email"].lower() not in emails:
+        to = _addr(req["to_email"])
+        contact = next(
+            (
+                c
+                for c in card.get("contacts") or []
+                if isinstance(c, dict) and _addr(c.get("email")) == to
+            ),
+            None,
+        )
+        if contact is None:
             raise HTTPException(
                 status_code=422, detail="to_email is not a contact of this prospect"
             )
+        if contact.get("bounce_hard_at"):
+            raise HTTPException(status_code=422, detail="This address hard-bounced")
         sends = load_log()
         touch = req["touch"]
-        if _touch_taken(card, sends, prospect_id, touch):
+        if _over_cap(card, sends, prospect_id, to):
             raise HTTPException(
-                status_code=409, detail=f"Touch {touch} was already sent"
+                status_code=409,
+                detail=f"This card already went to {MAX_RECIPIENTS} recipients",
             )
-        expected = next_touch(card)
+        if _touch_taken(card, sends, prospect_id, touch, to):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Touch {touch} was already sent to this address",
+            )
+        expected = next_touch(card, to)
         if touch != expected:
             raise HTTPException(
-                status_code=409, detail=f"The next touch is {expected}, not {touch}"
+                status_code=409,
+                detail=f"The next touch to this address is {expected}, not {touch}",
             )
         in_reply_to = req["in_reply_to"]
         if touch > 1 and not in_reply_to:
-            in_reply_to = _first_message_id(card, sends, prospect_id)
+            in_reply_to = _first_message_id(card, sends, prospect_id, to)
         check_template(line, req["draft_source"])
         name = req["from_name"] or cfg["BD_SENDER_NAME"]
         screen_line(line, req["subject"], strip_footer(cfg, line, req["body"], name))
@@ -612,6 +712,7 @@ async def send(prospect_id: int, raw: dict) -> dict:
         entry = {
             "prospect_id": prospect_id,
             "touch": touch,
+            "to_key": to_key(to),
             "fe_id": result["id"],
             "message_id": payload["messageId"],
             # Hermes records every new touch as `pending`, so the poll starts
