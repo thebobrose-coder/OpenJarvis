@@ -12,7 +12,7 @@ import {
   type EngagementChipKind,
 } from '../../lib/bizdev-compose';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
-import { num } from '../shared/format';
+import { num, shortDateTime } from '../shared/format';
 import { Chip, Quiet, Segmented, Select, type Tone } from '../shared/ui';
 
 export const STAGE_LABELS: Record<string, string> = {
@@ -54,14 +54,18 @@ export const NO_FILTERS: BoardFilters = {
 export const MIN_RANK_OPTIONS = [0, 0.5, 1, 2, 3, 4, 5];
 const RANK_ACCENT = 3;
 
-/** Part D: "Meeting on the calendar?" with the event's day and the matched domain. */
-export function MeetingChip({ p }: { p: Pick<PipelineProspect, 'stage' | 'proposed_stage' | 'engagement'> }) {
+/** Part D: "Meeting on the calendar?" with the event's day and the matched
+ * domain. `compact` (the board card, a third of a column wide) says
+ * "Meeting? Wed, Oct 28" and keeps the full line on hover. */
+export function MeetingChip({ p, compact = false }: { p: Pick<PipelineProspect, 'stage' | 'proposed_stage' | 'engagement'>; compact?: boolean }) {
   if (!proposesMeeting(p)) return null;
   const m = p.engagement?.meeting_detected;
-  const detail = m ? [meetingDay(m.event_start), m.domain].filter(Boolean).join(' · ') : '';
+  const day = m ? meetingDay(m.event_start) : '';
+  const full = `Meeting on the calendar?${m ? ` ${[day, m.domain].filter(Boolean).join(' · ')}` : ''}`;
+  const why = 'A calendar event has a guest from this prospect; open the card to confirm the move to Meeting';
   return (
-    <Chip tone="accent" title="A calendar event has a guest from this prospect; confirm to move it to Meeting">
-      Meeting on the calendar?{detail ? ` ${detail}` : ''}
+    <Chip tone="accent" title={compact ? `${full}. ${why}` : why}>
+      {compact ? `Meeting?${day ? ` ${day}` : ''}` : full}
     </Chip>
   );
 }
@@ -187,17 +191,13 @@ function ProspectCard({ p, onOpen, onDragging }: { p: PipelineProspect; onOpen: 
         {p.signals?.platform && <Chip tone="muted">{p.signals.platform}</Chip>}
         {!hasContacts(p) && <Chip tone="warning">no contacts</Chip>}
         <EngagementChips p={p} />
-        <MeetingChip p={p} />
+        <MeetingChip p={p} compact />
         {p.recheck?.kept_previous && (
           <Chip tone="muted" title="A re-check came back worse; the earlier research was kept">
             re-checked
           </Chip>
         )}
-        {p.days_in_stage != null && (
-          <span className="text-[10.5px] ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
-            {num(p.days_in_stage)} d
-          </span>
-        )}
+        <StageAge p={p} className="text-[10.5px] ml-auto" />
       </div>
     </button>
   );
@@ -268,6 +268,32 @@ function Column({
   );
 }
 
+/** When the card entered its stage, the moment its "N d" counts from:
+ * "Oct 19" (local), with the year when it isn't this year's. */
+export function stageSince(iso: string | null | undefined, now: number = Date.now()): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const sameYear = d.getFullYear() === new Date(now).getFullYear();
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) });
+}
+
+/** "Oct 19 · 3 d", with the full time and the stage on hover. */
+export function StageAge({ p, className }: { p: Pick<PipelineProspect, 'stage' | 'stage_changed_at' | 'days_in_stage'>; className?: string }) {
+  const since = stageSince(p.stage_changed_at);
+  if (since == null && p.days_in_stage == null) return null;
+  return (
+    <span
+      className={`tabular-nums whitespace-nowrap ${className ?? ''}`}
+      style={{ color: 'var(--color-text-tertiary)' }}
+      title={p.stage_changed_at ? `In ${STAGE_LABELS[p.stage] ?? p.stage} since ${shortDateTime(p.stage_changed_at)}` : undefined}
+      data-stage-since={p.stage_changed_at ?? undefined}
+    >
+      {[since, p.days_in_stage != null ? `${num(p.days_in_stage)} d` : null].filter(Boolean).join(' · ')}
+    </span>
+  );
+}
+
 /** Compact table of the same filtered prospects, in board (rank) order. */
 function ProspectList({ items, onOpen }: { items: PipelineProspect[]; onOpen: (p: PipelineProspect) => void }) {
   if (!items.length) return <Quiet>No prospects match these filters.</Quiet>;
@@ -277,7 +303,7 @@ function ProspectList({ items, onOpen }: { items: PipelineProspect[]; onOpen: (p
       <table className="w-full text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
         <thead style={{ color: 'var(--color-text-tertiary)' }}>
           <tr>
-            {['Rank', 'School', 'Affiliation', 'Platform', 'Fit', 'Stage', 'Days', 'Contacts'].map((h) => (
+            {['Rank', 'School', 'Affiliation', 'Platform', 'Fit', 'Stage', 'In stage since', 'Contacts'].map((h) => (
               <th key={h} className={th}>{h}</th>
             ))}
           </tr>
@@ -296,7 +322,9 @@ function ProspectList({ items, onOpen }: { items: PipelineProspect[]; onOpen: (p
               <td className="px-2 py-1.5">{p.signals?.platform ?? ''}</td>
               <td className="px-2 py-1.5 tabular-nums">{p.fit_score ?? ''}</td>
               <td className="px-2 py-1.5 whitespace-nowrap">{STAGE_LABELS[p.stage] ?? p.stage}</td>
-              <td className="px-2 py-1.5 tabular-nums">{p.days_in_stage != null ? num(p.days_in_stage) : ''}</td>
+              <td className="px-2 py-1.5">
+                <StageAge p={p} />
+              </td>
               <td className="px-2 py-1.5 tabular-nums">{(p.contacts ?? []).length}</td>
             </tr>
           ))}
