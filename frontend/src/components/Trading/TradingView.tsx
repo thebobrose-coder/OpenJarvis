@@ -3,9 +3,8 @@ import type { FeedState } from '../../hooks/useTradingData';
 import { Quiet } from '../shared/ui';
 import { EquityCurve } from './EquityCurve';
 import { EventsPanel } from './EventsPanel';
-import { KillCard } from './KillCard';
 import { SleeveCard } from './SleeveCard';
-import { NightlyCard, SpendCard } from './SpendCard';
+import { StatusStrip } from './StatusStrip';
 import { TradingHeader } from './TradingHeader';
 
 export interface TradingViewProps {
@@ -20,8 +19,8 @@ export const NO_SLEEVES = 'Hermes could not read the trader’s status export, s
 
 /**
  * The Trading page (hq/decisions/0014): the x402 paper trader as it reports
- * itself, read-only. Header strip, kill switch, x402 spend, nightly, one
- * card per sleeve, the equity curve, events and alerts. Pure: everything comes
+ * itself, read-only. Header strip, kill switch, x402 spend and nightly (one
+ * line while all fine), one card per sleeve, the equity curve, events and alerts. Pure: everything comes
  * in through props (see TradingPage).
  */
 export function TradingView({ status, day, config, now }: TradingViewProps) {
@@ -37,11 +36,7 @@ export function TradingView({ status, day, config, now }: TradingViewProps) {
 
       {!loading && !error && !s && <Quiet>{NO_STATUS_YET}</Quiet>}
 
-      <div className="grid grid-cols-12 gap-4 mb-4">
-        <KillCard status={s} config={config} loading={loading} error={error} />
-        <SpendCard status={s} loading={loading} error={error} />
-        <NightlyCard status={s} loading={loading} error={error} />
-      </div>
+      <StatusStrip status={s} config={config} loading={loading} error={error} />
 
       <div className="grid grid-cols-12 gap-4 mb-4">
         {s && sleeves.length === 0 ? (

@@ -32,6 +32,9 @@ interface DashboardPanelProps {
   onTitleClick?: () => void;
   /** Extra header controls, e.g. a speaker button. */
   actions?: ReactNode;
+  /** The header icon's colour, when the panel stands for one series (a
+   * trading sleeve); the accent otherwise. */
+  iconColor?: string;
   children: ReactNode;
 }
 
@@ -54,6 +57,7 @@ export function DashboardPanel({
   priority,
   onTitleClick,
   actions,
+  iconColor,
   children,
 }: DashboardPanelProps) {
   return (
@@ -72,7 +76,7 @@ export function DashboardPanel({
           className="flex items-center gap-2 min-w-0"
           style={{ cursor: onTitleClick ? 'pointer' : 'default', background: 'transparent', border: 'none', padding: 0 }}
         >
-          <Icon size={14} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+          <Icon size={14} style={{ color: iconColor ?? 'var(--color-accent)', flexShrink: 0 }} />
           <span
             className="text-[13px] font-semibold truncate text-left"
             style={{ color: 'var(--color-text)' }}

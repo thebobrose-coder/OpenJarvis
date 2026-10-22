@@ -341,3 +341,183 @@ export async function fetchTradingConfig(): Promise<TradingConfig> {
   const url = typeof body.page_url === 'string' && /^https:\/\//i.test(body.page_url) ? body.page_url : null;
   return { page_url_set: url != null, page_url: url };
 }
+
+// ---------------------------------------------------------------------------
+// Reading aids (2026-10-22): sleeve colours, today's P&L, distance to stop,
+// the curve as % from start, tidy events, and one time zone (local).
+// Pure, display-only: none of them acts.
+// ---------------------------------------------------------------------------
+
+/** Each sleeve's colour across the page (card, header, curve, events): the
+ * dataviz series slots, assigned by name, never by position in a list. */
+export const SLEEVE_COLOR: Record<string, string> = {
+  equities: 'var(--viz-series-1)',
+  crypto: 'var(--viz-series-2)',
+  futures: 'var(--viz-series-3)',
+};
+export const sleeveColor = (name: string) => SLEEVE_COLOR[name] ?? 'var(--color-text-tertiary)';
+
+/** Today's change: equity against the day's start equity. */
+export function dayChange(sleeve: Pick<Sleeve, 'equity' | 'day'>): { abs: number; pct: number } | null {
+  const now = money(sleeve.equity);
+  const start = money(sleeve.day?.start_equity);
+  if (now == null || start == null || start === 0) return null;
+  return { abs: now - start, pct: ((now - start) / start) * 100 };
+}
+
+/** "+16.70", "−16.70" (a true minus), "0.00". */
+export function signedMoney(n: number, digits = 2): string {
+  const s = Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return Math.round(Math.abs(n) * 10 ** digits) === 0 ? s : `${n > 0 ? '+' : '−'}${s}`;
+}
+
+/** "+1.25%", "−0.17%". */
+export function signedPct(n: number, digits = 2): string {
+  return `${signedMoney(n, digits)}%`;
+}
+
+export const STOP_NEAR_PCT = 2;
+
+/** How far the mark is from the stop, in % of the mark: room left before the
+ * stop for a long (mark above stop) or a short (mark below). Negative means
+ * the mark is through the stop. Null without a mark or a stop. */
+export function stopDistancePct(p: Pick<Position, 'side' | 'mark' | 'stop'>): number | null {
+  const mark = money(p.mark);
+  const stop = money(p.stop);
+  if (mark == null || stop == null || mark === 0) return null;
+  const short = /^(short|sell)$/i.test(String(p.side));
+  return ((short ? stop - mark : mark - stop) / mark) * 100;
+}
+
+export function stopTone(pct: number | null): 'error' | 'warning' | null {
+  if (pct == null) return null;
+  return pct <= 0 ? 'error' : pct < STOP_NEAR_PCT ? 'warning' : null;
+}
+
+/** The curve as % from each series' own first point (a sleeve that started
+ * later starts at 0 % on its first night). */
+export function pctRows(rows: CurveRow[]): CurveRow[] {
+  const base: Record<string, number> = {};
+  return rows.map((r) => {
+    const out: CurveRow = { date: r.date };
+    for (const [k, v] of Object.entries(r)) {
+      if (k === 'date') continue;
+      if (typeof v !== 'number') {
+        out[k] = null;
+        continue;
+      }
+      if (base[k] == null && v !== 0) base[k] = v;
+      out[k] = base[k] == null ? null : (v / base[k] - 1) * 100;
+    }
+    return out;
+  });
+}
+
+export type TidyEvent = TradeEvent & { sleeve: string; reason?: string; /** Back-to-back repeats folded in, and the earliest one's time. */ repeat?: number; first_ts?: string };
+
+const SIGNAL_PAIR_MS = 5 * 60 * 1000;
+
+/**
+ * The Events list without its repeats, newest first, at most 20:
+ * - a SIGNAL is folded into the PROPOSAL it led to (same sleeve, within five
+ *   minutes) as its `reason`; a SIGNAL without one stays;
+ * - an ALERT that is also in the last 24 hours' alerts (same second, same
+ *   text) is left to the Alerts panel;
+ * - the same event back to back (a scheduler failing every five minutes) is
+ *   one row with its count and the first time;
+ * - `sleeve` keeps one sleeve's events.
+ */
+export function tidyEvents(status: TradingStatus, sleeve?: string | null): TidyEvent[] {
+  const alerts = new Set(
+    (status.alerts_24h ?? []).map((a) => `${(a.ts ?? '').slice(0, 19)}|${[a.source, a.message].filter(Boolean).join(': ')}`.toLowerCase()),
+  );
+  const out: TidyEvent[] = [];
+  for (const name of sleeveNames(status)) {
+    if (sleeve && name !== sleeve) continue;
+    const evs = (status.sleeves?.[name]?.recent_events ?? []).filter((e) => e.type !== 'TICK');
+    const signals = evs.filter((e) => e.type === 'SIGNAL');
+    const used = new Set<TradeEvent>();
+    for (const e of evs) {
+      if (e.type === 'SIGNAL') continue;
+      if (e.type === 'ALERT' && alerts.has(`${(e.ts ?? '').slice(0, 19)}|${(e.summary ?? '').trim()}`.toLowerCase())) continue;
+      const item: TidyEvent = { ...e, sleeve: name };
+      if (e.type === 'PROPOSAL') {
+        const t = Date.parse(e.ts);
+        const sig = signals.find((s) => !used.has(s) && Math.abs(Date.parse(s.ts) - t) <= SIGNAL_PAIR_MS);
+        if (sig) {
+          used.add(sig);
+          if (sig.summary) item.reason = sig.summary;
+        }
+      }
+      out.push(item);
+    }
+    for (const s of signals) if (!used.has(s)) out.push({ ...s, sleeve: name });
+  }
+  out.sort((a, b) => (b.ts ?? '').localeCompare(a.ts ?? ''));
+  const folded: TidyEvent[] = [];
+  for (const e of out) {
+    const prev = folded[folded.length - 1];
+    if (prev && !prev.reason && !e.reason && prev.sleeve === e.sleeve && prev.type === e.type && (prev.summary ?? '') === (e.summary ?? '')) {
+      prev.repeat = (prev.repeat ?? 1) + 1;
+      prev.first_ts = e.ts;
+    } else {
+      folded.push({ ...e });
+    }
+  }
+  return folded.slice(0, 20);
+}
+
+// -- one time zone: the desktop's local time -----------------------------------
+
+/** "2:45 PM", local. */
+export function localTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+/** "in 2 h 10 min", "in 5 min", "now", "12 min overdue". */
+export function untilLabel(iso: string | null | undefined, nowMs: number): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const min = Math.round((t - nowMs) / 60000);
+  if (min === 0) return 'now';
+  const span = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`);
+  return min > 0 ? `in ${span(min)}` : `${span(-min)} overdue`;
+}
+
+/** A UTC window the trader writes ("00:01-00:16Z") in local time on the
+ * given day ("7:01 PM–7:16 PM"); null when it isn't one. */
+export function utcWindowLocal(window: string | null | undefined, nowMs: number): string | null {
+  const m = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})Z$/.exec(window ?? '');
+  if (!m) return null;
+  const day = new Date(nowMs).toISOString().slice(0, 10);
+  const at = (h: string, mm: string) => localTime(`${day}T${h}:${mm}:00Z`);
+  return `${at(m[1], m[2])}–${at(m[3], m[4])}`;
+}
+
+const ISO_STAMP = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z\b/g;
+
+/** ISO UTC stamps inside the trader's own text, as local date and time.
+ * The feed can carry a null text (an alert with no message): it reads as ''. */
+export function localizeStamps(text: string | null | undefined): string {
+  return (text ?? '').replace(ISO_STAMP, (s) => {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime())
+      ? s
+      : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  });
+}
+
+/** The top row (kill switch, x402 spend, nightly) folds to one line only when
+ * all of it is fine: both kill indicators clear, spend under 80 % of the cap,
+ * a nightly report and an off-VHD copy on record. */
+export function topRowGreen(status: TradingStatus | null | undefined): boolean {
+  if (!status) return false;
+  const k = status.kill;
+  if (!k || k.local_file !== false || k.aws_flag !== false) return false;
+  if (!status.x402 || status.x402.under_cap === false || spendTone(status.x402) !== 'accent') return false;
+  const n = status.nightly;
+  return !!(n?.last_report && n.last_backup_copy);
+}

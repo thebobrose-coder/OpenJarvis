@@ -233,9 +233,11 @@ describe('TradingView (0014, read-only)', () => {
 
   it('renders no action control anywhere: the only button is the approval link', () => {
     const html = view(KILLED);
-    // Panel titles render as disabled <button>s (no onTitleClick); the view toggle is Chart | Table.
+    // Panel titles render as disabled <button>s (no onTitleClick). The rest are
+    // view controls only: Chart | Table, % from start | $, the events' sleeve
+    // filter, and Details on the folded status row.
     const buttons = (html.match(/<button[^>]*>[\s\S]*?<\/button>/g) ?? []).filter((b) => !/<button[^>]*\sdisabled(=|\s|>)/.test(b));
-    const labels = buttons.map((b) => b.replace(/<[^>]+>/g, '').trim()).filter((t) => t && !/^(Chart|Table)$/.test(t));
+    const labels = buttons.map((b) => b.replace(/<[^>]+>/g, '').trim()).filter((t) => t && !/^(Chart|Table|% from start|\$|All|Equities|Crypto|Futures|Details)$/.test(t));
     expect(labels).toEqual(['Open approval page']);
     expect(html).not.toMatch(/pause|resume|clear kill|request/i);
   });
@@ -263,7 +265,9 @@ describe('TradingView (0014, read-only)', () => {
     expect(html).toContain('data-last-tick');
     // Crypto: interval and entry window instead of fixed times.
     expect(html).toContain('data-tick-interval');
-    expect(html).toContain('Every 5 min · entry window 00:00-00:15Z · entry done 2026-10-06');
+    // Local time, the trader's UTC window on hover; "today" for today's entry.
+    expect(html).toContain('title="00:00-00:15Z (UTC)"');
+    expect(html).toContain('entry done today');
   });
 
   it('positions carry a Mark column between Entry and Stop, with the print’s time on hover (v1.7.2)', () => {
