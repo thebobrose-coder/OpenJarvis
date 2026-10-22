@@ -33,6 +33,9 @@ export function BizDevPage() {
         onTab={setTab}
         onSaveTemplate={data.saveTemplate}
         onArchiveTemplate={data.archiveTemplate}
+        onAddContact={data.addRecipient}
+        contactNotes={data.contactNotes}
+        onConfirmMeeting={data.confirmMeeting}
       />
     </div>
   );

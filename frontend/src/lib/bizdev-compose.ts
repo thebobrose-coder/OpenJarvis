@@ -5,7 +5,19 @@
  * the authority), the edit count sent as `draft_edited`, and the engagement
  * timeline and chips read from `engagement` and `touches[]`.
  */
-import type { Engagement, PipelineProspect, Screen, SendConfig, Template, Touch } from './bizdev-api';
+import {
+  firstRecipient,
+  recipientsOf,
+  touchOf,
+  type Contact,
+  type Engagement,
+  type PipelineProspect,
+  type RecipientEngagement,
+  type Screen,
+  type SendConfig,
+  type Template,
+  type Touch,
+} from './bizdev-api';
 
 // ---------------------------------------------------------------------------
 // Merge fields: the same values Hermes's own merge uses (bd_research
@@ -68,7 +80,8 @@ export function mergeValues(
 ): MergeValues {
   const contact = (p.contacts ?? []).find((c) => toEmail && (c.email ?? '').toLowerCase() === toEmail.toLowerCase());
   const words = (contact?.name ?? '').split(/\s+/).filter((w) => w && !HONORIFIC.test(w));
-  const first = (p.touches ?? []).find((t) => t.n === 1);
+  // `first_subject` / `days_since_first` read the chosen recipient's touch 1 (v0.10.7).
+  const first = touchOf(p, 1, toEmail || firstRecipient(p));
   const platform = p.signals?.platform;
   const text = [...(p.signal_notes ?? []), p.fit_rationale ?? ''].join(' ').toLowerCase();
   const sent = first?.sent_at ? Date.parse(first.sent_at) : NaN;
@@ -199,15 +212,17 @@ export const ENGAGEMENT_CHIP_LABELS: Record<EngagementChipKind, string> = {
   unsubscribed: 'Unsubscribed',
 };
 
-/** Card chips. "Opened" needs a non-proxy open: a proxy prefetch says nothing. */
-export function engagementChips(e: Engagement | undefined): EngagementChipKind[] {
-  if (!e) return [];
+/** Card chips. "Opened" needs a non-proxy open: a proxy prefetch says nothing.
+ * "Bounced" follows the stage: since v0.10.7 a hard bounce to one of several
+ * recipients sets `bounce_kind` while the card stays `sent`. */
+export function engagementChips(e: Engagement | undefined, stage?: string): EngagementChipKind[] {
+  if (!e) return stage === 'bounced' ? ['bounced'] : [];
   const out: EngagementChipKind[] = [];
   if ((e.opens ?? 0) - (e.proxy_opens ?? 0) > 0) out.push('opened');
   if (e.reply_kind === 'reply') out.push('replied');
   if (e.reply_kind === 'reply_other_sender') out.push('referred');
   if (e.reply_kind === 'auto_reply') out.push('auto_reply');
-  if (e.bounce_kind) out.push('bounced');
+  if (stage === 'bounced') out.push('bounced');
   if (e.unsubscribed_at) out.push('unsubscribed');
   return out;
 }
@@ -218,22 +233,73 @@ export function opensLabel(opens: number, proxy: number): string {
   return `Opened ×${opens}${tag}`;
 }
 
+/** Part D: a calendar event's day in Central, "Thu, Oct 30". */
+export function meetingDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric' }).format(d);
+}
+
+/** Part D: the chip shows only on a `replied` card Hermes marks `meeting`. */
+export function proposesMeeting(p: Pick<PipelineProspect, 'stage' | 'proposed_stage'>): boolean {
+  return p.stage === 'replied' && p.proposed_stage === 'meeting';
+}
+
 export interface TimelineEvent {
   at: string;
   label: string;
   detail?: string | null;
   touch?: Touch;
+  /** A send's address (lower-cased), for grouping by recipient. */
+  recipient?: string;
   tone?: 'success' | 'warning' | 'error' | 'muted';
 }
 
+type TimelineCard = Pick<PipelineProspect, 'touches' | 'engagement'> & Partial<Pick<PipelineProspect, 'contacts' | 'draft'>>;
+
+const lower = (s: string | null | undefined) => (s ?? '').trim().toLowerCase();
+
+function contactFor(p: Partial<Pick<PipelineProspect, 'contacts'>>, email: string | null | undefined): Contact | undefined {
+  return (p.contacts ?? []).find((c) => email && lower(c.email) === lower(email));
+}
+
+/** "Ann Person" when the address is a contact with a name, else the address. */
+export function recipientName(p: Partial<Pick<PipelineProspect, 'contacts'>>, email: string): string {
+  return contactFor(p, email)?.name || email;
+}
+
+/** Part D: "Wed 01:00 CT", "drafted → sent 2.0 h", "edited 12 chars"; absent fields say nothing. */
+export function touchTiming(t: Pick<Touch, 'send_dow' | 'send_hour' | 'send_latency_h' | 'draft_edited'>): string[] {
+  const out: string[] = [];
+  if (t.send_dow && t.send_hour != null) out.push(`${t.send_dow} ${String(t.send_hour).padStart(2, '0')}:00 CT`);
+  if (t.send_latency_h != null) out.push(`drafted → sent ${t.send_latency_h.toFixed(1)} h`);
+  if (t.draft_edited != null && t.draft_edited > 0) out.push(`edited ${t.draft_edited} char${t.draft_edited === 1 ? '' : 's'}`);
+  return out;
+}
+
+/** Hard bounces per address (v0.10.7), from the contacts and the recipient rows. */
+function addressBounces(p: TimelineCard): { email: string; at: string }[] {
+  const out = new Map<string, string>();
+  for (const c of p.contacts ?? []) if (c.email && c.bounce_hard_at) out.set(lower(c.email), c.bounce_hard_at);
+  for (const r of p.engagement?.recipients ?? []) if (r.bounce_hard_at && !out.has(lower(r.to_email))) out.set(lower(r.to_email), r.bounce_hard_at);
+  return [...out].map(([email, at]) => ({ email, at }));
+}
+
 /** Sends, then what came back, in time order. */
-export function engagementTimeline(p: Pick<PipelineProspect, 'touches' | 'engagement'>): TimelineEvent[] {
+export function engagementTimeline(p: TimelineCard): TimelineEvent[] {
   const e = p.engagement ?? {};
   const out: TimelineEvent[] = [];
+  const first = firstRecipient({ touches: p.touches, contacts: p.contacts, draft: p.draft });
   for (const t of p.touches ?? []) {
     const opened = t.opens ? ` · opened ×${t.opens}` : '';
     const soft = t.soft_bounces ? ` · ${t.soft_bounces} soft bounce${t.soft_bounces > 1 ? 's' : ''}` : '';
-    out.push({ at: t.sent_at, label: `Touch ${t.n} sent`, detail: [t.to_email, opened + soft].filter(Boolean).join('') || null, touch: t });
+    out.push({
+      at: t.sent_at,
+      label: `Touch ${t.n} sent`,
+      detail: [t.to_email, opened + soft].filter(Boolean).join('') || null,
+      touch: t,
+      recipient: t.to_email ? lower(t.to_email) : first,
+    });
   }
   const opens = e.opens ?? 0;
   if (opens > 0 && e.first_open_at) {
@@ -254,11 +320,43 @@ export function engagementTimeline(p: Pick<PipelineProspect, 'touches' | 'engage
     out.push({
       at: e.replied_at,
       label: e.reply_kind === 'reply_other_sender' ? 'Replied from another address (referred)' : 'Replied',
-      detail: [after, (e.replies ?? 0) > 1 ? `${e.replies} replies` : null].filter(Boolean).join(' · ') || null,
+      detail:
+        [
+          e.replied_to_email ? `to ${recipientName(p, e.replied_to_email)}` : null,
+          after,
+          (e.replies ?? 0) > 1 ? `${e.replies} replies` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || null,
       tone: 'success',
     });
   }
-  if (e.bounced_at) out.push({ at: e.bounced_at, label: `Bounced (${e.bounce_kind ?? 'unknown'})`, tone: 'error' });
+  const bounces = addressBounces(p);
+  for (const b of bounces) out.push({ at: b.at, label: 'Bounced (hard)', detail: recipientName(p, b.email), recipient: b.email, tone: 'error' });
+  // With per-address bounces, the card-level hard bounce repeats the latest one.
+  if (e.bounced_at && !(bounces.length && e.bounce_kind === 'hard')) {
+    out.push({ at: e.bounced_at, label: `Bounced (${e.bounce_kind ?? 'unknown'})`, tone: 'error' });
+  }
   if (e.unsubscribed_at) out.push({ at: e.unsubscribed_at, label: 'Unsubscribed', tone: 'warning' });
   return out.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+}
+
+export interface RecipientGroup {
+  email: string;
+  contact?: Contact;
+  /** `engagement.recipients[]`'s row for it, when Hermes publishes one. */
+  row?: RecipientEngagement;
+  bounced_at?: string | null;
+}
+
+/** The card's recipients in first-sent order: `engagement.recipients` when
+ * present, else the addresses its touches went to. */
+export function recipientGroups(p: TimelineCard): RecipientGroup[] {
+  const rows = p.engagement?.recipients ?? [];
+  const emails = rows.length ? rows.map((r) => lower(r.to_email)) : recipientsOf({ touches: p.touches, contacts: p.contacts, draft: p.draft });
+  return emails.map((email) => {
+    const contact = contactFor(p, email);
+    const row = rows.find((r) => lower(r.to_email) === email);
+    return { email, contact, row, bounced_at: contact?.bounce_hard_at ?? row?.bounce_hard_at ?? null };
+  });
 }

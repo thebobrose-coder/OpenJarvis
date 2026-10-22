@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { RotateCw, X } from 'lucide-react';
+import { CalendarCheck, RotateCw, UserPlus, X } from 'lucide-react';
 import {
+  CONTACT_FIELD_MAX,
+  EMAIL_MAX,
+  MAX_CONTACTS,
   SUPPRESSION_STAGES,
-  nextTouch,
-  touchOf,
+  contactProblem,
   rankBreakdown,
   rankNumber,
   recheckReason,
+  type Contact,
+  type ContactAdd,
   type PipelineProspect,
   type RecheckResult,
   type SendConfig,
@@ -17,12 +21,20 @@ import {
   type SuppressionStage,
   type TemplateSave,
 } from '../../lib/bizdev-api';
-import { engagementTimeline, templatesFor, type TimelineEvent } from '../../lib/bizdev-compose';
+import {
+  engagementTimeline,
+  proposesMeeting,
+  recipientGroups,
+  recipientName,
+  templatesFor,
+  touchTiming,
+  type TimelineEvent,
+} from '../../lib/bizdev-compose';
 import { shortDateTime } from '../shared/format';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
 import { DraftComposer, type ComposeLine } from './DraftComposer';
 import { FeStatusChip } from './MailActions';
-import { EngagementChips, RankChip, STAGE_LABELS } from './PipelineBoard';
+import { EngagementChips, MeetingChip, RankChip, STAGE_LABELS } from './PipelineBoard';
 
 const OUTCOMES: StageAction[] = ['replied', 'meeting', 'won', 'lost', 'not_interested', 'do_not_contact', 'bounced'];
 const isSuppression = (s: string): s is SuppressionStage => (SUPPRESSION_STAGES as readonly string[]).includes(s);
@@ -68,25 +80,191 @@ const TONE_COLOR: Record<NonNullable<TimelineEvent['tone']>, string> = {
   muted: 'var(--color-text-tertiary)',
 };
 
-/** Sends and what came back (Part B): delivery, opens (proxy prefetches
- * marked), replies, auto-replies, bounces, unsubscribes, in time order. */
-export function EngagementTimeline({ prospect }: { prospect: Pick<PipelineProspect, 'touches' | 'engagement'> }) {
-  const events = engagementTimeline(prospect);
+function EventItem({ ev }: { ev: TimelineEvent }) {
+  const timing = ev.touch ? touchTiming(ev.touch) : [];
   return (
-    <ol className="flex flex-col gap-1">
-      {events.map((ev, i) => (
-        <li key={i} className="flex flex-wrap items-center gap-1.5" data-event={ev.label} {...(ev.touch ? { 'data-touch': ev.touch.n } : {})}>
-          <span style={{ color: ev.tone ? TONE_COLOR[ev.tone] : 'var(--color-text)' }}>{ev.label}</span> · {shortDateTime(ev.at)}
-          {ev.detail && <span>· {ev.detail}</span>}
-          {ev.touch && <FeStatusChip status={ev.touch.fe_status} error={ev.touch.fe_error} />}
-          {ev.touch?.fe_error && (ev.touch.fe_status === 'deferred' || ev.touch.fe_status === 'rejected') && (
-            <span className="basis-full text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-              {ev.touch.fe_error}
-            </span>
-          )}
-        </li>
-      ))}
-    </ol>
+    <li className="flex flex-wrap items-center gap-1.5" data-event={ev.label} {...(ev.touch ? { 'data-touch': ev.touch.n } : {})}>
+      <span style={{ color: ev.tone ? TONE_COLOR[ev.tone] : 'var(--color-text)' }}>{ev.label}</span> · {shortDateTime(ev.at)}
+      {ev.detail && <span>· {ev.detail}</span>}
+      {ev.touch && <FeStatusChip status={ev.touch.fe_status} error={ev.touch.fe_error} />}
+      {ev.touch?.fe_error && (ev.touch.fe_status === 'deferred' || ev.touch.fe_status === 'rejected') && (
+        <span className="basis-full text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          {ev.touch.fe_error}
+        </span>
+      )}
+      {timing.length > 0 && (
+        <span className="basis-full text-[11px]" style={{ color: 'var(--color-text-tertiary)' }} data-timing>
+          {timing.join(' · ')}
+        </span>
+      )}
+    </li>
+  );
+}
+
+/** Sends and what came back (Part B): delivery, opens (proxy prefetches
+ * marked), replies, auto-replies, bounces, unsubscribes, in time order. A
+ * card sent to more than one address (v0.10.7) lists each recipient with
+ * its own touches and bounce, then the card's other events. */
+export function EngagementTimeline({
+  prospect,
+}: {
+  prospect: Pick<PipelineProspect, 'touches' | 'engagement'> & Partial<Pick<PipelineProspect, 'contacts' | 'draft'>>;
+}) {
+  const events = engagementTimeline(prospect);
+  const groups = recipientGroups(prospect);
+  if (groups.length <= 1) {
+    return (
+      <ol className="flex flex-col gap-1">
+        {events.map((ev, i) => (
+          <EventItem key={i} ev={ev} />
+        ))}
+      </ol>
+    );
+  }
+  const rest = events.filter((ev) => !ev.recipient);
+  return (
+    <div className="flex flex-col gap-2.5">
+      {groups.map((g) => {
+        const name = recipientName(prospect, g.email);
+        const row = g.row;
+        return (
+          <div key={g.email} className="flex flex-col gap-1" data-recipient={g.email}>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span style={{ color: 'var(--color-text)' }}>{name}</span>
+              {name !== g.email && <span className="text-[11px]">{g.email}</span>}
+              {g.bounced_at && <Chip tone="error">bounced</Chip>}
+              {row?.replied_at && <Chip tone="success">replied</Chip>}
+              {row && (
+                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  {row.touches} touch{row.touches === 1 ? '' : 'es'}
+                  {row.opens ? ` · opened ×${row.opens}` : ''}
+                </span>
+              )}
+            </div>
+            <ol className="flex flex-col gap-1 pl-3">
+              {events
+                .filter((ev) => ev.recipient === g.email)
+                .map((ev, i) => (
+                  <EventItem key={i} ev={ev} />
+                ))}
+            </ol>
+          </div>
+        );
+      })}
+      {rest.length > 0 && (
+        <ol className="flex flex-col gap-1">
+          {rest.map((ev, i) => (
+            <EventItem key={i} ev={ev} />
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+const input = {
+  background: 'var(--color-bg-secondary)',
+  color: 'var(--color-text)',
+  border: '1px solid var(--color-border)',
+} as const;
+
+/** What the page knows about an "Add recipient" it sent: Hermes confirms
+ * only by publishing the contact, and drops a refused one silently. */
+export type ContactNote = 'saved' | 'not_accepted';
+
+export const CONTACT_NOTES: Record<ContactNote, string> = {
+  saved: 'Saved; appears after the next refresh (about 2 minutes).',
+  not_accepted: 'Hermes did not accept this address (free-mail, duplicate, suppressed card or the 3-contact cap).',
+};
+
+/**
+ * "Add recipient" (hq 0018 A3): name, title and email, saved as a contact
+ * through the bridge. Open when the card has no contacts, behind a link
+ * otherwise; off at 3 contacts of any source. The page checks the address's
+ * shape and length; Hermes checks the rest.
+ */
+export function AddRecipientForm({
+  contacts,
+  onAdd,
+  note,
+}: {
+  contacts: Contact[];
+  onAdd: (c: ContactAdd) => Promise<void>;
+  note?: ContactNote | null;
+}) {
+  const [open, setOpen] = useState(contacts.length === 0);
+  const [form, setForm] = useState<ContactAdd>({ name: '', title: '', email: '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const full = contacts.length >= MAX_CONTACTS;
+  const problem = contactProblem(form);
+
+  const save = async () => {
+    if (saving || full || problem) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onAdd(form);
+      setForm({ name: '', title: '', email: '' });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Saving failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const status = (error || note) && (
+    <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }} role="status">
+      {error ?? CONTACT_NOTES[note!]}
+    </span>
+  );
+
+  if (!open) {
+    return (
+      <div className="flex flex-wrap items-center gap-2" data-add-recipient="collapsed">
+        <button
+          onClick={() => setOpen(true)}
+          disabled={full}
+          title={full ? `This card has ${MAX_CONTACTS} contacts, the most it can hold` : 'Add an address to send to'}
+          className="flex items-center gap-1 text-[11.5px] cursor-pointer disabled:cursor-default disabled:opacity-50 p-0"
+          style={{ background: 'transparent', border: 'none', color: 'var(--color-accent)' }}
+        >
+          <UserPlus size={11} /> Add recipient
+        </button>
+        {full && <span className="text-[11px]">{MAX_CONTACTS} contacts is the most a card holds.</span>}
+        {status}
+      </div>
+    );
+  }
+
+  const set = (k: keyof ContactAdd, max: number) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value.slice(0, max) }));
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }} data-add-recipient="open">
+      <span className="text-[11px] font-medium" style={{ color: 'var(--color-text)' }}>
+        Add recipient
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        <input aria-label="Name" placeholder="Name" value={form.name} onChange={set('name', CONTACT_FIELD_MAX)} className="rounded-md px-1.5 py-1 text-[11.5px] w-36" style={input} disabled={full} />
+        <input aria-label="Title" placeholder="Title" value={form.title} onChange={set('title', CONTACT_FIELD_MAX)} className="rounded-md px-1.5 py-1 text-[11.5px] w-40" style={input} disabled={full} />
+        <input aria-label="Email" placeholder="Email" type="email" value={form.email} onChange={set('email', EMAIL_MAX + 1)} className="rounded-md px-1.5 py-1 text-[11.5px] w-52" style={input} disabled={full} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <SmallButton tone="accent" onClick={() => void save()} disabled={full || saving || !!problem} title={full ? undefined : problem ?? 'Save it as a contact on this card'}>
+          {saving ? 'Saving…' : 'Save'}
+        </SmallButton>
+        {full ? (
+          <span className="text-[11px]">This card has {MAX_CONTACTS} contacts, the most it can hold.</span>
+        ) : (
+          form.email.trim() && problem && <span className="text-[11px]">{problem}</span>
+        )}
+        {status}
+      </div>
+      <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        Hermes refuses free-mail addresses, duplicates and a 4th contact. It doesn’t re-draft: Send’s To offers the address.
+      </span>
+    </div>
   );
 }
 
@@ -137,6 +315,9 @@ export function ProspectDrawer({
   onSend,
   line,
   onSaveTemplate,
+  onAddContact,
+  contactNote = null,
+  onConfirmMeeting,
 }: {
   prospect: PipelineProspect;
   onClose: () => void;
@@ -151,13 +332,21 @@ export function ProspectDrawer({
   /** The prospect's line: its screen and templates (Part C). */
   line?: ComposeLine | null;
   onSaveTemplate?: (t: TemplateSave) => Promise<void>;
+  /** "Add recipient" (A3); absent hides the form. */
+  onAddContact?: (c: ContactAdd) => Promise<void>;
+  contactNote?: ContactNote | null;
+  /** Part D: the stage move to Meeting, with the calendar note. */
+  onConfirmMeeting?: () => Promise<void>;
 }) {
   const [note, setNote] = useState('');
   const [confirm, setConfirm] = useState<SuppressionStage | null>(null);
+  // 'idle' | 'posting' | 'posted', or the error message.
+  const [meeting, setMeeting] = useState('idle');
 
   useEffect(() => {
     setNote('');
     setConfirm(null);
+    setMeeting('idle');
   }, [prospect.id]);
 
   useEffect(() => {
@@ -196,6 +385,32 @@ export function ProspectDrawer({
               {prospect.days_in_stage != null && <Chip tone="muted">{prospect.days_in_stage} d in stage</Chip>}
               <EngagementChips p={prospect} />
             </div>
+            {proposesMeeting(prospect) && (
+              <div className="flex flex-wrap items-center gap-1.5" data-meeting-proposal>
+                <MeetingChip p={prospect} />
+                {onConfirmMeeting && (
+                  <SmallButton
+                    tone="success"
+                    disabled={meeting === 'posting' || meeting === 'posted'}
+                    title="Move this card to Meeting"
+                    onClick={() => {
+                      setMeeting('posting');
+                      onConfirmMeeting().then(
+                        () => setMeeting('posted'),
+                        (e: unknown) => setMeeting(e instanceof Error ? e.message : 'Confirm failed'),
+                      );
+                    }}
+                  >
+                    <CalendarCheck size={11} /> Confirm
+                  </SmallButton>
+                )}
+                {meeting !== 'idle' && meeting !== 'posting' && (
+                  <span className="text-[11px]" role="status">
+                    {meeting === 'posted' ? 'Confirmed; the card moves at the next refresh.' : meeting}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="flex flex-wrap gap-3 text-[11.5px]" style={{ color: 'var(--color-accent)' }}>
               {prospect.website && <ExtLink url={prospect.website}>Website</ExtLink>}
               {prospect.athletics_url && <ExtLink url={prospect.athletics_url}>Athletics site</ExtLink>}
@@ -262,10 +477,27 @@ export function ProspectDrawer({
                 <li key={i}>
                   <span style={{ color: 'var(--color-text)' }}>{c.name}</span>
                   {c.title ? ` -- ${c.title}` : ''}
+                  {c.source === 'operator' && (
+                    <>
+                      {' '}
+                      <Chip tone="muted">added by you</Chip>
+                    </>
+                  )}
+                  {c.bounce_hard_at && (
+                    <>
+                      {' '}
+                      <Chip tone="error" title={`Hard bounce ${shortDateTime(c.bounce_hard_at)}`}>
+                        bounced
+                      </Chip>
+                    </>
+                  )}
                   <div className="text-[11.5px]">{[c.email, c.phone].filter(Boolean).join(' · ')}</div>
                 </li>
               ))}
             </ul>
+          )}
+          {onAddContact && !isSuppression(prospect.stage) && (
+            <AddRecipientForm key={prospect.id} contacts={contacts} onAdd={onAddContact} note={contactNote} />
           )}
         </Section>
 
@@ -287,9 +519,6 @@ export function ProspectDrawer({
                 sendConfig={sendConfig}
                 onSend={onSend}
                 onMarkSent={() => onMove('sent', note)}
-                blocked={nextTouch(prospect) === 1 ? null : 'Touch 1 was sent'}
-                status={touchOf(prospect, 1)?.fe_status ?? null}
-                error={touchOf(prospect, 1)?.fe_error ?? null}
                 onSaveTemplate={onSaveTemplate}
               />
             </>

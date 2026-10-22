@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookmarkPlus, ChevronDown } from 'lucide-react';
 import {
+  sendBlock,
   sendRequest,
-  type FeStatus,
+  touchOf,
   type PipelineProspect,
   type Screen,
   type SendConfig,
@@ -63,15 +64,17 @@ export function startingText(
   };
 }
 
-/** Send's To starts at the contact Hermes wrote the draft for, when it is
- * one of the card's contacts with an address; else the first with one. */
+/** Send's To starts at the contact the draft is for, when it is one of the
+ * card's contacts with an address that hasn't hard-bounced; else the first
+ * such contact; else the first with an address (listed, but disabled). */
 export function initialRecipient(
-  contacts: { email?: string | null }[],
+  contacts: { email?: string | null; bounce_hard_at?: string | null }[],
   draftTo: string | null | undefined,
 ): string {
   const want = (draftTo ?? '').toLowerCase();
-  const hit = want ? contacts.find((c) => (c.email ?? '').toLowerCase() === want) : undefined;
-  return hit?.email ?? contacts.find((c) => c.email)?.email ?? '';
+  const live = contacts.filter((c) => c.email && !c.bounce_hard_at);
+  const hit = want ? live.find((c) => (c.email ?? '').toLowerCase() === want) : undefined;
+  return hit?.email ?? live[0]?.email ?? contacts.find((c) => c.email)?.email ?? '';
 }
 
 /**
@@ -99,8 +102,6 @@ export function DraftComposer({
   onMarkSent,
   sentLabel,
   blocked,
-  status,
-  error,
   onSaveTemplate,
   compact = false,
 }: {
@@ -113,16 +114,21 @@ export function DraftComposer({
   onSend?: (req: SendRequest) => Promise<SendResult>;
   onMarkSent: () => void;
   sentLabel?: string;
-  /** Why this touch can't be sent now (already sent, not the next touch). */
+  /** Why this draft can't be sent at all; per-recipient checks (touch
+   * number, bounced, the 3-recipient cap) run here on the chosen To. */
   blocked?: string | null;
-  status?: FeStatus | null;
-  error?: string | null;
   onSaveTemplate?: (t: TemplateSave) => Promise<void>;
   /** The strip: the editor folds away under "Edit". */
   compact?: boolean;
 }) {
   const contacts = prospect.contacts ?? [];
   const [to, setTo] = useState(() => initialRecipient(contacts, draft.to_email));
+  // A card with no address yet picks up the first one Hermes publishes
+  // (an operator's "Add recipient" shows at the next refresh).
+  const firstPick = initialRecipient(contacts, draft.to_email);
+  useEffect(() => {
+    if (!to && firstPick) setTo(firstPick);
+  }, [to, firstPick]);
   const [choice, setChoice] = useState<string>(HERMES);
   const [open, setOpen] = useState(!compact);
   const [saving, setSaving] = useState(false);
@@ -154,6 +160,7 @@ export function DraftComposer({
   }, [choice, base.subject, base.body]);
 
   const sendOn = !!sendConfig?.enabled && !!onSend;
+  const sentTouch = to ? touchOf(prospect, touch, to) : undefined;
   const screened = sendOn ? screenReason(line?.screen, subject, body) : null;
   const sourceId = templateSourceId(base.source);
   const goneTemplate =
@@ -253,9 +260,9 @@ export function DraftComposer({
           sendOn
             ? {
                 config: sendConfig!,
-                blocked: blocked ?? (screened ? `Withheld by the screen: ${screened}` : goneTemplate),
-                status,
-                error,
+                blocked: blocked ?? sendBlock(prospect, to, touch) ?? (screened ? `Withheld by the screen: ${screened}` : goneTemplate),
+                status: sentTouch?.fe_status ?? null,
+                error: sentTouch?.fe_error ?? null,
                 onSend: (recipient, fromName) =>
                   onSend!(
                     sendRequest(prospect, {

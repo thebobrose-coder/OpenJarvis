@@ -31,6 +31,12 @@ export interface Contact {
   title?: string;
   email?: string | null;
   phone?: string | null;
+  /** v0.10.7: who found it; absent reads as `hermes`. */
+  source?: 'hermes' | 'operator';
+  /** v0.10.7: when the operator added it. */
+  added_at?: string | null;
+  /** v0.10.7: this address hard-bounced; it can't be sent to again. */
+  bounce_hard_at?: string | null;
 }
 
 export interface Draft {
@@ -76,6 +82,8 @@ export interface Prospect {
    * `kept_previous`, the new result was worse and the card still shows the
    * earlier research; these fields describe the discarded new result. */
   recheck?: RecheckResult;
+  /** v0.10.6: `meeting` while a `replied` card has a calendar match; Hermes never moves the stage. */
+  proposed_stage?: 'meeting' | null;
 }
 
 export interface Rank {
@@ -162,6 +170,26 @@ export interface Engagement {
   bounced_at?: string | null;
   bounce_kind?: 'hard' | 'soft' | null;
   unsubscribed_at?: string | null;
+  /** v0.10.6: the latest send's timing (Central) and the card's median. */
+  send_dow?: string | null;
+  send_hour?: number | null;
+  send_latency_h?: number | null;
+  median_send_latency_h?: number | null;
+  meeting_detected?: { event_start: string; domain: string; detected_at?: string } | null;
+  /** v0.10.7: one row per address with a touch, in first-sent order. */
+  recipients?: RecipientEngagement[];
+  /** v0.10.7: the address the reply matched. */
+  replied_to_email?: string | null;
+}
+
+export interface RecipientEngagement {
+  to_email: string;
+  touches: number;
+  last_sent_at?: string | null;
+  fe_status?: FeStatus | null;
+  opens?: number;
+  replied_at?: string | null;
+  bounce_hard_at?: string | null;
 }
 
 /** Contract v0.10: delivery status, relayed from Forward Email by OpenJarvis. */
@@ -184,6 +212,13 @@ export interface Touch {
   opens?: number;
   soft_bounces?: number;
   bounce?: string | null;
+  /** v0.10.6: characters the operator changed, and when it went out (Central). */
+  draft_edited?: number | null;
+  send_dow?: string | null;
+  send_hour?: number | null;
+  send_latency_h?: number | null;
+  /** v0.10.7: this recipient's follow-ups wait until then (an auto-reply). */
+  followup_hold_until?: string | null;
 }
 
 export interface FollowUp {
@@ -193,6 +228,8 @@ export interface FollowUp {
   draft: { subject: string; body: string; to_email?: string | null };
   /** v0.10.2: `template:<id>` when Hermes merged the line's default template. */
   draft_source?: string | null;
+  /** v0.10.7: the recipient it is for; null on older proposals (the card's first recipient). */
+  to_email?: string | null;
 }
 
 /** Contract v0.10 `screen`: what a line never says, and its footer. */
@@ -250,6 +287,11 @@ export interface EngagementStats {
   bounce_rate_week?: number | null;
   /** Only past 30 sends. */
   reply_rate_by_send_slot?: { dow: string; hour_bucket: string; sent: number; replied: number }[];
+  /** v0.10.6: rates null until 30 sends carry `draft_edited`. */
+  reply_rate_by_draft_edited?: { sends: number; edited: number | null; unedited: number | null };
+  median_send_latency_h?: number | null;
+  /** v0.10.7: cards sent to more than one address. */
+  cards_multi_recipient?: number;
 }
 
 export interface StatsLine {
@@ -383,23 +425,75 @@ export async function sendProspect(id: number, req: SendRequest): Promise<SendRe
   return res.json();
 }
 
-/** The touch a Send records: 1 for a card never sent, the same touch again
- * after a rejected send, else the one after the last (as the server checks). */
-export function nextTouch(p: Pick<PipelineProspect, 'touches'>): number {
-  const touches = p.touches ?? [];
+/** A card's recipients and their touches (contract v0.10.7): a touch is an
+ * `(n, to_email)` pair, at most 3 distinct addresses per card. */
+export const MAX_RECIPIENTS = 3;
+
+type TouchCard = Pick<PipelineProspect, 'touches' | 'contacts' | 'draft'>;
+
+const lower = (s: string | null | undefined) => (s ?? '').trim().toLowerCase();
+
+/** The card's first recipient: touch 1's address, else the earliest touch's
+ * with one, else the draft's, else the first contact's. */
+export function firstRecipient(p: TouchCard): string {
+  const touches = (p.touches ?? []).filter((t) => t.to_email).sort((a, b) => a.n - b.n || (a.sent_at < b.sent_at ? -1 : 1));
+  return lower(touches[0]?.to_email ?? p.draft?.to_email ?? (p.contacts ?? []).find((c) => c.email)?.email);
+}
+
+/** The touches sent to one address. A touch without `to_email` (an old
+ * stage move) counts as the first recipient's. */
+export function touchesTo(p: TouchCard, to: string): Touch[] {
+  const want = lower(to);
+  const first = firstRecipient(p);
+  return (p.touches ?? []).filter((t) => (t.to_email ? lower(t.to_email) : first) === want);
+}
+
+/** Distinct addresses the card has touches to, in send order. */
+export function recipientsOf(p: TouchCard): string[] {
+  const first = firstRecipient(p);
+  const out: string[] = [];
+  for (const t of p.touches ?? []) {
+    const a = t.to_email ? lower(t.to_email) : first;
+    if (a && !out.includes(a)) out.push(a);
+  }
+  return out;
+}
+
+/** The touch a Send to `to` records: 1 for an address never sent to, the
+ * same touch again after a rejected send, else the one after its last (as
+ * the server checks). */
+export function nextTouch(p: TouchCard, to: string): number {
+  const touches = touchesTo(p, to);
   if (!touches.length) return 1;
   const last = touches.reduce((a, b) => (b.n > a.n ? b : a));
   return last.fe_status === 'rejected' ? last.n : last.n + 1;
 }
 
-export function touchOf(p: Pick<PipelineProspect, 'touches'>, n: number): Touch | undefined {
-  const matches = (p.touches ?? []).filter((t) => t.n === n);
+export function touchOf(p: TouchCard, n: number, to: string): Touch | undefined {
+  const matches = touchesTo(p, to).filter((t) => t.n === n);
   return matches[matches.length - 1];
 }
 
-/** Touch 1's message id, which a follow-up threads on. */
-export function firstMessageId(p: Pick<PipelineProspect, 'touches'>): string | null {
-  return touchOf(p, 1)?.message_id ?? null;
+/** Touch 1's message id to that address, which a follow-up threads on. */
+export function firstMessageId(p: TouchCard, to: string): string | null {
+  return touchOf(p, 1, to)?.message_id ?? null;
+}
+
+/** Why `touch` can't go to `to` now, or null. One click sends to one
+ * address; a 4th distinct address and a hard-bounced one are refused. */
+export function sendBlock(p: TouchCard, to: string, touch: number): string | null {
+  if (!to) return null;
+  const contact = (p.contacts ?? []).find((c) => lower(c.email) === lower(to));
+  if (contact?.bounce_hard_at) return 'This address hard-bounced';
+  const recipients = recipientsOf(p);
+  if (!recipients.includes(lower(to)) && recipients.length >= MAX_RECIPIENTS) {
+    return `This card already went to ${MAX_RECIPIENTS} recipients`;
+  }
+  const expected = nextTouch(p, to);
+  if (touch === expected) return null;
+  // A one-contact card reads as it did before v0.10.7.
+  const where = (p.contacts ?? []).filter((c) => c.email).length > 1 ? ' to this address' : '';
+  return touch < expected ? `Touch ${touch} was sent${where}` : `Touch ${touch} isn’t the next one${where} (${expected})`;
 }
 
 /** `{{field}}` names left in the text; any one blocks Send. */
@@ -411,7 +505,7 @@ export function unresolvedFields(...texts: string[]): string[] {
 
 /** The send route's body for one touch of one prospect. */
 export function sendRequest(
-  p: Pick<PipelineProspect, 'touches'>,
+  p: TouchCard,
   {
     touch,
     to,
@@ -433,10 +527,62 @@ export function sendRequest(
   const req: SendRequest = { to_email: to, subject, body, touch, draft_source: draftSource };
   const name = fromName?.trim();
   if (name) req.from_name = name;
-  const first = touch > 1 ? firstMessageId(p) : null;
+  const first = touch > 1 ? firstMessageId(p, to) : null;
   if (first) req.in_reply_to_message_id = first;
   if (draftEdited != null) req.draft_edited = draftEdited;
   return req;
+}
+
+// ---------------------------------------------------------------------------
+// Add recipient (contract v0.10.7, hq 0018 A3): the bridge queues the contact
+// as `bdcontact__<id>`; Hermes checks free-mail, duplicates, the 3-contact cap
+// and the stage, and drops a refused one with a line in its own log.
+// ---------------------------------------------------------------------------
+
+export interface ContactAdd {
+  name?: string;
+  title?: string;
+  email: string;
+}
+
+export const MAX_CONTACTS = 3;
+export const CONTACT_FIELD_MAX = 120;
+export const EMAIL_MAX = 254;
+const EMAIL_RE = /^[^@\s<>,;"]+@[^@\s<>,;"]+\.[^@\s<>,;"]+$/;
+
+/** Why the form can't be saved, or null (the server checks the same). */
+export function contactProblem(c: ContactAdd): string | null {
+  const email = c.email.trim();
+  if (!email) return 'An email address is required';
+  if (email.length > EMAIL_MAX) return `The address is over ${EMAIL_MAX} characters`;
+  if (!EMAIL_RE.test(email)) return 'Enter one valid email address';
+  if ((c.name ?? '').trim().length > CONTACT_FIELD_MAX) return `The name is over ${CONTACT_FIELD_MAX} characters`;
+  if ((c.title ?? '').trim().length > CONTACT_FIELD_MAX) return `The title is over ${CONTACT_FIELD_MAX} characters`;
+  return null;
+}
+
+/** The body the contact route takes: trimmed, empty fields left out. */
+export function contactBody(c: ContactAdd): ContactAdd {
+  const out: ContactAdd = { email: c.email.trim() };
+  const name = c.name?.trim();
+  const title = c.title?.trim();
+  if (name) out.name = name;
+  if (title) out.title = title;
+  return out;
+}
+
+export async function addContact(id: number, c: ContactAdd): Promise<void> {
+  const res = await apiFetch(`/api/bizdev/prospects/${id}/contact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(contactBody(c)),
+  });
+  if (!res.ok) throw await failure(res, 'Adding the recipient');
+}
+
+/** Hermes confirms an add only by publishing the contact. */
+export function hasContact(p: Pick<PipelineProspect, 'contacts'> | undefined, email: string): boolean {
+  return (p?.contacts ?? []).some((c) => lower(c.email) === lower(email));
 }
 
 // ---------------------------------------------------------------------------

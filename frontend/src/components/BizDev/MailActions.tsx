@@ -75,7 +75,9 @@ export function MailActions({
   const [more, setMore] = useState(false);
   const [fromName, setFromName] = useState(send?.config.sender_name ?? '');
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<SendResult | null>(null);
+  // One click sends to one address: a send to A leaves Send open for B.
+  const [results, setResults] = useState<Record<string, SendResult>>({});
+  const result = results[to.toLowerCase()] ?? null;
   const mailto = buildMailto(to, subject, body);
   const sendOn = !!send?.config.enabled;
 
@@ -108,7 +110,8 @@ export function MailActions({
     setSending(true);
     setStatus(null);
     try {
-      setResult(await send.onSend(to, fromName));
+      const r = await send.onSend(to, fromName);
+      setResults((prev) => ({ ...prev, [to.toLowerCase()]: r }));
     } catch (e: unknown) {
       setStatus(e instanceof Error ? e.message : 'Send failed');
     } finally {
@@ -126,9 +129,11 @@ export function MailActions({
         style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
       >
         {withEmail.map((c) => (
-          <option key={c.email!} value={c.email!}>
-            {c.name}
+          <option key={c.email!} value={c.email!} disabled={sendOn && !!c.bounce_hard_at}>
+            {c.name || c.email}
             {c.title ? ` -- ${c.title}` : ''}
+            {c.name && withEmail.length > 1 ? ` <${c.email}>` : ''}
+            {c.bounce_hard_at ? ' (bounced)' : ''}
           </option>
         ))}
       </select>

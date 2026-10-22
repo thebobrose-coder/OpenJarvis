@@ -1,7 +1,6 @@
 import { CalendarClock } from 'lucide-react';
 import {
-  nextTouch,
-  touchOf,
+  firstRecipient,
   type FollowUp,
   type PipelineProspect,
   type SendConfig,
@@ -9,6 +8,7 @@ import {
   type SendResult,
   type TemplateSave,
 } from '../../lib/bizdev-api';
+import { recipientName } from '../../lib/bizdev-compose';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { Chip } from '../shared/ui';
 import { DraftComposer, type ComposeLine } from './DraftComposer';
@@ -25,7 +25,14 @@ function dueLabel(due: string): { text: string; overdue: boolean } {
   return { text: `due in ${days} d`, overdue: false };
 }
 
-/** Follow-ups Hermes has drafted (touch 2 at 7 days, touch 3 at 14). */
+/** The address a follow-up goes to: its `to_email` (v0.10.7), else the
+ * card's first recipient (a proposal made before v0.10.7). */
+export function followUpRecipient(f: FollowUp, p: PipelineProspect | undefined): string {
+  return f.to_email || f.draft.to_email || (p ? firstRecipient(p) : '');
+}
+
+/** Follow-ups Hermes has drafted (touch 2 at 7 days, touch 3 at 14), one per
+ * card, each for one recipient. */
 export function FollowUpsStrip({
   followUps,
   prospectsById,
@@ -52,9 +59,10 @@ export function FollowUpsStrip({
         {followUps.map((f) => {
           const p = prospectsById.get(f.prospect_id);
           const due = dueLabel(f.due);
+          const to = followUpRecipient(f, p);
           return (
             <article
-              key={`${f.prospect_id}-${f.touch}`}
+              key={`${f.prospect_id}-${f.touch}-${to}`}
               className="flex flex-col gap-2 rounded-lg p-3 min-w-[20rem] max-w-[24rem] shrink-0"
               style={{ background: 'var(--color-bg-secondary)' }}
             >
@@ -63,6 +71,7 @@ export function FollowUpsStrip({
                   {p?.name ?? `Prospect ${f.prospect_id}`}
                 </span>
                 <Chip tone="accent">touch {f.touch}</Chip>
+                {p && to && (p.contacts ?? []).filter((c) => c.email).length > 1 && <Chip tone="muted">to {recipientName(p, to)}</Chip>}
                 <Chip tone={due.overdue ? 'warning' : 'muted'}>{due.text}</Chip>
               </div>
               {p ? (
@@ -70,14 +79,11 @@ export function FollowUpsStrip({
                   prospect={p}
                   line={line}
                   touch={f.touch}
-                  draft={{ ...f.draft, draft_source: f.draft_source }}
+                  draft={{ ...f.draft, to_email: to, draft_source: f.draft_source }}
                   sendConfig={sendConfig}
                   onSend={onSend ? (req) => onSend(f.prospect_id, req) : undefined}
                   sentLabel={`Mark touch ${f.touch} as sent?`}
                   onMarkSent={() => onMarkSent(f.prospect_id, f.touch)}
-                  blocked={nextTouch(p) === f.touch ? null : `Touch ${f.touch} isn’t the next one (${nextTouch(p)})`}
-                  status={touchOf(p, f.touch)?.fe_status ?? null}
-                  error={touchOf(p, f.touch)?.fe_error ?? null}
                   onSaveTemplate={onSaveTemplate}
                   compact
                 />

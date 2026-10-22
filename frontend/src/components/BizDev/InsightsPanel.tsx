@@ -43,6 +43,20 @@ export function EngagementStatsBlock({ e, templates }: { e: EngagementStats; tem
         ))}
         <span>bounces this week {pct(e.bounce_rate_week)}</span>
       </div>
+      {(e.cards_multi_recipient != null || e.reply_rate_by_draft_edited || e.median_send_latency_h !== undefined) && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px]" data-engagement-v0106>
+          {e.cards_multi_recipient != null && <span>Cards with more than one recipient {num(e.cards_multi_recipient)}</span>}
+          {e.reply_rate_by_draft_edited && (
+            <span>
+              Reply rate, edited vs unedited drafts{' '}
+              {e.reply_rate_by_draft_edited.edited == null && e.reply_rate_by_draft_edited.unedited == null
+                ? 'n/a until 30 sends'
+                : `${pct(e.reply_rate_by_draft_edited.edited)} vs ${pct(e.reply_rate_by_draft_edited.unedited)}`}
+            </span>
+          )}
+          {e.median_send_latency_h !== undefined && <span>Median draft-to-send {hours(e.median_send_latency_h)}</span>}
+        </div>
+      )}
       {bySource.length > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px]">
           {bySource.map(([source, rate]) => (

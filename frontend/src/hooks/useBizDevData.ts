@@ -6,6 +6,8 @@ import {
   fetchBizDevFeed,
   archiveTemplate,
   fetchSendConfig,
+  addContact,
+  hasContact,
   moveProspect,
   saveTemplate,
   sendProspect,
@@ -14,6 +16,7 @@ import {
   type BdFeedName,
   type BdPipeline,
   type BizDevFeeds,
+  type ContactAdd,
   type BoardStage,
   type PipelineLine,
   type PipelineProspect,
@@ -112,6 +115,54 @@ export function reconcileMoves(
   return { pending: next, lost };
 }
 
+export const MEETING_NOTE = 'meeting confirmed from the calendar match';
+
+export const CONTACT_NOT_ACCEPTED =
+  'Hermes did not accept this address (free-mail, duplicate, suppressed card or the 3-contact cap).';
+
+/** An "Add recipient" waiting for Hermes to publish the contact. */
+export interface ContactWatch {
+  email: string;
+  at: number;
+  /** Pipeline reads since the save that came late enough to show it. */
+  refreshes: number;
+  state: 'saved' | 'not_accepted';
+}
+
+// Hermes applies bridge flags every 2 minutes; a read sooner than this after
+// the save says nothing yet.
+const CONTACT_MIN_MS = 60 * 1000;
+const CONTACT_REFRESHES = 2;
+
+/** Drop the adds the pipeline now shows; mark one "not accepted" once two
+ * reads came and went without it (Hermes logs a refusal only on its side). */
+export function watchContacts(
+  pipeline: BdPipeline,
+  watch: Record<number, ContactWatch>,
+  now: number,
+): { watch: Record<number, ContactWatch>; changed: boolean; failed: boolean } {
+  const ids = Object.keys(watch);
+  if (!ids.length) return { watch, changed: false, failed: false };
+  const cards = new Map<number, PipelineProspect>();
+  for (const line of pipeline.lines) for (const stage of BOARD_STAGES) for (const p of line.stages?.[stage] ?? []) cards.set(p.id, p);
+  const next: Record<number, ContactWatch> = {};
+  let failed = false;
+  for (const key of ids) {
+    const id = Number(key);
+    const w = watch[id];
+    if (hasContact(cards.get(id), w.email)) continue;
+    if (w.state === 'not_accepted' || now - w.at < CONTACT_MIN_MS) {
+      next[id] = w;
+      continue;
+    }
+    const refreshes = w.refreshes + 1;
+    const state = refreshes >= CONTACT_REFRESHES ? 'not_accepted' : 'saved';
+    if (state === 'not_accepted') failed = true;
+    next[id] = { ...w, refreshes, state };
+  }
+  return { watch: next, changed: true, failed };
+}
+
 // Re-check cap bookkeeping: Hermes allows 5 a day; the count is kept in this
 // browser only, and a refusal from the bridge also disables the button.
 function recheckKey(): string {
@@ -138,6 +189,9 @@ export function useBizDevData() {
   const [researchStatus, setResearchStatus] = useState<'idle' | 'queued' | 'error'>('idle');
   const [notice, setNotice] = useState<string | null>(null);
   const [sendConfig, setSendConfig] = useState<SendConfig | null>(null);
+  const [contactWatch, setContactWatch] = useState<Record<number, ContactWatch>>({});
+  const contactWatchRef = useRef(contactWatch);
+  contactWatchRef.current = contactWatch;
 
   useEffect(() => {
     void fetchSendConfig().then(setSendConfig);
@@ -156,6 +210,11 @@ export function useBizDevData() {
         setPending(next);
         if (lost.length) {
           setNotice(`${lost.length} change${lost.length > 1 ? 's were' : ' was'} not applied by Hermes; try again.`);
+        }
+        const watched = watchContacts(data as BdPipeline, contactWatchRef.current, Date.now());
+        if (watched.changed) {
+          setContactWatch(watched.watch);
+          if (watched.failed) setNotice(CONTACT_NOT_ACCEPTED);
         }
       }
     } catch (e: unknown) {
@@ -220,6 +279,27 @@ export function useBizDevData() {
     [later, loadFeed],
   );
 
+  // Add recipient (A3): the bridge queues it; Hermes publishes the contact
+  // within a pass of bd-requests, or drops it with a reason in its own log.
+  const addRecipient = useCallback(
+    async (id: number, c: ContactAdd) => {
+      await addContact(id, c);
+      setContactWatch((w) => ({ ...w, [id]: { email: c.email.trim(), at: Date.now(), refreshes: 0, state: 'saved' } }));
+      later(RECHECK_MS, () => void loadFeed('bd_pipeline'));
+    },
+    [later, loadFeed],
+  );
+
+  // Part D: Confirm posts the existing stage move with the calendar note and
+  // leaves the board alone; the chip goes when the feed shows the move.
+  const confirmMeeting = useCallback(
+    async (id: number) => {
+      await moveProspect(id, 'meeting', MEETING_NOTE);
+      later(RECHECK_MS, () => void loadFeed('bd_pipeline'));
+    },
+    [later, loadFeed],
+  );
+
   // Templates (Part C) go through the bridge; Hermes applies them within a
   // pass of bd-requests, so the pipeline is read again after one.
   const saveTpl = useCallback(
@@ -277,6 +357,9 @@ export function useBizDevData() {
     move,
     send,
     sendConfig,
+    addRecipient,
+    contactNotes: Object.fromEntries(Object.entries(contactWatch).map(([id, w]) => [id, w.state])) as Record<number, ContactWatch['state']>,
+    confirmMeeting,
     saveTemplate: saveTpl,
     archiveTemplate: archiveTpl,
     recheck,

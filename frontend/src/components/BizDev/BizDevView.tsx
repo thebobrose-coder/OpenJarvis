@@ -2,6 +2,7 @@ import { firstBlock, type SpeechBlock, type SpeechFeed } from '../../lib/voice-a
 import { X } from 'lucide-react';
 import {
   BOARD_STAGES,
+  type ContactAdd,
   type PipelineProspect,
   type SendConfig,
   type SendRequest,
@@ -14,7 +15,7 @@ import { BizDevHeader } from './BizDevHeader';
 import { FollowUpsStrip } from './FollowUpsStrip';
 import { InsightsPanel, ResearchLog } from './InsightsPanel';
 import { PipelineBoard } from './PipelineBoard';
-import { ProspectDrawer } from './ProspectDrawer';
+import { ProspectDrawer, type ContactNote } from './ProspectDrawer';
 import { TemplatesPanel } from './Templates';
 import { Segmented } from '../shared/ui';
 
@@ -44,6 +45,11 @@ export interface BizDevViewProps {
   onTab?: (tab: BizDevTab) => void;
   onSaveTemplate?: (t: TemplateSave) => Promise<void>;
   onArchiveTemplate?: (id: number) => Promise<void>;
+  /** "Add recipient" (A3) and what became of each add, by prospect id. */
+  onAddContact?: (id: number, c: ContactAdd) => Promise<void>;
+  contactNotes?: Record<number, ContactNote>;
+  /** Part D: Confirm on "Meeting on the calendar?". */
+  onConfirmMeeting?: (id: number) => Promise<void>;
 }
 
 /**
@@ -179,6 +185,9 @@ export function BizDevView(props: BizDevViewProps) {
           onSend={props.onSend ? (req) => props.onSend!(open.id, req) : undefined}
           line={compose}
           onSaveTemplate={props.onSaveTemplate}
+          onAddContact={props.onAddContact ? (c) => props.onAddContact!(open.id, c) : undefined}
+          contactNote={props.contactNotes?.[open.id] ?? null}
+          onConfirmMeeting={props.onConfirmMeeting ? () => props.onConfirmMeeting!(open.id) : undefined}
         />
       )}
     </div>

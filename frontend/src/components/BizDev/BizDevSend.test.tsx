@@ -148,14 +148,15 @@ describe('fe_error (v0.10.1)', () => {
 
 describe('send helpers', () => {
   it('nextTouch: 1 when never sent, the same after a rejection, else the next', () => {
-    expect(nextTouch({})).toBe(1);
-    expect(nextTouch({ touches: [{ n: 1, sent_at: 'x', fe_status: 'sent' }] })).toBe(2);
-    expect(nextTouch({ touches: [{ n: 1, sent_at: 'x' }] })).toBe(2); // marked by hand
-    expect(nextTouch({ touches: [{ n: 1, sent_at: 'x', fe_status: 'rejected' }] })).toBe(1);
+    const to = 'a.person@example.edu';
+    expect(nextTouch({ contacts: CONTACTS }, to)).toBe(1);
+    expect(nextTouch({ contacts: CONTACTS, touches: [{ n: 1, sent_at: 'x', fe_status: 'sent' }] }, to)).toBe(2);
+    expect(nextTouch({ contacts: CONTACTS, touches: [{ n: 1, sent_at: 'x' }] }, to)).toBe(2); // marked by hand
+    expect(nextTouch({ contacts: CONTACTS, touches: [{ n: 1, sent_at: 'x', fe_status: 'rejected' }] }, to)).toBe(1);
   });
 
   it('a follow-up carries in_reply_to from touch 1; the From name override is passed', () => {
-    const p = { touches: [{ n: 1, sent_at: 'x', fe_status: 'sent' as const, message_id: FIRST }] };
+    const p = { contacts: CONTACTS, touches: [{ n: 1, sent_at: 'x', fe_status: 'sent' as const, message_id: FIRST }] };
     const req = sendRequest(p, { touch: 2, to: 'a.person@example.edu', fromName: ' S. Sender ', subject: 's', body: 'b' });
     expect(req).toEqual({
       to_email: 'a.person@example.edu',

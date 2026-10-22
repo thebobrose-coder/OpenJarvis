@@ -251,7 +251,9 @@ describe('engagement (Part B)', () => {
     expect(engagementChips({ opens: 2, proxy_opens: 2 })).toEqual([]);
     expect(engagementChips({ opens: 3, proxy_opens: 2 })).toEqual(['opened']);
     expect(engagementChips({ reply_kind: 'reply_other_sender' })).toEqual(['referred']);
-    expect(engagementChips({ reply_kind: 'auto_reply', bounce_kind: 'soft' })).toEqual(['auto_reply', 'bounced']);
+    // Bounced follows the stage (v0.10.7): a bounce_kind alone isn't one.
+    expect(engagementChips({ reply_kind: 'auto_reply', bounce_kind: 'soft' })).toEqual(['auto_reply']);
+    expect(engagementChips({ bounce_kind: 'hard' }, 'bounced')).toEqual(['bounced']);
     expect(engagementChips({ reply_kind: 'reply', unsubscribed_at: '2026-10-21T00:00:00Z' })).toEqual(['replied', 'unsubscribed']);
     const chips = renderToStaticMarkup(<EngagementChips p={{ engagement: { opens: 3, proxy_opens: 1, reply_kind: 'reply' } }} />);
     expect(chips).toContain('Opened');

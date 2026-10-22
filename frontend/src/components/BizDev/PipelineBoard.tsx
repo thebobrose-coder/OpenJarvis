@@ -3,7 +3,14 @@ import type { SpeechBlock, SpeechFeed } from '../../lib/voice-api';
 import { useMemo, useState, type DragEvent } from 'react';
 import { KanbanSquare } from 'lucide-react';
 import { BOARD_STAGES, rankBreakdown, rankNumber, type BoardStage, type PipelineProspect } from '../../lib/bizdev-api';
-import { ENGAGEMENT_CHIP_LABELS, engagementChips, type EngagementChipKind } from '../../lib/bizdev-compose';
+import {
+  ENGAGEMENT_CHIP_LABELS,
+  engagementChips,
+  meetingDay,
+  proposesMeeting,
+  recipientName,
+  type EngagementChipKind,
+} from '../../lib/bizdev-compose';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num } from '../shared/format';
 import { Chip, Quiet, Segmented, Select, type Tone } from '../shared/ui';
@@ -47,6 +54,18 @@ export const NO_FILTERS: BoardFilters = {
 export const MIN_RANK_OPTIONS = [0, 0.5, 1, 2, 3, 4, 5];
 const RANK_ACCENT = 3;
 
+/** Part D: "Meeting on the calendar?" with the event's day and the matched domain. */
+export function MeetingChip({ p }: { p: Pick<PipelineProspect, 'stage' | 'proposed_stage' | 'engagement'> }) {
+  if (!proposesMeeting(p)) return null;
+  const m = p.engagement?.meeting_detected;
+  const detail = m ? [meetingDay(m.event_start), m.domain].filter(Boolean).join(' · ') : '';
+  return (
+    <Chip tone="accent" title="A calendar event has a guest from this prospect; confirm to move it to Meeting">
+      Meeting on the calendar?{detail ? ` ${detail}` : ''}
+    </Chip>
+  );
+}
+
 export function matches(p: PipelineProspect, f: BoardFilters): boolean {
   return (
     (!f.association || p.association === f.association) &&
@@ -83,18 +102,28 @@ const ENGAGEMENT_TONE: Record<EngagementChipKind, Tone> = {
   unsubscribed: 'warning',
 };
 
-/** Part B chips: Opened (a non-proxy open), Replied, Referred, Auto-reply,
- * Bounced, Unsubscribed. */
-export function EngagementChips({ p }: { p: Pick<PipelineProspect, 'engagement'> }) {
+function chipTitle(k: EngagementChipKind, p: Pick<PipelineProspect, 'engagement'> & Partial<Pick<PipelineProspect, 'contacts'>>): string | undefined {
   const e = p.engagement;
+  if (k === 'opened') return `${e?.opens ?? 0} opens, ${e?.proxy_opens ?? 0} by a mail proxy`;
+  if ((k === 'replied' || k === 'referred') && e?.replied_to_email) return `Reply to ${recipientName(p, e.replied_to_email)}`;
+  return undefined;
+}
+
+/** Part B chips: Opened (a non-proxy open), Replied, Referred, Auto-reply,
+ * Bounced (the card's stage), Unsubscribed; "N recipients" once a card went
+ * to more than one address (v0.10.7). */
+export function EngagementChips({ p }: { p: Pick<PipelineProspect, 'engagement'> & Partial<Pick<PipelineProspect, 'stage' | 'contacts'>> }) {
+  const e = p.engagement;
+  const recipients = e?.recipients?.length ?? 0;
   return (
     <>
-      {engagementChips(e).map((k) => (
-        <Chip
-          key={k}
-          tone={ENGAGEMENT_TONE[k]}
-          title={k === 'opened' ? `${e?.opens ?? 0} opens, ${e?.proxy_opens ?? 0} by a mail proxy` : undefined}
-        >
+      {recipients > 1 && (
+        <Chip tone="muted" title="Addresses this card was sent to">
+          {recipients} recipients
+        </Chip>
+      )}
+      {engagementChips(e, p.stage).map((k) => (
+        <Chip key={k} tone={ENGAGEMENT_TONE[k]} title={chipTitle(k, p)}>
           {ENGAGEMENT_CHIP_LABELS[k]}
         </Chip>
       ))}
@@ -158,6 +187,7 @@ function ProspectCard({ p, onOpen, onDragging }: { p: PipelineProspect; onOpen: 
         {p.signals?.platform && <Chip tone="muted">{p.signals.platform}</Chip>}
         {!hasContacts(p) && <Chip tone="warning">no contacts</Chip>}
         <EngagementChips p={p} />
+        <MeetingChip p={p} />
         {p.recheck?.kept_previous && (
           <Chip tone="muted" title="A re-check came back worse; the earlier research was kept">
             re-checked
