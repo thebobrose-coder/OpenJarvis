@@ -322,6 +322,38 @@ contract v0.10.2, Parts B and C).
   - The page's `draft_edited` count travels in the flag's `meta`.
 - **New setting:** `BD_SENDER_TITLE` fills `{{sender_title}}`.
 
+**Business Development: Add recipient and several recipients per card**
+(hq decision 0018 A3 + A2, contract v0.10.7).
+- **Add recipient:** the drawer's form (name, title, email) saves an
+  address as a contact on any card that isn't suppressed. It is open on a
+  card with no contacts, behind a link otherwise, and off at 3 contacts.
+  `POST /api/bizdev/prospects/<id>/contact` (local only) checks one valid
+  address of at most 254 characters and that the card is on the board, then
+  forwards it to the bridge. Hermes decides the rest (free-mail, duplicates,
+  the cap) and publishes the contact within about 2 minutes. The drawer says
+  so when an address hasn't appeared after two refreshes. Contacts show
+  "added by you" and "bounced" tags.
+- **One address per send, up to three per card:** Send's To lists the
+  card's contacts, with a hard-bounced one listed but disabled. A touch is
+  now a (number, address) pair: the touch number, the reply thread and the
+  merge fields follow the chosen recipient, and sending to one address
+  leaves Send open for the others. The server refuses a 4th address, a
+  hard-bounced one, and a touch already sent to that address unless it was
+  rejected. Its send log stores a hash of each address, never the address.
+  A follow-up goes to the recipient Hermes proposed it for.
+- **Engagement by recipient:** with more than one recipient, the timeline
+  groups each address's touches and bounce, and every touch shows when it
+  went out (Central), the time from draft to send and the characters
+  edited. The card's Bounced chip follows the stage, since one address can
+  hard-bounce while the card stays Sent. Replied names who replied, and a
+  card sent to several addresses shows "N recipients".
+- **Meeting on the calendar?** A replied card that Hermes matches to an
+  upcoming calendar event shows the chip with the event's day and domain.
+  The drawer's Confirm posts the existing move to Meeting.
+- **Insights:** cards with more than one recipient, reply rate for edited
+  vs unedited drafts ("n/a" until 30 sends), and median draft-to-send.
+- A one-contact card from an older feed renders exactly as before.
+
 **Breaking list: cloud notices move to Stack health** (hq decision 0017
 A3.1). Quiet `aws` / `google` rows (below severity 9) no longer show in the
 sidebar's breaking list; they are dropped before the three-row cap, and the
@@ -398,6 +430,31 @@ the card renders the patch's `images [{media_id, url, before, after}]` instead.
   (desktop) blocked them.
 
 Copy patches and unknown fields render as before.
+
+**Trading view: a third sleeve and easier reading.** Still read-only.
+- **Any number of sleeves:** one card fills the row, three share it, and two
+  or four go two by two, so no card sits alone on a row. Cards lay out by
+  their own width. The futures sleeve has its label, icon and place after
+  crypto.
+- **Equity curve in % from start** by default, each sleeve from its own
+  first night so sleeves of different sizes compare on one axis, with a
+  zero line. "$" shows the amounts, and the hover gives both.
+- **Today's change** on each sleeve's Equity tile (equity against the day's
+  start equity, colored by sign), and each position's **distance from mark
+  to stop** under the stop price (amber under 2%, "past" once through it).
+- **The kill switch, x402 spend and nightly fold to one line** while all is
+  fine (both kill indicators clear, spend under 80% of the cap, a report
+  and an off-VHD copy), keeping the approval link and a Details toggle.
+  Anything off shows the full cards.
+- **One color per sleeve** across the header, the card icons, the curve and
+  the events.
+- **Events without repeats:** a SIGNAL shows as the reason under the
+  PROPOSAL it led to, an ALERT already in the Alerts panel isn't listed
+  twice, and back-to-back repeats are one row with a count. Columns align,
+  and a filter shows one sleeve.
+- **Local time throughout:** ticks, the UTC entry window, the nightly run
+  and the timestamps inside the trader's own text show in local time, with
+  the original on hover. "Next due" is relative ("in 2 h 10 min").
 
 **Trading view** (`/trading`, hq decision 0014, contract v1.6). A read-only
 view of the x402 paper trader from two Hermes feeds, `trading_status` (the
@@ -609,6 +666,10 @@ Forward Email's first answer (`queued`) while Hermes recorded the touch as
 `pending`, so that answer was never relayed; the log now starts at `pending`.
 A mail the recipient's server refused comes back as `bounced`, which the poll
 kept raw and never relayed; it now relays as `rejected`.
+
+**A sleeve with one night on the equity curve was invisible.** Dots were
+drawn only when the whole curve had a single day, so a new sleeve's first
+point drew nothing. A lone point is now dotted.
 
 **Unknown `/api/...` paths return 404.** The SPA catch-all answered any
 unmatched GET, API paths included, with `index.html` and a 200; retired or
