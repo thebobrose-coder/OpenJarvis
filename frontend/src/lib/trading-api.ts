@@ -162,11 +162,18 @@ export type TradingFeedName = 'trading_status' | 'trading_day';
 
 export const STALE_AFTER_S = 15 * 60;
 export const DRAWDOWN_LIMIT_PCT = 8;
-export const SLEEVE_ORDER = ['equities', 'crypto'];
+export const SLEEVE_ORDER = ['equities', 'crypto', 'futures'];
 export const CURVE_DAYS = 90;
 
-export const SLEEVE_LABEL: Record<string, string> = { equities: 'Equities', crypto: 'Crypto' };
-export const sleeveLabel = (name: string) => SLEEVE_LABEL[name] ?? name;
+export const SLEEVE_LABEL: Record<string, string> = { equities: 'Equities', crypto: 'Crypto', futures: 'Futures' };
+/** "Equities"; an unknown sleeve by its own name, capitalised. */
+export const sleeveLabel = (name: string) => SLEEVE_LABEL[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
+
+/** The sleeve cards' width: one fills the row, three share it, two or four
+ * (and more) go two by two, so no row is ever left with one orphan card. */
+export function sleeveSize(count: number): 'full' | 'half' | 'trio' {
+  return count <= 1 ? 'full' : count === 3 ? 'trio' : 'half';
+}
 
 /** Sleeves in the fixed order, then any others by name. */
 export function sleeveNames(status: Pick<TradingStatus, 'sleeves'> | null | undefined): string[] {

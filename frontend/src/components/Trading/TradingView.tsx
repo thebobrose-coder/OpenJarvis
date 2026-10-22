@@ -1,4 +1,4 @@
-import { sleeveNames, type TradingConfig, type TradingDay, type TradingStatus } from '../../lib/trading-api';
+import { SLEEVE_ORDER, sleeveNames, sleeveSize, type TradingConfig, type TradingDay, type TradingStatus } from '../../lib/trading-api';
 import type { FeedState } from '../../hooks/useTradingData';
 import { Quiet } from '../shared/ui';
 import { EquityCurve } from './EquityCurve';
@@ -20,13 +20,15 @@ export const NO_SLEEVES = 'Hermes could not read the trader’s status export, s
 
 /**
  * The Trading page (hq/decisions/0014): the x402 paper trader as it reports
- * itself, read-only. Header strip, kill switch, x402 spend, nightly, the two
- * sleeve cards, the equity curve, events and alerts. Pure: everything comes
+ * itself, read-only. Header strip, kill switch, x402 spend, nightly, one
+ * card per sleeve, the equity curve, events and alerts. Pure: everything comes
  * in through props (see TradingPage).
  */
 export function TradingView({ status, day, config, now }: TradingViewProps) {
   const s = status.data;
   const sleeves = sleeveNames(s);
+  // Before the first status, a placeholder per known sleeve.
+  const shown = sleeves.length ? sleeves : SLEEVE_ORDER;
   const loading = status.loading;
   const error = status.error;
   return (
@@ -47,8 +49,16 @@ export function TradingView({ status, day, config, now }: TradingViewProps) {
             <Quiet>{NO_SLEEVES}</Quiet>
           </div>
         ) : (
-          (sleeves.length ? sleeves : ['equities', 'crypto']).map((name) => (
-            <SleeveCard key={name} name={name} sleeve={s?.sleeves?.[name] ?? null} loading={loading} error={error} now={now} />
+          shown.map((name) => (
+            <SleeveCard
+              key={name}
+              name={name}
+              sleeve={s?.sleeves?.[name] ?? null}
+              loading={loading}
+              error={error}
+              now={now}
+              size={sleeveSize(shown.length)}
+            />
           ))
         )}
       </div>

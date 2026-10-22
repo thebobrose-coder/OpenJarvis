@@ -14,6 +14,12 @@ const shortDate = (d: string) => {
   return Number.isNaN(t) ? d : new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
 
+/** A series with a single point (a new sleeve's first night) draws no line,
+ * so its point is dotted to show at all. */
+export function lonePoint(rows: CurveRow[], key: string): boolean {
+  return rows.filter((r) => r[key] != null).length === 1;
+}
+
 /** The curve as a table, for the accessibility pass and for reading exact values. */
 function CurveTable({ rows, sleeves }: { rows: CurveRow[]; sleeves: string[] }) {
   return (
@@ -66,6 +72,7 @@ export function EquityCurve({ day, loading, error }: { day: TradingDay | null; l
   const sleeves = curveSleeves(rows);
   const hasMarked = rows.some((r) => sleeves.some((s) => r[s] != null));
   const single = rows.length === 1;
+  const lone = (key: string) => single || lonePoint(rows, key);
   return (
     <DashboardPanel
       icon={TrendingUp}
@@ -138,7 +145,7 @@ export function EquityCurve({ day, loading, error }: { day: TradingDay | null; l
                       name={hasMarked ? s : `${s}_realized`}
                       stroke={SERIES_VAR[i] ?? SERIES_VAR[0]}
                       strokeWidth={2}
-                      dot={single ? { r: 4 } : false}
+                      dot={lone(hasMarked ? s : `${s}_realized`) ? { r: 4 } : false}
                       activeDot={{ r: 4 }}
                       connectNulls
                       isAnimationActive={false}
@@ -155,7 +162,7 @@ export function EquityCurve({ day, loading, error }: { day: TradingDay | null; l
                         strokeOpacity={0.7}
                         strokeWidth={1.5}
                         strokeDasharray="4 3"
-                        dot={single ? { r: 3 } : false}
+                        dot={lone(`${s}_realized`) ? { r: 3 } : false}
                         activeDot={{ r: 3 }}
                         connectNulls
                         isAnimationActive={false}

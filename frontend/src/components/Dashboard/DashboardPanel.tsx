@@ -1,12 +1,14 @@
 import type { ComponentType, ReactNode } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 
-export type PanelSize = 'hero' | 'tall' | 'third' | 'half' | 'wide' | 'quarter' | 'full';
+export type PanelSize = 'hero' | 'tall' | 'third' | 'trio' | 'half' | 'wide' | 'quarter' | 'full';
 
 const SIZE_CLASSES: Record<PanelSize, string> = {
   hero: 'col-span-12 lg:col-span-5',
   tall: 'col-span-12 md:col-span-6 lg:col-span-4',
   third: 'col-span-12 sm:col-span-6 lg:col-span-4',
+  /** A row of exactly three: stacked, then three across, never 2 + 1. */
+  trio: 'col-span-12 lg:col-span-4',
   half: 'col-span-12 lg:col-span-6',
   wide: 'col-span-12 lg:col-span-8',
   quarter: 'col-span-6 lg:col-span-3',

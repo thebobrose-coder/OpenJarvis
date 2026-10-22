@@ -9,14 +9,16 @@ import {
   killCause,
   killWhen,
   recentEvents,
+  sleeveLabel,
   sleeveNames,
+  sleeveSize,
   staleness,
   type Sleeve,
   type TradingDay,
   type TradingStatus,
 } from '../../lib/trading-api';
 import type { FeedState } from '../../hooks/useTradingData';
-import { EquityCurve } from './EquityCurve';
+import { EquityCurve, lonePoint } from './EquityCurve';
 import { EventsPanel, eventTone } from './EventsPanel';
 import { AWS_FLAG_RULE, KillCard, LOCAL_FILE_RULE, NO_URL_HINT } from './KillCard';
 import { Meter } from './Meter';
@@ -269,10 +271,10 @@ describe('TradingView (0014, read-only)', () => {
     const base = { product: 'SAMPLE-A', side: 'LONG', size: '4', entry: '101.25', stop: '96.00', held_days: 1 };
     const marked = card([{ ...base, mark: '108.42', mark_at: '2026-10-06T12:00:00Z' }]);
     expect([...marked.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])).toEqual(['Product', 'Side', 'Size', 'Entry', 'Mark', 'Stop', 'Held']);
-    expect(marked).toMatch(/<td class="pr-3" title="as of \d{2}:00 [^"]+ · 5 h ago" data-mark="true">108\.42<\/td>/);
+    expect(marked).toMatch(/<td class="pr-2 @md:pr-3" title="as of \d{2}:00 [^"]+ · 5 h ago" data-mark="true">108\.42<\/td>/);
     // A null mark, and an older file with neither key: a dash and no hover.
     for (const html of [card([{ ...base, mark: null, mark_at: null }]), card([base])]) {
-      expect(html).toMatch(/<td class="pr-3" data-mark="true">—<\/td>/);
+      expect(html).toMatch(/<td class="pr-2 @md:pr-3" data-mark="true">—<\/td>/);
     }
     // Crypto with nothing held keeps its empty line.
     expect(renderToStaticMarkup(<SleeveCard name="crypto" sleeve={sleeve({ positions: [] })} now={NOW} />)).toContain('No open positions.');
@@ -347,5 +349,44 @@ describe('TradingView (0014, read-only)', () => {
     expect(renderToStaticMarkup(<EventsPanel status={null} />)).toContain('No events reported.');
     expect(renderToStaticMarkup(<Meter value={2} limit={8} label="x" />)).toContain('data-meter-ratio="0.250"');
     expect(renderToStaticMarkup(<Meter value={null} limit={8} label="x" />)).toContain('data-meter-ratio="0.000"');
+  });
+
+  it('three sleeves share one row, futures labelled; two and four go two by two', () => {
+    const three = status({
+      sleeves: { ...status().sleeves, futures: sleeve({ equity: '20000.00', positions: [], open_orders: [], ticks: { interval_s: 300 } }) },
+    });
+    expect(sleeveNames(three)).toEqual(['equities', 'crypto', 'futures']);
+    const html = view(three);
+    // Three trio panels, each holding one sleeve card; no half-width sleeve.
+    expect(html.match(/rounded-xl p-4 col-span-12 lg:col-span-4"/g)?.length).toBe(3);
+    expect(html.match(/data-sleeve-card="/g)?.length).toBe(3);
+    expect(view(status())).not.toContain('rounded-xl p-4 col-span-12 lg:col-span-4"');
+    expect(html).toContain('>Futures<');
+    expect(html).toContain('lucide-candlestick-chart');
+    expect(sleeveSize(1)).toBe('full');
+    expect(sleeveSize(2)).toBe('half');
+    expect(sleeveSize(3)).toBe('trio');
+    expect(sleeveSize(4)).toBe('half');
+    expect(sleeveLabel('metals')).toBe('Metals');
+  });
+
+  it('a sleeve card lays out by its own width: tiles 2 by 2 when narrow, positions scroll', () => {
+    const html = renderToStaticMarkup(<SleeveCard name="equities" sleeve={sleeve()} size="trio" />);
+    expect(html).toContain('@container');
+    expect(html).toContain('grid grid-cols-2 @md:grid-cols-4 gap-2');
+    expect(html).toMatch(/<div class="overflow-x-auto"><table[^>]*data-positions/);
+  });
+
+  it('a sleeve with one night on the curve is dotted, so it shows', () => {
+    const rows = curveRows({
+      ...DAY,
+      curve: [
+        { date: '2026-10-20', sleeves: { equities: { equity: null, realized_equity: '10000' } } },
+        { date: '2026-10-21', sleeves: { equities: { equity: null, realized_equity: '10010' }, futures: { equity: null, realized_equity: '20000' } } },
+      ],
+    });
+    expect(curveSleeves(rows)).toEqual(['equities', 'futures']);
+    expect(lonePoint(rows, 'futures_realized')).toBe(true);
+    expect(lonePoint(rows, 'equities_realized')).toBe(false);
   });
 });
