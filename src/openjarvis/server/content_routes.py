@@ -4,7 +4,8 @@ content-strategist feeds, plus the actions the contract allows.
 Hermes proposes seed topics per Foundry property and measures what was
 posted; the operator decides here, and only approved proposals reach
 Foundry's intake (hq/contracts/openjarvis-hermes.md v1.0 §2, "Content
-loop"; v1.9-v1.10 add `content_winners` and the target-query edits). These
+loop"; v1.9-v1.10 add `content_winners` and the target-query edits; v1.14
+adds the video flag on approvals and seeds). These
 routes pass the five feeds through like the Business Development routes
 (`data` unwrapped, tagged with `generated_at` / `age_seconds` / `stale`) and
 forward only the allowlisted actions, validated as the bridge validates them.
@@ -53,6 +54,8 @@ PROPOSAL_ACTIONS = frozenset({"approve", "reject"})
 PROMPT_ACTIONS = frozenset({"used", "dismissed"})
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _BODY_MAX = 2048
+# v1.14.1: the bridge reads approve bodies up to 4096 bytes.
+_APPROVE_BODY_MAX = 4096
 # Per-field limits, as the bridge enforces them.
 _APPROVE_LIMITS = {"topic": 600, "pillar_hint": 120, "product_handle": 120, "note": 500}
 _REJECT_LIMITS = {"note": 500}
@@ -60,7 +63,11 @@ _REJECT_LIMITS = {"note": 500}
 # shape only; Hermes validates the queries with Foundry's intake rules).
 _QUERIES_MAX = 3
 _QUERY_MAX_LEN = 80
-# v1.16 operator seeds: the bridge's own keys and caps (motion keys wait for v1.14).
+# v1.14: the video flag, the beat and the operator's own clip.
+_MOTIONS = ("always", "never")
+_MOTION_BRIEF_MAX = 240
+_VIDEO_KEY_MAX = 512
+# v1.16 operator seeds: the bridge's own keys and caps (v1.14 adds the motion keys).
 _SEED_BODY_MAX = 16 * 1024
 _SEED_TEXT_MAX = 6000
 _SEED_KEYS = frozenset(
@@ -74,6 +81,9 @@ _SEED_KEYS = frozenset(
         "target_queries",
         "priority",
         "source_prompt_id",
+        "motion",
+        "motion_brief",
+        "video_asset_key",
     }
 )
 _SEED_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
@@ -179,6 +189,37 @@ def _targeting(body: dict | None) -> dict[str, Any]:
     return out
 
 
+def _motion(body: dict | None) -> dict[str, Any]:
+    """Pop `motion` ("always", "never" or null for the lane default),
+    `motion_brief` (<= 240; "" removes it) and `video_asset_key` (<= 512; ""
+    removes it) off the body, shape-checked with the bridge's 400 texts. Hermes
+    checks where a clip may render, the beat's wording and the key's prefix."""
+    out: dict[str, Any] = {}
+    if not body:
+        return out
+    if "motion" in body:
+        motion = body.pop("motion")
+        if motion is not None and motion not in _MOTIONS:
+            raise HTTPException(
+                status_code=400, detail='motion: "always", "never" or null'
+            )
+        out["motion"] = motion
+    for key, limit in (
+        ("motion_brief", _MOTION_BRIEF_MAX),
+        ("video_asset_key", _VIDEO_KEY_MAX),
+    ):
+        if key not in body:
+            continue
+        value = body.pop(key)
+        if not isinstance(value, str) or len(value) > limit:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{key}: a string of at most {limit} characters",
+            )
+        out[key] = value.strip()
+    return out
+
+
 def _seed_body(body: dict | None) -> dict[str, Any]:
     """A seed, shape-checked as the bridge checks it: only its keys, empty
     optional fields dropped. Hermes validates lanes, pillars, phrases and names."""
@@ -223,6 +264,8 @@ def _seed_body(body: dict | None) -> dict[str, Any]:
             raise bad(f"url must start https:// and be at most {_URL_MAX} characters")
         seed["url"] = url
     seed.update(_targeting(body))
+    # A seed has no stored values to keep or clear: the defaults are left out.
+    seed.update({k: v for k, v in _motion(body).items() if v})
     if not seed.get("target_queries"):
         seed.pop("target_queries", None)
     prompt_id = body.get("source_prompt_id")
@@ -316,12 +359,12 @@ async def decide_proposal(
     _check_id(proposal_id)
     if action not in PROPOSAL_ACTIONS:
         raise HTTPException(status_code=400, detail="Invalid action")
-    raw = await _json_body(request)
     if action == "approve":
-        targeting = _targeting(raw)
-        body = {**(_fields(raw, _APPROVE_LIMITS) or {}), **targeting} or None
+        raw = await _json_body(request, _APPROVE_BODY_MAX)
+        extra = {**_targeting(raw), **_motion(raw)}
+        body = {**(_fields(raw, _APPROVE_LIMITS) or {}), **extra} or None
     else:
-        body = _fields(raw, _REJECT_LIMITS)
+        body = _fields(await _json_body(request), _REJECT_LIMITS)
     return await _post(f"/content/proposals/{proposal_id}/{action}", body)
 
 

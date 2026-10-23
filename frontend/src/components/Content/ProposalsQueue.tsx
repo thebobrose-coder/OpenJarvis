@@ -2,11 +2,12 @@ import { SpeakButton } from '../shared/SpeakButton';
 import type { SpeechBlock } from '../../lib/voice-api';
 import { useState } from 'react';
 import { Check, ClipboardList, Pencil, Plus, X } from 'lucide-react';
-import { LIMITS, type ApprovalEdits, type Proposal } from '../../lib/content-api';
+import { LIMITS, type ApprovalEdits, type Proposal, type PropertyMotion } from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { shortDateTime } from '../shared/format';
 import { Chip, ExtIcon, ExtLink, Quiet, Segmented, SmallButton } from '../shared/ui';
 import { PROPOSAL_STATUS, humanize, isRefusal, isSeedRefusal, laneLabel } from './format';
+import { VideoChip, VideoFields, assetKeyProblem, beatEnabled, choiceOf, motionOf, videoAllowed, type MotionChoice } from './Video';
 
 const OTHER = '__other__';
 /** A proposal without a priority gets the default (v1.10). */
@@ -38,8 +39,17 @@ export const queriesEditable = (p: Proposal) => 'target_queries' in p && (p.lane
 /** What the operator changed, as the approve body: unchanged fields are left
  * out so an untouched approval isn't recorded as an edit. */
 export function approvalEdits(
-  proposal: Pick<Proposal, 'topic' | 'pillar_hint' | 'product_handle' | 'target_queries' | 'priority'>,
-  form: { topic: string; pillar: string; product: string; note: string; queries?: string[]; priority?: number },
+  proposal: Pick<Proposal, 'topic' | 'pillar_hint' | 'product_handle' | 'target_queries' | 'priority' | 'motion' | 'motion_brief'>,
+  form: {
+    topic: string;
+    pillar: string;
+    product: string;
+    note: string;
+    queries?: string[];
+    priority?: number;
+    /** v1.14, only where the Video control shows. */
+    video?: { choice: MotionChoice; beat: string; assetKey: string; removeKey?: boolean };
+  },
 ): ApprovalEdits {
   const edits: ApprovalEdits = {};
   const topic = form.topic.trim();
@@ -56,6 +66,17 @@ export function approvalEdits(
     if (now.join('\n') !== was.join('\n')) edits.target_queries = now;
   }
   if (form.priority != null && form.priority !== (proposal.priority ?? DEFAULT_PRIORITY)) edits.priority = form.priority;
+  if (form.video) {
+    const motion = motionOf(form.video.choice);
+    if (motion !== (proposal.motion ?? null)) edits.motion = motion;
+    // The beat is only sent while a clip can render; "" removes it.
+    const beat = form.video.beat.trim().slice(0, LIMITS.motion_brief);
+    if (beatEnabled(form.video.choice) && beat !== (proposal.motion_brief ?? '').trim()) edits.motion_brief = beat;
+    // The key is never prefilled: a typed one is sent, "" only to remove the current one.
+    const key = form.video.assetKey.trim();
+    if (key) edits.video_asset_key = key.slice(0, LIMITS.video_asset_key);
+    else if (form.video.removeKey) edits.video_asset_key = '';
+  }
   return edits;
 }
 
@@ -126,16 +147,19 @@ export function QueryChips({ queries, onChange }: { queries: string[]; onChange:
 }
 
 /** Inline edit before approving: topic, pillar, product, target queries,
- * priority and a note. */
+ * priority, video (v1.14, where the property's lane allows a clip) and a note. */
 export function ApproveEditor({
   proposal,
   pillars,
+  motion = null,
   onApprove,
   onCancel,
 }: {
   proposal: Proposal;
   /** This property's pillars, from the proposals already present. */
   pillars: string[];
+  /** The property's seedbank `motion`; null shows no Video control. */
+  motion?: PropertyMotion | null;
   onApprove: (edits: ApprovalEdits) => void;
   onCancel: () => void;
 }) {
@@ -151,6 +175,12 @@ export function ApproveEditor({
   const pillar = pillarChoice === OTHER ? pillarText : pillarChoice;
   const editQueries = queriesEditable(proposal);
   const editPriority = 'priority' in proposal;
+  const editVideo = videoAllowed(motion, proposal.lane, proposal.content_type);
+  const [choice, setChoice] = useState<MotionChoice>(choiceOf(proposal.motion));
+  const [beat, setBeat] = useState(proposal.motion_brief ?? '');
+  const [assetKey, setAssetKey] = useState('');
+  const [removeKey, setRemoveKey] = useState(false);
+  const keyBad = editVideo && assetKeyProblem(assetKey, proposal.property_id) != null;
 
   return (
     <div
@@ -229,6 +259,21 @@ export function ApproveEditor({
           )}
         </div>
       )}
+      {editVideo && (
+        <VideoFields
+          propertyId={proposal.property_id}
+          release={motion?.release}
+          choice={choice}
+          onChoice={setChoice}
+          beat={beat}
+          onBeat={setBeat}
+          assetKey={assetKey}
+          onAssetKey={setAssetKey}
+          currentKey={proposal.video_key}
+          removeKey={removeKey}
+          onRemoveKey={setRemoveKey}
+        />
+      )}
       <label className="flex flex-col gap-1">
         <Label>Note</Label>
         <textarea
@@ -247,7 +292,7 @@ export function ApproveEditor({
       <div className="flex gap-1.5">
         <SmallButton
           tone="accent"
-          disabled={!topic.trim()}
+          disabled={!topic.trim() || keyBad}
           onClick={() =>
             onApprove(
               approvalEdits(proposal, {
@@ -257,6 +302,7 @@ export function ApproveEditor({
                 note,
                 queries: editQueries ? queries : undefined,
                 priority: editPriority ? priority : undefined,
+                video: editVideo ? { choice, beat, assetKey, removeKey } : undefined,
               }),
             )
           }
@@ -372,6 +418,7 @@ function ProposalMeta({ proposal, showProperty }: { proposal: Proposal; showProp
         </Chip>
       )}
       {'priority' in proposal && <PriorityChip priority={proposal.priority} />}
+      <VideoChip motion={proposal.motion} brief={proposal.motion_brief} />
       <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
         {shortDateTime(proposal.created_at)}
       </span>
@@ -382,6 +429,7 @@ function ProposalMeta({ proposal, showProperty }: { proposal: Proposal; showProp
 export function ProposalCard({
   proposal,
   pillars,
+  motion = null,
   showProperty,
   onApprove,
   onReject,
@@ -389,6 +437,8 @@ export function ProposalCard({
 }: {
   proposal: Proposal;
   pillars: string[];
+  /** The property's seedbank `motion` (v1.14). */
+  motion?: PropertyMotion | null;
   showProperty: boolean;
   onApprove: (edits: ApprovalEdits) => void;
   onReject: (note: string) => void;
@@ -425,7 +475,13 @@ export function ProposalCard({
       <Evidence proposal={proposal} />
 
       {mode === 'edit' ? (
-        <ApproveEditor proposal={proposal} pillars={pillars} onApprove={onApprove} onCancel={() => setMode('idle')} />
+        <ApproveEditor
+          proposal={proposal}
+          pillars={pillars}
+          motion={motion}
+          onApprove={onApprove}
+          onCancel={() => setMode('idle')}
+        />
       ) : mode === 'reject' ? (
         <RejectConfirm onReject={onReject} onCancel={() => setMode('idle')} />
       ) : (
@@ -481,6 +537,7 @@ export function DecidedItem({
         <OriginChip proposal={proposal} />
         <Chip>{laneLabel(proposal.lane)}</Chip>
         {proposal.approval?.edited && <Chip tone="muted">edited</Chip>}
+        <VideoChip motion={proposal.motion} brief={proposal.motion_brief} />
         <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
           {shortDateTime(proposal.decided_at ?? proposal.created_at)}
         </span>
@@ -509,6 +566,7 @@ export function ProposalsQueue({
   pending,
   recent,
   pillarsByProperty,
+  motionByProperty = {},
   showProperty,
   onApprove,
   onReject,
@@ -523,6 +581,8 @@ export function ProposalsQueue({
   pending: Proposal[];
   recent: Proposal[];
   pillarsByProperty: Record<string, string[]>;
+  /** v1.14: each property's seedbank `motion`, for the Video control. */
+  motionByProperty?: Record<string, PropertyMotion | null>;
   showProperty: boolean;
   onApprove: (id: string, edits: ApprovalEdits) => void;
   onReject: (id: string, note: string) => void;
@@ -574,6 +634,7 @@ export function ProposalsQueue({
                     key={p.id}
                     proposal={p}
                     pillars={pillarsByProperty[p.property_id] ?? []}
+                    motion={motionByProperty[p.property_id] ?? null}
                     showProperty={showProperty}
                     onApprove={(edits) => onApprove(p.id, edits)}
                     onReject={(note) => onReject(p.id, note)}

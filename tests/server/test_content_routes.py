@@ -274,16 +274,115 @@ def test_reject_never_forwards_targeting():
     assert seen == []
 
 
-def test_body_over_2kb_is_rejected():
+def test_approve_body_over_4kb_is_rejected():
+    # v1.14.1: the bridge reads approve bodies up to 4096 bytes (was 2048).
+    raw = json.dumps({"topic": "é" * 590, "note": "é" * 490})
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        ok = client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            content=json.dumps({"topic": "x" * 600, "motion_brief": "b" * 240}),
+            headers={"Content-Type": "application/json"},
+        )
+        over = client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            content=raw.encode() + b" " * 4096,
+            headers={"Content-Type": "application/json"},
+        )
+
+    assert ok.status_code == 202
+    assert over.status_code == 413
+    assert len(seen) == 1
+
+
+def test_reject_body_stays_at_2kb():
     client, patcher, seen = _client(_queued)
     with patcher:
         resp = client.post(
-            f"/api/content/proposals/{UUID}/approve",
-            content=json.dumps({"topic": "x" * 2100}),
+            f"/api/content/proposals/{UUID}/reject",
+            content=json.dumps({"note": "x" * 2100}),
             headers={"Content-Type": "application/json"},
         )
 
     assert resp.status_code == 413
+    assert seen == []
+
+
+# -- v1.14 the video flag ----------------------------------------------------
+
+
+def test_approve_forwards_the_motion_fields():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            json={
+                "motion": "always",
+                "motion_brief": "  A rover tips over a dune crest  ",
+                "video_asset_key": "assets/alpha/clip.mp4",
+            },
+        )
+        client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            json={"motion": None, "motion_brief": "", "video_asset_key": ""},
+        )
+        client.post(f"/api/content/proposals/{UUID}/approve", json={"motion": "never"})
+
+    assert json.loads(seen[0].content) == {
+        "motion": "always",
+        "motion_brief": "A rover tips over a dune crest",
+        "video_asset_key": "assets/alpha/clip.mp4",
+    }
+    # null clears to the lane default; "" removes the beat and the key.
+    assert json.loads(seen[1].content) == {
+        "motion": None,
+        "motion_brief": "",
+        "video_asset_key": "",
+    }
+    assert json.loads(seen[2].content) == {"motion": "never"}
+
+
+@pytest.mark.parametrize(
+    "body, detail",
+    [
+        ({"motion": "maybe"}, 'motion: "always", "never" or null'),
+        ({"motion": True}, 'motion: "always", "never" or null'),
+        (
+            {"motion_brief": None},
+            "motion_brief: a string of at most 240 characters",
+        ),
+        (
+            {"motion_brief": "b" * 241},
+            "motion_brief: a string of at most 240 characters",
+        ),
+        (
+            {"video_asset_key": None},
+            "video_asset_key: a string of at most 512 characters",
+        ),
+        (
+            {"video_asset_key": "k" * 513},
+            "video_asset_key: a string of at most 512 characters",
+        ),
+    ],
+)
+def test_bad_motion_shapes_are_400_and_never_forwarded(body, detail):
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(f"/api/content/proposals/{UUID}/approve", json=body)
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == detail
+    assert seen == []
+
+
+def test_reject_never_forwards_motion():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(
+            f"/api/content/proposals/{UUID}/reject", json={"motion": "never"}
+        )
+
+    assert resp.status_code == 400
     assert seen == []
 
 
@@ -432,6 +531,32 @@ def test_minimal_seed_sends_only_what_was_given():
     assert json.loads(seen[0].content) == body
 
 
+def test_seed_passes_the_motion_fields_and_drops_the_defaults():
+    video = {
+        "motion": "always",
+        "motion_brief": " A rover tips over a dune crest ",
+        "video_asset_key": "assets/alpha/clip.mp4",
+    }
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        assert (
+            client.post("/api/content/seeds", json={**SEED, **video}).status_code == 202
+        )
+        defaults = {"motion": None, "motion_brief": "", "video_asset_key": ""}
+        assert (
+            client.post("/api/content/seeds", json={**SEED, **defaults}).status_code
+            == 202
+        )
+
+    sent = json.loads(seen[0].content)
+    assert sent["motion"] == "always"
+    assert sent["motion_brief"] == "A rover tips over a dune crest"
+    assert sent["video_asset_key"] == "assets/alpha/clip.mp4"
+    assert not {"motion", "motion_brief", "video_asset_key"} & set(
+        json.loads(seen[1].content)
+    )
+
+
 def test_seed_of_6000_characters_passes():
     text = "x" * 6000
     client, patcher, seen = _client(_minted)
@@ -457,9 +582,10 @@ def test_seed_over_16kb_is_413_and_never_forwarded():
 @pytest.mark.parametrize(
     "change",
     [
-        {"motion": "always"},
-        {"motion_brief": "a beat"},
-        {"video_asset_key": "k"},
+        {"motion": "maybe"},
+        {"motion_brief": None},
+        {"motion_brief": "b" * 241},
+        {"video_asset_key": "k" * 513},
         {"topic": "x"},
         {"property_id": ""},
         {"property_id": "../x"},

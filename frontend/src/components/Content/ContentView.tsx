@@ -1,7 +1,7 @@
 import { firstBlock } from '../../lib/voice-api';
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import type { ApprovalEdits, PromptAction, SeedBody, VerifyResult } from '../../lib/content-api';
+import type { ApprovalEdits, PromptAction, PropertyMotion, SeedBody, VerifyResult } from '../../lib/content-api';
 import { applyDecisions, type ContentFeedStates, type PendingDecision } from '../../hooks/useContentData';
 import { ContentHeader } from './ContentHeader';
 import { ALL_PROPERTIES, matchesProperty } from './format';
@@ -97,6 +97,9 @@ export function ContentView(props: ContentViewProps) {
     if (!list.includes(p.pillar_hint)) list.push(p.pillar_hint);
   }
 
+  const motionByProperty: Record<string, PropertyMotion | null> = {};
+  for (const p of seedbank?.properties ?? []) motionByProperty[p.id] = p.motion ?? null;
+
   return (
     <div className="max-w-6xl mx-auto">
       <ContentHeader
@@ -161,6 +164,7 @@ export function ContentView(props: ContentViewProps) {
           pending={pending}
           recent={recent}
           pillarsByProperty={pillarsByProperty}
+          motionByProperty={motionByProperty}
           showProperty={showProperty}
           onApprove={props.onApprove}
           onReject={props.onReject}

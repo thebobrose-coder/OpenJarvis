@@ -1,7 +1,8 @@
 /**
  * Content page data: Hermes's content-strategist feeds, proxied by
  * /api/content (hq/contracts/openjarvis-hermes.md v1.0 §2, "Content loop";
- * v1.9 measurement by page and `content_winners`, v1.10 target queries).
+ * v1.9 measurement by page and `content_winners`, v1.10 target queries,
+ * v1.14 the video flag).
  *
  * Hermes proposes seed topics per Foundry property and measures what was
  * posted; the operator decides here. Only approved proposals reach
@@ -95,6 +96,15 @@ export interface ThesisLane {
   flags: ThesisFlag[] | null;
 }
 
+/** v1.14: where a clip may render, echoed from the bundle; "g1" clips stop at G1. */
+export interface PropertyMotion {
+  lanes: string[];
+  release: 'preview' | 'g1' | 'instagram' | string;
+}
+
+/** v1.14: "always" or "never"; null is the lane default. */
+export type Motion = 'always' | 'never' | null;
+
 export interface SeedbankProperty {
   id: string;
   channels?: string[];
@@ -106,6 +116,8 @@ export interface SeedbankProperty {
   pillars?: { id: string; name: string }[];
   /** v1.16.1: the property's store; null when it has none (verify then answers 502). */
   storefront?: { store: string; host: string } | null;
+  /** v1.14: null (or absent) means no Video control on this property. */
+  motion?: PropertyMotion | null;
   /** Absent means active. */
   active?: boolean;
 }
@@ -160,6 +172,12 @@ export interface Proposal {
   proposed_by?: 'content-strategist' | 'operator' | string;
   /** v1.16: the thesis prompt a seed came from. */
   source_prompt_id?: string | null;
+  // v1.14, the video flag.
+  motion?: Motion;
+  /** The beat: what happens in the frame, at most 240. */
+  motion_brief?: string | null;
+  /** Only ever the operator's own asset key. */
+  video_key?: string | null;
 }
 
 export interface ThesisPrompt {
@@ -242,6 +260,10 @@ export interface Post {
   target_queries?: string[] | null;
   priority?: number | null;
   targets_hit?: TargetsHit | null;
+  /** v1.14: set only for a published Reel. */
+  video_key?: string | null;
+  /** v1.14: why a clip didn't post, verbatim (old texts run to ~300 characters). */
+  motion_skipped_reason?: string | null;
 }
 
 /** A short-form lane's feed page, reported once for the lane (v1.9). */
@@ -333,6 +355,7 @@ export interface WinnerPost {
   engagement?: number | null;
   target_queries?: string[] | null;
   targets_hit?: TargetsHit | null;
+  video_key?: string | null;
 }
 
 export interface PageQuery {
@@ -365,6 +388,17 @@ export interface WinnersProperty {
   /** Top Search Console queries per content page (28 days). */
   page_queries?: Record<string, PageQuery[]> | null;
   targets?: { all?: TargetsRollup | null; by_pillar?: TargetsRollup[] | null } | null;
+  /** v1.14: Reels ranked among themselves; null before the first Reel. */
+  video?: VideoWinners | null;
+}
+
+/** Reels have no page score yet, so `top` and `bottom` stay empty for now. */
+export interface VideoWinners {
+  posts: number;
+  unmeasured?: number | null;
+  top: WinnerPost[];
+  bottom: WinnerPost[];
+  by_pillar: RollupRow[];
 }
 
 /** Weekly, Sundays (v1.9). */
@@ -403,6 +437,12 @@ export interface ApprovalEdits {
   target_queries?: string[];
   /** v1.10: 1-3, or null for the default. */
   priority?: number | null;
+  /** v1.14: null clears to the lane default. */
+  motion?: Motion;
+  /** v1.14: "" removes it (null is a 400). */
+  motion_brief?: string;
+  /** v1.14, operator-only: "" removes it (null is a 400). */
+  video_asset_key?: string;
 }
 
 export const LIMITS = {
@@ -412,6 +452,8 @@ export const LIMITS = {
   product_handle: 120,
   target_queries: 3,
   target_query: 80,
+  motion_brief: 240,
+  video_asset_key: 512,
 } as const;
 
 async function failure(res: Response, what: string): Promise<Error> {
@@ -457,8 +499,8 @@ export async function researchMore(): Promise<void> {
 }
 
 /**
- * The operator's own seed (v1.16): exactly the bridge's keys, nothing else
- * (it answers 400 to any other, motion keys included until v1.14).
+ * The operator's own seed (v1.16): exactly the bridge's twelve keys, nothing
+ * else (it answers 400 to any other).
  */
 export interface SeedBody {
   property_id: string;
@@ -472,6 +514,10 @@ export interface SeedBody {
   target_queries?: string[];
   priority?: number | null;
   source_prompt_id?: string;
+  /** v1.14; left out for the lane default. */
+  motion?: 'always' | 'never';
+  motion_brief?: string;
+  video_asset_key?: string;
 }
 
 export const SEED_LIMITS = { text: 6000, url: 500, title: 120 } as const;

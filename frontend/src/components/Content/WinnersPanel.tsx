@@ -1,10 +1,11 @@
 import { Trophy } from 'lucide-react';
-import type { ContentWinners, PageQuery, TargetsRollup, WinnerPost, WinnersProperty } from '../../lib/content-api';
+import type { ContentWinners, PageQuery, TargetsRollup, VideoWinners, WinnerPost, WinnersProperty } from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num, shortDateTime } from '../shared/format';
 import { Chip, ExtLink, Quiet } from '../shared/ui';
 import { matchesProperty, pct } from './format';
 import { Purchases, SectionLabel, TargetsHitLine } from './Measurement';
+import { ReelMarks } from './Video';
 
 /** "4 of 9 queries shown (44%) · 2 in the top 20, across 3 posts". */
 export function targetsLine(t: TargetsRollup): string {
@@ -56,6 +57,11 @@ function Entry({ post, queries }: { post: WinnerPost; queries?: PageQuery[] }) {
       </span>
       <TargetsHitLine post={post} />
       <Queries queries={queries} />
+      {post.video_key && (
+        <span className="flex items-center gap-1">
+          <ReelMarks videoKey={post.video_key} />
+        </span>
+      )}
     </li>
   );
 }
@@ -72,6 +78,47 @@ function Column({ label, posts, property, empty }: { label: string; posts: Winne
             <Entry key={p.post_id} post={p} queries={p.site_path ? property.page_queries?.[p.site_path] : undefined} />
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+/** "3 Reels, 2 unmeasured". */
+export function reelsLine(v: VideoWinners): string {
+  return `${num(v.posts)} Reel${v.posts === 1 ? '' : 's'}${v.unmeasured ? `, ${num(v.unmeasured)} unmeasured` : ''}`;
+}
+
+/**
+ * Reels, ranked among themselves (v1.14): a Reel never displaces a still.
+ * Reels have no page score yet, so the lists stay empty until they fill;
+ * engagement by pillar shows meanwhile.
+ */
+export function ReelsList({ video, property }: { video: VideoWinners; property: WinnersProperty }) {
+  const top = video.top ?? [];
+  const bottom = video.bottom ?? [];
+  const pillars = video.by_pillar ?? [];
+  return (
+    <div className="flex flex-col gap-1.5" aria-label="Reels">
+      <SectionLabel>Reels</SectionLabel>
+      <span className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+        {reelsLine(video)}
+      </span>
+      {pillars.length > 0 && (
+        <ul className="flex flex-col gap-0.5 pl-2 text-[11.5px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+          {pillars.map((r, i) => (
+            <li key={i}>
+              {String(r.pillar ?? '—')}: {num(r.posts)} Reel{r.posts === 1 ? '' : 's'} · avg eng. {num(r.avg_engagement, 1)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {top.length + bottom.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Column label="Top Reels" posts={top} property={property} empty="No scored Reels yet." />
+          <Column label="Bottom Reels" posts={bottom} property={property} empty="Not enough scored Reels yet." />
+        </div>
+      ) : (
+        <Quiet>Reels aren’t ranked yet: they have no page score.</Quiet>
       )}
     </div>
   );
@@ -94,6 +141,7 @@ function PropertyWinners({ property, showProperty }: { property: WinnersProperty
         <Column label="Winners" posts={property.top ?? []} property={property} empty="No scored long-form posts yet." />
         <Column label="Laggards" posts={property.bottom ?? []} property={property} empty="Not enough scored posts for laggards yet." />
       </div>
+      {property.video && <ReelsList video={property.video} property={property} />}
       {lanePages.length > 0 && (
         <div className="flex flex-col gap-1">
           <SectionLabel>Feed pages: top queries</SectionLabel>

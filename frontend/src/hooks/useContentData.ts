@@ -65,9 +65,13 @@ export function applyDecisions(
       continue;
     }
     const approved = d.action === 'approve';
+    // The approve body's names, as the feed will show them (v1.14).
+    const { video_asset_key, motion_brief, ...edits } = approved ? d.edits ?? {} : {};
     moved.push({
       ...p,
-      ...(approved ? d.edits ?? {} : {}),
+      ...edits,
+      ...(motion_brief !== undefined ? { motion_brief: motion_brief || null } : {}),
+      ...(video_asset_key !== undefined ? { video_key: video_asset_key || null } : {}),
       status: approved ? 'approved' : 'rejected',
       decided_at: new Date(d.at).toISOString(),
       note: approved ? d.edits?.note ?? null : d.note ?? null,

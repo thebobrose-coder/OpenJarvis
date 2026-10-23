@@ -5,6 +5,7 @@ import { num, shortDateTime } from '../shared/format';
 import { Chip, Quiet, Tile, type Tone } from '../shared/ui';
 import { humanize, matchesProperty, pct } from './format';
 import { LanePagesTable, LongFormTable, MeasurementTiles, NotJoinedYet, SectionLabel, Td, Th, isLongForm } from './Measurement';
+import { ReelMarks } from './Video';
 
 const RECENT_MAX = 30;
 
@@ -101,6 +102,11 @@ function RecentPosts({ posts, showProperty }: { posts: (Post & { property: strin
                       {p.content_type ? `${p.content_type} · ` : ''}
                       {shortDateTime(p.distributed_at)}
                     </span>
+                    {(p.video_key || p.motion_skipped_reason) && (
+                      <span className="flex flex-wrap items-center gap-1">
+                        <ReelMarks videoKey={p.video_key} skipped={p.motion_skipped_reason} />
+                      </span>
+                    )}
                   </div>
                 </Td>
                 <Td>{p.pillar ?? '—'}</Td>

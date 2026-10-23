@@ -15,6 +15,7 @@ import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { Chip, Segmented, SmallButton } from '../shared/ui';
 import { PROPOSAL_STATUS, humanize, isSeedRefusal, laneLabel } from './format';
 import { QueryChips, cleanQueries } from './ProposalsQueue';
+import { VideoFields, assetKeyProblem, beatEnabled, videoAllowed, type MotionChoice } from './Video';
 
 const PRIORITIES = ['1', '2', '3'] as const;
 const DEFAULT_PRIORITY = 2;
@@ -45,6 +46,10 @@ export const isShortForm = (lane: Lane) => lane.lane === 'short' || lane.content
 
 /** Target queries: long-form only, and never on an operator-only thesis (v1.10, 0008 A1 D6). */
 export const queriesAllowed = (lane: Lane) => !isShortForm(lane) && !lane.operator_only;
+
+/** The Video control (v1.14): a lane the property's bundle `motion` lists, never long-form or the thesis. */
+export const seedVideoAllowed = (prop: SeedbankProperty | undefined, lane: Lane | undefined) =>
+  !!prop && !!lane && videoAllowed(prop.motion, lane.lane, lane.content_type);
 
 /** The title Foundry's intake takes for a long-form seed: line 1, at most 120 characters. */
 export function seedTitle(text: string): string {
@@ -86,6 +91,8 @@ export interface SeedForm {
   queries: string[];
   priority: number;
   source_prompt_id?: string;
+  /** v1.14, only where the Video control shows. */
+  video?: { choice: MotionChoice; beat: string; assetKey: string };
 }
 
 /** The body Queue sends: only the bridge's keys, empty fields left out. */
@@ -98,6 +105,13 @@ export function seedBody(form: SeedForm, lane: Lane): SeedBody {
   if (queries.length) body.target_queries = queries;
   body.priority = form.priority;
   if (form.source_prompt_id) body.source_prompt_id = form.source_prompt_id;
+  if (form.video) {
+    // The lane default, an empty beat and an empty key are left out.
+    if (form.video.choice !== 'default') body.motion = form.video.choice;
+    const beat = form.video.beat.trim();
+    if (beat && beatEnabled(form.video.choice)) body.motion_brief = beat;
+    if (form.video.assetKey.trim()) body.video_asset_key = form.video.assetKey.trim();
+  }
   return body;
 }
 
@@ -115,6 +129,8 @@ export function seedProblems(form: SeedForm, lane: Lane | undefined, verify: Ver
   if (url && (!url.startsWith('https://') || url.length > SEED_LIMITS.url)) {
     out.push(`URL must start https:// and be at most ${SEED_LIMITS.url} characters.`);
   }
+  const keyProblem = form.video ? assetKeyProblem(form.video.assetKey, form.property_id) : null;
+  if (keyProblem) out.push(keyProblem);
   return out;
 }
 
@@ -227,6 +243,9 @@ export function SeedComposer({
   const [url, setUrl] = useState(draft.url);
   const [queries, setQueries] = useState<string[]>([]);
   const [priority, setPriority] = useState(DEFAULT_PRIORITY);
+  const [choice, setChoice] = useState<MotionChoice>('default');
+  const [beat, setBeat] = useState('');
+  const [assetKey, setAssetKey] = useState('');
   const [phase, setPhase] = useState<'editing' | 'sending' | 'sent'>(initialSent ? 'sent' : 'editing');
   const [sentId, setSentId] = useState<string | null>(initialSent);
   const [error, setError] = useState<string | null>(null);
@@ -235,6 +254,7 @@ export function SeedComposer({
   const lanes = prop ? seedableLanes(prop) : [];
   const lane = lanes.find((l) => l.lane === laneKey);
   const pillars = prop?.pillars ?? [];
+  const showVideo = seedVideoAllowed(prop, lane);
   const fromPrompt = !!draft.source_prompt_id && propertyId === draft.property_id;
   const form: SeedForm = {
     property_id: propertyId,
@@ -245,6 +265,7 @@ export function SeedComposer({
     queries,
     priority,
     source_prompt_id: fromPrompt ? draft.source_prompt_id : undefined,
+    video: showVideo ? { choice, beat, assetKey } : undefined,
   };
   const checked = verify === 'checking' ? null : verify;
   const problems = seedProblems(form, lane, checked);
@@ -415,6 +436,19 @@ export function SeedComposer({
               />
             </div>
           </div>
+
+          {showVideo && prop && (
+            <VideoFields
+              propertyId={prop.id}
+              release={prop.motion?.release}
+              choice={choice}
+              onChoice={setChoice}
+              beat={beat}
+              onBeat={setBeat}
+              assetKey={assetKey}
+              onAssetKey={setAssetKey}
+            />
+          )}
 
           <details>
             <summary className="cursor-pointer text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
