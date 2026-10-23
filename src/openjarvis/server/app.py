@@ -33,6 +33,7 @@ from openjarvis.server.store_performance_routes import store_performance_router
 from openjarvis.server.trading_routes import trading_router
 from openjarvis.server.upload_router import router as upload_router
 from openjarvis.server.voice_routes import voice_router
+from openjarvis.server.waiting_routes import waiting_router
 from openjarvis.server.weather_routes import weather_router
 
 logger = logging.getLogger(__name__)
@@ -558,6 +559,7 @@ def create_app(
     app.include_router(content_router)
     app.include_router(trading_router)
     app.include_router(stack_router)
+    app.include_router(waiting_router)
     app.include_router(voice_router)
     app.include_router(hermes_usage_router)
     app.include_router(upload_router)

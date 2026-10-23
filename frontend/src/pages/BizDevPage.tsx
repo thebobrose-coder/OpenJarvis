@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router';
 import { BizDevView, type BizDevTab } from '../components/BizDev/BizDevView';
 import { RECHECK_DAILY_CAP, useBizDevData } from '../hooks/useBizDevData';
 
@@ -8,6 +9,17 @@ export function BizDevPage() {
   const [line, setLine] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
   const [tab, setTab] = useState<BizDevTab>('pipeline');
+  // ?focus=<prospect id> from "Waiting on you": open that card's drawer.
+  const location = useLocation();
+  const [params] = useSearchParams();
+  const focus = params.get('focus');
+  useEffect(() => {
+    const id = Number(focus);
+    if (focus && Number.isInteger(id)) {
+      setTab('pipeline');
+      setOpenId(id);
+    }
+  }, [focus, location.key]);
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-10">

@@ -29,7 +29,7 @@ export function ThesisPrompts({
         </p>
         <ul className="flex flex-col gap-2.5 max-h-[75vh] overflow-y-auto pr-1">
           {prompts.map((t) => (
-            <li key={t.id} className="flex flex-col gap-1.5 rounded-lg p-3" style={{ background: 'var(--color-bg-secondary)' }}>
+            <li key={t.id} id={`prompt-${t.id}`} className="flex flex-col gap-1.5 rounded-lg p-3" style={{ background: 'var(--color-bg-secondary)' }}>
               <div className="flex flex-wrap items-center gap-1.5">
                 {showProperty && <Chip tone="accent">{t.property_id}</Chip>}
                 <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>

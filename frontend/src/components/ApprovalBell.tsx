@@ -1,45 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, CheckCircle, ChevronDown, ChevronUp, Clock, XCircle } from 'lucide-react';
-import { approveAction, denyAction, fetchPendingApprovals } from '../lib/api';
-import type { PendingApproval } from '../lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
+import { Bell } from 'lucide-react';
+import { useWaiting } from '../lib/WaitingContext';
+import { groupItems, linkFor, staleSources, type WaitingItem } from '../lib/waiting-api';
+import { WaitingListView } from './Waiting/WaitingListView';
 
-const TIER_STYLES: Record<string, { label: string; color: string; bg: string }> = {
-  trivial: { label: 'Trivial', color: 'var(--color-text-secondary)', bg: 'color-mix(in srgb, var(--color-text-secondary) 10%, transparent)' },
-  low:     { label: 'Low',     color: '#3b82f6',                    bg: 'rgba(59,130,246,0.12)' },
-  medium:  { label: 'Medium',  color: 'var(--color-warning)',       bg: 'color-mix(in srgb, var(--color-warning) 12%, transparent)' },
-  high:    { label: 'High',    color: 'var(--color-error)',         bg: 'color-mix(in srgb, var(--color-error) 12%, transparent)' },
-};
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
+/**
+ * The header bell (hq 0020 P1): its count is everything waiting on the
+ * operator, from the shared "Waiting on you" poll (the Dashboard panel shows
+ * the same list). The dropdown groups rows by kind; a row opens the page
+ * that holds its action, or the Decisions drawer. The upstream "Agent
+ * approvals" source was dormant here and is replaced, not stacked.
+ */
 export function ApprovalBell() {
-  const [approvals, setApprovals] = useState<PendingApproval[]>([]);
+  const { waiting, setDecisionsOpen } = useWaiting();
   const [open, setOpen] = useState(false);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [processing, setProcessing] = useState<Record<string, boolean>>({});
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const load = useCallback(async () => {
-    try {
-      setApprovals(await fetchPendingApprovals());
-    } catch {
-      // backend may not be running yet
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 10000);
-    return () => clearInterval(id);
-  }, [load]);
+  const navigate = useNavigate();
+  const count = waiting?.counts.total ?? 0;
 
   useEffect(() => {
     if (!open) return;
@@ -52,35 +30,21 @@ export function ApprovalBell() {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const handleApprove = async (id: string) => {
-    setProcessing(p => ({ ...p, [id]: true }));
-    try {
-      await approveAction(id);
-      setApprovals(prev => prev.filter(a => a.id !== id));
-    } finally {
-      setProcessing(p => ({ ...p, [id]: false }));
+  const onOpen = (item: WaitingItem) => {
+    setOpen(false);
+    if (item.opens === 'decisions') setDecisionsOpen(true);
+    else {
+      const href = linkFor(item);
+      if (href) navigate(href);
     }
   };
-
-  const handleDeny = async (id: string) => {
-    setProcessing(p => ({ ...p, [id]: true }));
-    try {
-      await denyAction(id);
-      setApprovals(prev => prev.filter(a => a.id !== id));
-    } finally {
-      setProcessing(p => ({ ...p, [id]: false }));
-    }
-  };
-
-  const count = approvals.length;
 
   return (
     <div ref={containerRef} className="fixed top-2 right-3 z-40">
-      {/* Bell trigger */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
         className="relative p-2 rounded-lg transition-colors cursor-pointer"
-        title="Agent approvals"
+        title="Waiting on you"
         style={{
           color: count > 0 ? 'var(--color-text)' : 'var(--color-text-secondary)',
           background: open
@@ -101,18 +65,16 @@ export function ApprovalBell() {
         )}
       </button>
 
-      {/* Dropdown */}
       {open && (
         <div
           className="absolute right-0 top-full mt-1 rounded-xl shadow-2xl overflow-hidden flex flex-col"
           style={{
-            width: '340px',
-            maxHeight: '500px',
+            width: '360px',
+            maxHeight: '520px',
             background: 'var(--color-bg-secondary)',
             border: '1px solid var(--color-border)',
           }}
         >
-          {/* Header */}
           <div
             className="flex items-center justify-between px-4 py-3 shrink-0"
             style={{ borderBottom: '1px solid var(--color-border)' }}
@@ -120,142 +82,29 @@ export function ApprovalBell() {
             <div className="flex items-center gap-2">
               <Bell size={13} style={{ color: 'var(--color-accent)' }} />
               <span className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
-                Agent Approvals
+                Waiting on you
               </span>
             </div>
-            {count > 0 && (
-              <span
-                className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                style={{
-                  background: 'color-mix(in srgb, var(--color-error) 12%, transparent)',
-                  color: 'var(--color-error)',
-                }}
-              >
-                {count} pending
-              </span>
-            )}
+            <button
+              onClick={() => {
+                setOpen(false);
+                setDecisionsOpen(true);
+              }}
+              className="text-[11px] cursor-pointer"
+              style={{ color: 'var(--color-accent)', background: 'transparent', border: 'none' }}
+            >
+              Decisions
+            </button>
           </div>
-
-          {/* Body */}
-          <div className="overflow-y-auto flex-1">
-            {count === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-2">
-                <CheckCircle size={26} style={{ color: 'var(--color-text-secondary)', opacity: 0.35 }} />
-                <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-                  No pending approvals
-                </span>
-              </div>
-            ) : (
-              approvals.map((action, idx) => {
-                const tier = TIER_STYLES[action.tier] ?? TIER_STYLES.medium;
-                const isExpanded = !!expanded[action.id];
-                const isLoading = !!processing[action.id];
-                const hasPayload = Object.keys(action.payload ?? {}).length > 0;
-
-                return (
-                  <div
-                    key={action.id}
-                    className="px-4 py-3"
-                    style={{
-                      borderBottom: idx < count - 1 ? '1px solid var(--color-border)' : 'none',
-                    }}
-                  >
-                    {/* Row 1: action type + tier + time */}
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span
-                        className="text-[11px] font-mono font-semibold"
-                        style={{ color: 'var(--color-accent)' }}
-                      >
-                        {action.action_type}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                          style={{ background: tier.bg, color: tier.color }}
-                        >
-                          {tier.label}
-                        </span>
-                        <span
-                          className="text-[10px] flex items-center gap-0.5"
-                          style={{ color: 'var(--color-text-secondary)' }}
-                        >
-                          <Clock size={9} />
-                          {timeAgo(action.created_at)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Description */}
-                    <p
-                      className="text-[13px] mb-2.5 leading-snug"
-                      style={{ color: 'var(--color-text)' }}
-                    >
-                      {action.description}
-                    </p>
-
-                    {/* Expandable payload */}
-                    {hasPayload && (
-                      <button
-                        className="flex items-center gap-1 text-[11px] mb-2 cursor-pointer"
-                        style={{ color: 'var(--color-text-secondary)' }}
-                        onClick={() =>
-                          setExpanded(e => ({ ...e, [action.id]: !e[action.id] }))
-                        }
-                      >
-                        {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                        {isExpanded ? 'Hide details' : 'View details'}
-                      </button>
-                    )}
-
-                    {isExpanded && (
-                      <pre
-                        className="text-[10px] rounded-lg p-2.5 mb-2.5 overflow-x-auto"
-                        style={{
-                          background: 'var(--color-bg-tertiary)',
-                          color: 'var(--color-text-secondary)',
-                          fontFamily: 'monospace',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-all',
-                          lineHeight: '1.5',
-                        }}
-                      >
-                        {JSON.stringify(action.payload, null, 2)}
-                      </pre>
-                    )}
-
-                    {/* Approve / Deny */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleApprove(action.id)}
-                        disabled={isLoading}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-opacity cursor-pointer disabled:opacity-40"
-                        style={{
-                          background: 'color-mix(in srgb, var(--color-success) 12%, transparent)',
-                          color: 'var(--color-success)',
-                          border: '1px solid color-mix(in srgb, var(--color-success) 22%, transparent)',
-                        }}
-                      >
-                        <CheckCircle size={12} />
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => handleDeny(action.id)}
-                        disabled={isLoading}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-opacity cursor-pointer disabled:opacity-40"
-                        style={{
-                          background: 'color-mix(in srgb, var(--color-error) 12%, transparent)',
-                          color: 'var(--color-error)',
-                          border: '1px solid color-mix(in srgb, var(--color-error) 22%, transparent)',
-                        }}
-                      >
-                        <XCircle size={12} />
-                        Deny
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+          <div className="overflow-y-auto flex-1 px-2 py-2">
+            <WaitingListView
+              groups={groupItems(waiting)}
+              stale={staleSources(waiting)}
+              now={Date.now()}
+              compact
+              perGroup={5}
+              onOpen={onOpen}
+            />
           </div>
         </div>
       )}

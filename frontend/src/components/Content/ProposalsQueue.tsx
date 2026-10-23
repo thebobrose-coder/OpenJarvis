@@ -449,6 +449,7 @@ export function ProposalCard({
 
   return (
     <article
+      id={`proposal-${proposal.id}`}
       className="flex flex-col gap-2 rounded-lg p-3"
       style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle, var(--color-border))' }}
     >

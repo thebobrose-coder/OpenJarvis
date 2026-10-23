@@ -8,6 +8,7 @@ import { DailyBriefPanel } from '../components/Dashboard/DailyBriefPanel';
 import { StorePerformancePanel } from '../components/Dashboard/StorePerformancePanel';
 import { ListenPanel } from '../components/Dashboard/ListenPanel';
 import { TradingSummaryPanel } from '../components/Dashboard/TradingSummaryPanel';
+import { WaitingPanel } from '../components/Dashboard/WaitingPanel';
 
 export function DashboardPage() {
   const now = new Date();
@@ -30,6 +31,9 @@ export function DashboardPage() {
           </p>
         </header>
 
+        <div className="grid grid-cols-12 gap-4 mb-4">
+          <WaitingPanel />
+        </div>
         <div className="grid grid-cols-12 gap-4 mb-4">
           <DayAheadPanel />
           <WeatherPanel />

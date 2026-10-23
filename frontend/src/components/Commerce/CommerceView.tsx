@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Decision, RefreshTarget } from '../../lib/commerce-api';
 import type { FeedStates, PendingDecision, RefreshStatus } from '../../hooks/useCommerceData';
@@ -14,6 +14,7 @@ import { SeoHealthPanel } from './SeoHealthPanel';
 import { Segmented } from '../shared/ui';
 import type { CatalogFixesState } from '../../hooks/useCatalogFixes';
 import { FixesTab, waitingCount } from './fixes/FixesTab';
+import { scrollToWhenReady } from '../../lib/waiting-api';
 
 export type CommerceTab = 'overview' | 'fixes';
 
@@ -48,6 +49,9 @@ export interface CommerceViewProps {
   /** Catalog fixes (contract v1.3); without it the page has no Fixes tab. */
   fixes?: FixesProps;
   initialTab?: CommerceTab;
+  /** A deep link from "Waiting on you": a patch opens on the Fixes tab, a
+   * rec scrolls into view on the Overview. `key` re-runs it per navigation. */
+  focus?: { fix?: string | null; rec?: string | null; key?: string } | null;
 }
 
 /**
@@ -68,6 +72,7 @@ export function CommerceView({
   onClearNotice,
   fixes,
   initialTab = 'overview',
+  focus = null,
 }: CommerceViewProps) {
   const [tab, setTab] = useState<CommerceTab>(fixes ? initialTab : 'overview');
   // A fix another panel linked to: the Fixes tab opens on its view.
@@ -93,6 +98,19 @@ export function CommerceView({
     setTab('overview');
     window.setTimeout(() => document.getElementById(`rec-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
   };
+  useEffect(() => {
+    if (focus?.fix && fixes) {
+      setFixTarget(focus.fix);
+      setTab('fixes');
+      return scrollToWhenReady([`fix-${focus.fix}`]);
+    }
+    if (focus?.rec) {
+      setTab('overview');
+      return scrollToWhenReady([`rec-${focus.rec}`]);
+    }
+    return undefined;
+    // Once per navigation: not on every fixes poll.
+  }, [focus?.key, focus?.fix, focus?.rec]);
   const waiting = waitingCount(fixes?.data ?? null);
   const openFix = (id: string) => {
     setFixTarget(id);

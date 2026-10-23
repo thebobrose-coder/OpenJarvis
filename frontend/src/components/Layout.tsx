@@ -9,6 +9,8 @@ import { checkHealth } from '../lib/api';
 import { DailyBriefAudioProvider } from '../lib/DailyBriefAudioContext';
 import { CultureAudioProvider } from '../lib/CultureAudioContext';
 import { VoicePlayerProvider } from '../lib/VoicePlayer';
+import { WaitingProvider } from '../lib/WaitingContext';
+import { DecisionsDrawer } from './Waiting/DecisionsDrawer';
 
 export function Layout() {
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
@@ -32,10 +34,12 @@ export function Layout() {
     <DailyBriefAudioProvider>
     <CultureAudioProvider>
     <VoicePlayerProvider>
+    <WaitingProvider>
     <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
       <div className="hud-backdrop" aria-hidden="true" />
       <SystemPulse apiReachable={apiReachable} />
       <ApprovalBell />
+      <DecisionsDrawer />
       <VoiceIndicator />
 
       {/* Health check banner */}
@@ -78,6 +82,7 @@ export function Layout() {
         </main>
       </div>
     </div>
+    </WaitingProvider>
     </VoicePlayerProvider>
     </CultureAudioProvider>
     </DailyBriefAudioProvider>
