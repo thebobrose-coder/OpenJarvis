@@ -61,6 +61,19 @@ def lease_path() -> Path:
     return Path(override) if override else data_dir() / "gpu" / "lease.json"
 
 
+def studio_dir() -> Path | None:
+    """The local studio's episode root (foundry-studio.md), which turns the
+    long-form lane on: OPENJARVIS_STUDIO_DIR, else config.json's
+    ``studio_dir``. Machine-local, like the lease path."""
+    value = os.environ.get("OPENJARVIS_STUDIO_DIR") or config().get("studio_dir")
+    return Path(value) if isinstance(value, str) and value.strip() else None
+
+
+def longform_dir() -> Path:
+    """The long-form lane's own files: partial beats and the voice references."""
+    return data_dir() / "longform"
+
+
 def read_index(path: Path | None = None) -> dict[str, dict[str, Any]]:
     """The cache index: id -> {lane, engine, duration, rendered_at, upgraded, ...}."""
     p = path or index_path()

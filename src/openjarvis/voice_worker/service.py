@@ -155,7 +155,13 @@ class Worker:
     def __init__(self, fallback_minutes: float, device: str) -> None:
         from datetime import timedelta
 
-        from .engines import ChatterboxExpressive, KokoroFast, ensure_reference
+        from .engines import (
+            ChatterboxExpressive,
+            KokoroFast,
+            character_reference,
+            ensure_reference,
+        )
+        from .longform import LongForm
 
         self.fast = KokoroFast()
         self.reference_rendered = ensure_reference(self.fast, paths.reference_path())
@@ -174,6 +180,22 @@ class Worker:
             self.expressive,
             fallback_after=timedelta(minutes=fallback_minutes),
         )
+        studio = paths.studio_dir()
+        self.longform = (
+            LongForm(
+                studio,
+                paths.longform_dir() / "parts",
+                self.lease,
+                lambda voice, pace: character_reference(
+                    self.fast, paths.longform_dir() / "refs", voice, pace
+                ),
+                lambda ref, ex: Instrumented(
+                    ChatterboxExpressive(ref, device=device, exaggeration=ex)
+                ),
+            )
+            if studio
+            else None
+        )
         self.lock = threading.Lock()  # one render at a time across the loop and the API
         self.started_at = utcnow()
 
@@ -184,6 +206,13 @@ class Worker:
                     result = self.walker.tick()
                 if result.get("rendered") or result.get("error"):
                     logger.info("Tick: %s", result)
+                # The long-form lane runs in this thread after voice_queue, so
+                # the GPU has one user, but outside the lock: a 15-minute hold
+                # must not block /speak or /blocks/fast (it never touches the cache).
+                if self.longform is not None:
+                    lf = self.longform.tick()
+                    if lf.get("rendered") or lf.get("error") or lf.get("result"):
+                        logger.info("Long-form tick: %s", lf)
             except Exception:  # noqa: BLE001 -- keep the worker alive; the lease is already released
                 logger.exception("Tick failed")
             # Once the traceback is gone, return any GPU memory a failed render
@@ -208,6 +237,7 @@ class Worker:
                 "fast": sum(1 for v in idx.values() if v.get("lane") == "fast"),
             },
             "last_expressive_batch": self.expressive.last_batch,
+            "long_form": self.longform.last if self.longform else None,
             "reference": str(paths.reference_path()),
         }
 

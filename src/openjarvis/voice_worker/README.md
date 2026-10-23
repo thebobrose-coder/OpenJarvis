@@ -32,6 +32,42 @@ It's generated, never committed: on first start (and whenever it's missing) the 
 non-live passage with Kokoro `bm_george` at speed 1.0 into `%LOCALAPPDATA%\openjarvis\voice\voice_ref.wav`
 (about 13 s). The passage is in `engines.py`.
 
+## Long-form lane (hq 0019, `foundry-studio.md` "Narration")
+
+Episode narration for the local studio, in the character's own voice. It's on when `config.json` has
+`studio_dir` (or `OPENJARVIS_STUDIO_DIR` is set): the studio's episode root, machine-local like the lease path.
+
+- After each `voice_queue` pass it looks for `<studio_dir>\*\*\narration.request.json` without a
+  `narration.result.json` and takes the oldest (`requestedAt`).
+- **Voice.** `voice.referenceVoice` is a Kokoro voice id (`am_…`, `bm_…`, `af_…`, `bf_…`). The worker renders a
+  neutral passage in that voice at `voice.pace` (cached in `longform\refs\`) and conditions Chatterbox on it with
+  `voice.exaggeration`. A null voice gets `{ok: false, error: "voice-not-picked"}`; `bm_george` (the assistant's
+  own reference) is refused. **Kokoro is never the voice of a long-form render, and there is no fallback.**
+- **Script.** `scriptPath` (inside the episode folder) is markdown: each heading starts a beat, and text before
+  the first heading is a beat too. Beat `n` in `timing.json` is the n-th non-empty section. Links keep their
+  text; comments, URLs, `[bracketed directions]` and emphasis marks are not spoken. `voice.pronunciations`
+  (`{word, say}` or `[word, say]`, whole words, any case) is applied before chunking.
+- **Lease.** The same rules as the expressive lane, renewed before every chunk. One hold lasts at most 15 minutes:
+  no chunk starts within a minute of the limit. The lease is then released, and the next tick resumes from the
+  next unrendered beat. Finished beats wait in `longform\parts\<episodeId>\` (never in the studio's folder) and
+  are dropped if the script or voice changes. With no progress for 6 hours, the result is
+  `{ok: false, error: "lease-unavailable"}`.
+- **Output** (atomic): `narration.wav` (24 kHz mono, beats 0.6 s apart, chunks 0.25 s apart), `timing.json`
+  (`[{beat, startSec, endSec}]`), then `narration.result.json` (`{ok, at, seconds, gpuMinutes, engine:
+  "chatterbox"}`); `gpuMinutes` is the time the lease was held.
+- It runs in the loop thread but outside the render lock, so `/speak` and `/blocks/fast` keep working during a
+  hold. `/status` shows the lane's last tick under `long_form`.
+
+**The voice C-test** (0019 D5) renders candidates for the operator to pick, each as its Kokoro reference and the
+same ~30 s neutral passage through Chatterbox, with an `index.html` to compare them:
+
+```
+python -m openjarvis.voice_worker.ctest --out <folder> --set "Label=am_onyx,am_fenrir,..." --set "..."
+```
+
+Labels come from the command line (no channel names in the repo). It takes the lease as its own holder, so the
+running worker waits for it.
+
 ## HTTP (127.0.0.1:8650 only)
 
 - `GET /health`, `GET /status`

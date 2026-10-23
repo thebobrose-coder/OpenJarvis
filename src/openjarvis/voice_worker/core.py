@@ -116,8 +116,10 @@ class GpuLease:
         clock: Callable[[], datetime] = utcnow,
         min_free_mib: int = MIN_FREE_MIB,
         fake_busy: Callable[[], bool] = lambda: False,
+        holder: str = HOLDER,
     ) -> None:
         self.path = Path(path)
+        self.holder = holder
         self._ollama_loaded = ollama_loaded
         self._free_mib = free_mib
         self._clock = clock
@@ -148,7 +150,7 @@ class GpuLease:
             except OSError:
                 return False
             return now - mtime < LEASE_STALE
-        if data.get("holder") == HOLDER:
+        if data.get("holder") == self.holder:
             return False  # ours, left by a crash: take it over
         acquired, expires = (
             _parse(data.get("acquired_at")),
@@ -174,7 +176,7 @@ class GpuLease:
     def _write(self, purpose: str, acquired: datetime) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         doc = {
-            "holder": HOLDER,
+            "holder": self.holder,
             "purpose": purpose,
             "acquired_at": _iso(acquired),
             "expires_at": _iso(self._clock() + LEASE_TTL),
@@ -204,7 +206,7 @@ class GpuLease:
             return
         self.held = False
         data = self._read()
-        if data is not None and data.get("holder") == HOLDER:
+        if data is not None and data.get("holder") == self.holder:
             self.path.unlink(missing_ok=True)
 
 
