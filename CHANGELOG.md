@@ -431,6 +431,34 @@ the card renders the patch's `images [{media_id, url, before, after}]` instead.
 
 Copy patches and unknown fields render as before.
 
+**Content page: the operator's own seeds** (contract v1.16, hq 0008 A1).
+A seed for any active property and any seedable or operator-only lane goes
+through the same outbox and intake as an approved Hermes proposal, with no
+seed editor, saved file or command line.
+- **New seed** in the header opens the composer empty; **Seed this** on a
+  thesis prompt opens it pre-filled (the prompt's property and thesis lane,
+  signal plus why it matters, the first link). The prompt is marked used
+  once the seed reaches the outbox.
+- **Fields:** property; lane (never a feed lane, with an operator-only
+  badge); text up to 6000 characters with a counter, and for long-form the
+  title from line 1 shown back; pillar from the seedbank's list; product
+  handle with **Verify** (found, not found, which blocks Queue, or "couldn't
+  check", which doesn't); url; target queries (long-form only, never an
+  operator-only thesis); priority; and a read-only preview of the JSON sent.
+- **Queue** sends only the bridge's keys and shows the proposal id, then
+  follows the item: approved, submitted, queued with its thesis-lane
+  position, intake rejected with reasons, or "seed refused" with Hermes's
+  note. Proposals show an `operator` origin chip.
+- **Run intake now** starts the content pipeline's intake task instead of
+  waiting for :20, at most once every 2 minutes.
+- **Server:** `POST /api/content/seeds` (16 KB, the bridge's field caps) and
+  `GET /api/content/verify-product` proxy the bridge;
+  `POST /api/content/intake/run` runs the scheduled task (`429` inside the
+  cooldown). All three answer only this machine.
+
+**Business Development cards** show the date a card entered its stage beside
+its day counter, on the board and in the List view, and a short meeting chip.
+
 **Trading view: a third sleeve and easier reading.** Still read-only.
 - **Any number of sleeves:** one card fills the row, three share it, and two
   or four go two by two, so no card sits alone on a row. Cards lay out by
