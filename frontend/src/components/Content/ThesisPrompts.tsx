@@ -1,4 +1,4 @@
-import { Check, Lightbulb, X } from 'lucide-react';
+import { Check, Lightbulb, Sprout, X } from 'lucide-react';
 import type { PromptAction, ThesisPrompt } from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { shortDateTime } from '../shared/format';
@@ -9,17 +9,23 @@ export function ThesisPrompts({
   prompts,
   showProperty,
   onMark,
+  onSeed,
+  seeded = [],
 }: {
   prompts: ThesisPrompt[];
   showProperty: boolean;
   onMark: (id: string, action: PromptAction) => void;
+  /** v1.16: open the composer pre-filled from this prompt. */
+  onSeed?: (prompt: ThesisPrompt) => void;
+  /** Prompts with a seed sent this session; Hermes marks them used once the file is written. */
+  seeded?: string[];
 }) {
   if (prompts.length === 0) return null;
   return (
     <DashboardPanel icon={Lightbulb} title="Thesis prompts" tag={`${prompts.length} open`} size="tall">
       <div className="flex flex-col gap-2.5">
         <p className="text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
-          Prompts for you; Hermes doesn’t write theses.
+          Prompts for you; Hermes doesn’t write theses.{onSeed ? ' Seed this opens one as your own thesis seed.' : ''}
         </p>
         <ul className="flex flex-col gap-2.5 max-h-[75vh] overflow-y-auto pr-1">
           {prompts.map((t) => (
@@ -48,8 +54,18 @@ export function ThesisPrompts({
                   ))}
                 </div>
               )}
-              <div className="flex gap-1.5">
-                <SmallButton tone="accent" onClick={() => onMark(t.id, 'used')} title="You used it for a thesis">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {onSeed && (
+                  <SmallButton tone="accent" onClick={() => onSeed(t)} title="Open it in the composer as your thesis seed">
+                    <Sprout size={11} /> Seed this
+                  </SmallButton>
+                )}
+                {seeded.includes(t.id) && (
+                  <Chip tone="success" title="Hermes marks the prompt used once the seed reaches the outbox">
+                    seed sent
+                  </Chip>
+                )}
+                <SmallButton onClick={() => onMark(t.id, 'used')} title="You used it for a thesis">
                   <Check size={11} /> Used
                 </SmallButton>
                 <SmallButton onClick={() => onMark(t.id, 'dismissed')}>

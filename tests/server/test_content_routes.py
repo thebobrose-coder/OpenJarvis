@@ -8,6 +8,7 @@ properties, products and topics.
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -40,7 +41,7 @@ def _reset():
     cr._cache.clear()
 
 
-def _client(handler):
+def _client(handler, host="127.0.0.1"):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -58,7 +59,7 @@ def _client(handler):
         return real_client(*args, **kwargs)
 
     patcher = patch.object(cr.httpx, "AsyncClient", side_effect=fake_client)
-    return TestClient(app), patcher, seen
+    return TestClient(app, client=(host, 50000)), patcher, seen
 
 
 def _down(req):
@@ -384,3 +385,259 @@ def test_actions_with_bridge_down_are_503():
         assert client.post(f"/api/content/proposals/{UUID}/reject").status_code == 503
         assert client.post(f"/api/content/prompts/{UUID}/dismissed").status_code == 503
         assert client.post("/api/content/ideation/refresh").status_code == 503
+
+
+# -- v1.16 operator seeds ----------------------------------------------------
+
+SEED = {
+    "property_id": "alpha",
+    "content_type": "short",
+    "text": "  Sample topic about budget rigs  ",
+    "pillar_hint": "grit",
+    "product_handle": "sample-mount",
+    "url": "https://example.com/a",
+    "target_queries": [" budget rig "],
+    "priority": 3,
+    "source_prompt_id": UUID,
+}
+
+
+def _minted(req):
+    return httpx.Response(202, json={"queued": True, "proposal_id": UUID})
+
+
+def test_seed_is_forwarded_trimmed_and_the_202_passed_through():
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        resp = client.post("/api/content/seeds", json=SEED)
+
+    assert resp.status_code == 202
+    assert resp.json() == {"queued": True, "proposal_id": UUID}
+    assert seen[0].method == "POST" and seen[0].url.path == "/content/seeds"
+    assert json.loads(seen[0].content) == {
+        **SEED,
+        "text": "Sample topic about budget rigs",
+        "target_queries": ["budget rig"],
+    }
+
+
+def test_minimal_seed_sends_only_what_was_given():
+    body = {"property_id": "alpha", "content_type": "thesis", "text": "Title\n\nBody"}
+    sent = {**body, "pillar_hint": "", "product_handle": "", "url": ""}
+    sent["target_queries"] = []
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        assert client.post("/api/content/seeds", json=sent).status_code == 202
+
+    assert json.loads(seen[0].content) == body
+
+
+def test_seed_of_6000_characters_passes():
+    text = "x" * 6000
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        resp = client.post("/api/content/seeds", json={**SEED, "text": text})
+    assert resp.status_code == 202
+    assert json.loads(seen[0].content)["text"] == text
+
+
+def test_seed_over_16kb_is_413_and_never_forwarded():
+    raw = json.dumps({**SEED, "text": "x" * 17000})
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        resp = client.post(
+            "/api/content/seeds",
+            content=raw,
+            headers={"content-type": "application/json"},
+        )
+    assert resp.status_code == 413
+    assert seen == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"motion": "always"},
+        {"motion_brief": "a beat"},
+        {"video_asset_key": "k"},
+        {"topic": "x"},
+        {"property_id": ""},
+        {"property_id": "../x"},
+        {"content_type": None},
+        {"text": "   "},
+        {"text": "x" * 6001},
+        {"pillar_hint": "p" * 121},
+        {"product_handle": "Sample Mount"},
+        {"product_handle": "h" * 121},
+        {"url": "http://example.com"},
+        {"url": "https://example.com/" + "a" * 500},
+        {"target_queries": ["a", "b", "c", "d"]},
+        {"target_queries": ["q" * 81]},
+        {"priority": 4},
+        {"priority": True},
+        {"source_prompt_id": "not-a-uuid"},
+    ],
+)
+def test_bad_seed_shapes_are_400_and_never_forwarded(change):
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        resp = client.post("/api/content/seeds", json={**SEED, **change})
+    assert resp.status_code == 400
+    assert seen == []
+
+
+def test_seed_needs_a_body():
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        assert client.post("/api/content/seeds").status_code == 400
+    assert seen == []
+
+
+def test_bridge_seed_refusal_is_passed_through():
+    client, patcher, _ = _client(
+        lambda r: httpx.Response(400, json={"error": "unknown keys: x"})
+    )
+    with patcher:
+        resp = client.post("/api/content/seeds", json=SEED)
+    assert resp.status_code == 400
+    assert resp.json() == {"error": "unknown keys: x"}
+
+
+def test_seed_with_bridge_down_is_503():
+    client, patcher, _ = _client(_down)
+    with patcher:
+        assert client.post("/api/content/seeds", json=SEED).status_code == 503
+
+
+def test_new_routes_answer_only_this_machine():
+    client, patcher, seen = _client(_minted, host="192.168.1.20")
+    with patcher:
+        assert client.post("/api/content/seeds", json=SEED).status_code == 403
+        verify = "/api/content/verify-product?property=alpha&handle=sample-mount"
+        assert client.get(verify).status_code == 403
+        assert client.post("/api/content/intake/run").status_code == 403
+    assert seen == []
+
+
+def test_verify_product_is_forwarded_read_only():
+    found = {
+        "found": True,
+        "title": "Sample Mount",
+        "source": "bundle",
+        "checked_at": "2026-10-22T04:00:00Z",
+    }
+    client, patcher, seen = _client(lambda r: httpx.Response(200, json=found))
+    with patcher:
+        resp = client.get(
+            "/api/content/verify-product?property=alpha&handle=sample-mount"
+        )
+    assert resp.status_code == 200 and resp.json() == found
+    assert seen[0].method == "GET"
+    assert seen[0].url.path == "/content/verify-product"
+    assert dict(seen[0].url.params) == {"property": "alpha", "handle": "sample-mount"}
+
+
+@pytest.mark.parametrize(
+    "status,body",
+    [
+        (502, {"error": "no storefront known for this property"}),
+        (404, {"error": "unknown property"}),
+        (200, {"found": False, "source": "storefront", "checked_at": "x"}),
+    ],
+)
+def test_verify_product_passes_the_bridge_answer_through(status, body):
+    client, patcher, _ = _client(lambda r: httpx.Response(status, json=body))
+    with patcher:
+        resp = client.get(
+            "/api/content/verify-product?property=alpha&handle=sample-mount"
+        )
+    assert resp.status_code == status and resp.json() == body
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["property=alpha", "handle=sample-mount", "property=alpha&handle=Bad Handle"],
+)
+def test_verify_product_bad_parameters_are_400(query):
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        assert client.get(f"/api/content/verify-product?{query}").status_code == 400
+    assert seen == []
+
+
+def test_verify_product_is_not_taken_for_a_feed():
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        resp = client.get("/api/content/verify-product")
+    assert resp.status_code == 400  # not the feed route's 404
+    assert seen == []
+
+
+def test_verify_product_with_bridge_down_is_503():
+    client, patcher, _ = _client(_down)
+    with patcher:
+        resp = client.get(
+            "/api/content/verify-product?property=alpha&handle=sample-mount"
+        )
+    assert resp.status_code == 503
+
+
+@pytest.fixture
+def intake(monkeypatch):
+    monkeypatch.setattr(cr.sys, "platform", "win32")
+    monkeypatch.setattr(cr, "_intake_last_run", None)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, stdout="SUCCESS", stderr="")
+
+    with patch.object(cr.subprocess, "run", side_effect=fake_run):
+        yield calls
+
+
+def test_intake_run_starts_the_foundry_task(intake):
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        resp = client.post("/api/content/intake/run")
+    assert resp.status_code == 202 and "started_at" in resp.json()
+    assert intake[0][0] == ["schtasks", "/Run", "/TN", r"\Foundry\ProposalIntake"]
+    assert intake[0][1]["timeout"] == 10
+    assert seen == []  # nothing reaches Hermes
+
+
+def test_intake_run_twice_inside_2_minutes_is_429(intake, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(cr.time, "monotonic", lambda: clock[0])
+    client, patcher, _ = _client(_minted)
+    with patcher:
+        assert client.post("/api/content/intake/run").status_code == 202
+        clock[0] += 60
+        resp = client.post("/api/content/intake/run")
+        assert resp.status_code == 429
+        assert resp.json()["retry_after"] == 61
+        assert resp.headers["retry-after"] == "61"
+        clock[0] += 61
+        assert client.post("/api/content/intake/run").status_code == 202
+    assert len(intake) == 2
+
+
+def test_intake_run_failure_is_503_and_starts_no_cooldown(monkeypatch):
+    monkeypatch.setattr(cr.sys, "platform", "win32")
+    monkeypatch.setattr(cr, "_intake_last_run", None)
+    failed = subprocess.CompletedProcess(
+        [], 1, stdout="", stderr="ERROR: The system cannot find the file.\n"
+    )
+    client, patcher, _ = _client(_minted)
+    with patcher, patch.object(cr.subprocess, "run", return_value=failed):
+        resp = client.post("/api/content/intake/run")
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == "ERROR: The system cannot find the file."
+    assert cr._intake_last_run is None
+
+
+def test_intake_run_off_windows_is_501(monkeypatch):
+    monkeypatch.setattr(cr.sys, "platform", "linux")
+    client, patcher, _ = _client(_minted)
+    with patcher:
+        assert client.post("/api/content/intake/run").status_code == 501

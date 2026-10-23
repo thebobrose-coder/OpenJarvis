@@ -16,7 +16,10 @@ export const humanize = (s?: string | null) => (s ? s.replace(/[_-]+/g, ' ') : '
 /** A refused edit leaves the proposal pending with a note saying why (v1.10). */
 export const isRefusal = (note?: string | null) => !!note && note.trim().toLowerCase().startsWith('edit refused');
 
-export const pct = (n?: number | null) => (n == null ? '—' : `${Math.round(n * 100)}%`);
+/** A seed Hermes refused is `rejected` with a note saying why (v1.16). */
+export const isSeedRefusal = (note?: string | null) => !!note && note.trim().toLowerCase().startsWith('seed refused');
+
+export const pct =(n?: number | null) => (n == null ? '—' : `${Math.round(n * 100)}%`);
 
 export const PROPOSAL_STATUS: Record<string, { label: string; tone: Tone }> = {
   pending: { label: 'pending', tone: 'neutral' },

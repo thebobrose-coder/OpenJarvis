@@ -6,12 +6,16 @@ import {
   markPrompt,
   rejectProposal,
   researchMore,
+  runIntake,
+  sendSeed,
+  verifyProduct,
   type ApprovalEdits,
   type ContentFeedName,
   type ContentFeeds,
   type ContentProposals,
   type PromptAction,
   type Proposal,
+  type SeedBody,
   type ThesisPrompt,
 } from '../lib/content-api';
 import { isRefusal } from '../components/Content/format';
@@ -121,6 +125,9 @@ export function useContentData() {
   const [researchAt, setResearchAt] = useState<number | null>(readResearchAt);
   const [researchStatus, setResearchStatus] = useState<'idle' | 'queued' | 'error'>('idle');
   const [notice, setNotice] = useState<string | null>(null);
+  const [seededPrompts, setSeededPrompts] = useState<string[]>([]);
+  const [intakeStatus, setIntakeStatus] = useState<'idle' | 'running' | 'started' | 'ran_recently' | 'error'>('idle');
+  const [intakeAvailableAt, setIntakeAvailableAt] = useState<number | null>(null);
 
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
@@ -233,9 +240,42 @@ export function useContentData() {
     }
   }, [reloadAfterAction]);
 
+  // v1.16: the operator's own seed. Errors go back to the composer, which shows them.
+  const queueSeed = useCallback(
+    async (body: SeedBody) => {
+      const proposalId = await sendSeed(body);
+      const promptId = body.source_prompt_id;
+      if (promptId) setSeededPrompts((s) => (s.includes(promptId) ? s : [...s, promptId]));
+      reloadAfterAction();
+      return proposalId;
+    },
+    [reloadAfterAction],
+  );
+
+  const intake = useCallback(async () => {
+    setIntakeStatus('running');
+    try {
+      const { started, availableAt } = await runIntake();
+      setIntakeStatus(started ? 'started' : 'ran_recently');
+      setIntakeAvailableAt(availableAt);
+      // Re-enable the button when the cooldown ends; the result arrives with Hermes's next sync.
+      later(Math.max(0, availableAt - Date.now()) + 500, () => setIntakeAvailableAt(null));
+      reloadAfterAction();
+    } catch (e: unknown) {
+      setIntakeStatus('error');
+      setNotice(e instanceof Error ? e.message : 'Intake run failed.');
+    }
+  }, [later, reloadAfterAction]);
+
   return {
     feeds,
     pending,
+    queueSeed,
+    verifyProduct,
+    runIntake: intake,
+    intakeStatus,
+    intakeAvailableAt,
+    seededPrompts,
     approve,
     reject,
     prompt,

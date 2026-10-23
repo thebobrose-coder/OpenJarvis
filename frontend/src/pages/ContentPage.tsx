@@ -21,6 +21,12 @@ export function ContentPage() {
         onResearch={() => void data.research()}
         researchStatus={data.researchStatus}
         researchAvailableAt={data.researchAvailableAt}
+        onQueueSeed={data.queueSeed}
+        onVerifyProduct={data.verifyProduct}
+        onRunIntake={() => void data.runIntake()}
+        intakeStatus={data.intakeStatus}
+        intakeAvailableAt={data.intakeAvailableAt}
+        seededPrompts={data.seededPrompts}
         notice={data.notice}
         onClearNotice={data.clearNotice}
       />

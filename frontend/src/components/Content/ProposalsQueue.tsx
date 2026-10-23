@@ -6,7 +6,7 @@ import { LIMITS, type ApprovalEdits, type Proposal } from '../../lib/content-api
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { shortDateTime } from '../shared/format';
 import { Chip, ExtIcon, ExtLink, Quiet, Segmented, SmallButton } from '../shared/ui';
-import { PROPOSAL_STATUS, humanize, isRefusal, laneLabel } from './format';
+import { PROPOSAL_STATUS, humanize, isRefusal, isSeedRefusal, laneLabel } from './format';
 
 const OTHER = '__other__';
 /** A proposal without a priority gets the default (v1.10). */
@@ -348,10 +348,21 @@ export function TargetQueries({ queries }: { queries?: string[] | null }) {
   );
 }
 
+/** v1.16: the operator's own seeds carry `proposed_by: "operator"`. */
+export function OriginChip({ proposal }: { proposal: Proposal }) {
+  if (proposal.proposed_by !== 'operator') return null;
+  return (
+    <Chip tone="accent" title={proposal.source_prompt_id ? 'Your seed, from a thesis prompt' : 'Your seed'}>
+      operator
+    </Chip>
+  );
+}
+
 function ProposalMeta({ proposal, showProperty }: { proposal: Proposal; showProperty: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {showProperty && <Chip tone="accent">{proposal.property_id}</Chip>}
+      <OriginChip proposal={proposal} />
       <Chip>{laneLabel(proposal.lane)}</Chip>
       {proposal.signal_type && <Chip tone="muted">{humanize(proposal.signal_type)}</Chip>}
       {proposal.pillar_hint && <Chip title="Pillar">{proposal.pillar_hint}</Chip>}
@@ -441,14 +452,33 @@ export function ProposalCard({
   );
 }
 
-function DecidedItem({ proposal, showProperty }: { proposal: Proposal; showProperty: boolean }) {
+/** A queued item's place in its lane, from the thesis lane's queue (v1.16). */
+export function lanePositionOf(proposal: Proposal, positions?: Record<string, number>): number | null {
+  if (proposal.status !== 'queued' || !positions) return null;
+  const signalId = proposal.result?.signalId;
+  return typeof signalId === 'string' ? positions[signalId] ?? null : null;
+}
+
+export function DecidedItem({
+  proposal,
+  showProperty,
+  lanePositions,
+}: {
+  proposal: Proposal;
+  showProperty: boolean;
+  lanePositions?: Record<string, number>;
+}) {
   const status = PROPOSAL_STATUS[proposal.status] ?? { label: proposal.status, tone: 'neutral' as const };
   const reasons = proposal.status === 'intake_rejected' ? proposal.result?.reasons ?? [] : [];
+  const position = lanePositionOf(proposal, lanePositions);
+  const refused = proposal.status === 'rejected' && isSeedRefusal(proposal.note);
   return (
     <li className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }}>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Chip tone={status.tone}>{status.label}</Chip>
+        <Chip tone={status.tone}>{refused ? 'seed refused' : status.label}</Chip>
+        {position != null && <Chip tone="accent">lane position {position}</Chip>}
         {showProperty && <Chip tone="accent">{proposal.property_id}</Chip>}
+        <OriginChip proposal={proposal} />
         <Chip>{laneLabel(proposal.lane)}</Chip>
         {proposal.approval?.edited && <Chip tone="muted">edited</Chip>}
         <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -462,7 +492,13 @@ function DecidedItem({ proposal, showProperty }: { proposal: Proposal; showPrope
           Intake reasons: {reasons.map(humanize).join(', ')}
         </span>
       )}
-      {proposal.note && <span className="italic">“{proposal.note}”</span>}
+      {refused ? (
+        <span role="note" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+          {proposal.note}
+        </span>
+      ) : (
+        proposal.note && <span className="italic">“{proposal.note}”</span>
+      )}
     </li>
   );
 }
@@ -482,6 +518,7 @@ export function ProposalsQueue({
   size = 'wide',
   initialTab = 'pending',
   speech = null,
+  lanePositions,
 }: {
   pending: Proposal[];
   recent: Proposal[];
@@ -496,6 +533,8 @@ export function ProposalsQueue({
   initialTab?: QueueTab;
   /** The content_proposals feed's spoken summary, if any. */
   speech?: SpeechBlock | null;
+  /** Thesis-lane positions by Foundry signal id, for queued items. */
+  lanePositions?: Record<string, number>;
 }) {
   const [tab, setTab] = useState<QueueTab>(initialTab);
   const newest = [...pending].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
@@ -547,7 +586,7 @@ export function ProposalsQueue({
           ) : (
             <ul className="flex flex-col gap-2 max-h-[75vh] overflow-y-auto pr-1">
               {recent.map((p) => (
-                <DecidedItem key={p.id} proposal={p} showProperty={showProperty} />
+                <DecidedItem key={p.id} proposal={p} showProperty={showProperty} lanePositions={lanePositions} />
               ))}
             </ul>
           )}

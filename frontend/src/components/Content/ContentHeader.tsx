@@ -1,4 +1,4 @@
-import { Telescope } from 'lucide-react';
+import { Play, Sprout, Telescope } from 'lucide-react';
 import type { ContentProposals, ContentSeedbank } from '../../lib/content-api';
 import { FeedFreshness } from '../Dashboard/FeedFreshness';
 import { engineLabel, shortDateTime } from '../shared/format';
@@ -6,6 +6,9 @@ import { Chip, Segmented, SmallButton } from '../shared/ui';
 import { ALL_PROPERTIES } from './format';
 
 const DAY = 24 * 3600;
+
+const shortTime = (ms: number | null) =>
+  ms == null ? '' : new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 export function ContentHeader({
   properties,
@@ -17,6 +20,10 @@ export function ContentHeader({
   researchAvailableAt,
   now,
   onResearch,
+  onNewSeed,
+  onRunIntake,
+  intakeStatus = 'idle',
+  intakeAvailableAt = null,
 }: {
   properties: string[];
   selectedProperty: string;
@@ -28,8 +35,16 @@ export function ContentHeader({
   researchAvailableAt: number | null;
   now: number;
   onResearch: () => void;
+  /** v1.16: open the seed composer empty. */
+  onNewSeed?: () => void;
+  /** v1.16: start Foundry's intake now instead of at :20. */
+  onRunIntake?: () => void;
+  intakeStatus?: 'idle' | 'running' | 'started' | 'ran_recently' | 'error';
+  /** Epoch ms when "Run intake now" unlocks again (2-minute cooldown). */
+  intakeAvailableAt?: number | null;
 }) {
   const locked = researchAvailableAt != null && researchAvailableAt > now;
+  const intakeLocked = intakeAvailableAt != null && intakeAvailableAt > now;
   const snapshot = seedbank?.snapshot;
   const bundle = seedbank?.bundle;
   const cost = proposals?.cost;
@@ -46,13 +61,40 @@ export function ContentHeader({
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <SmallButton
-            onClick={onResearch}
-            disabled={researchStatus === 'queued' || locked}
-            title="One extra ideation run -- capped at 1 a day"
-          >
-            <Telescope size={11} /> Research more
-          </SmallButton>
+          <div className="flex flex-wrap justify-end gap-1.5">
+            {onNewSeed && (
+              <SmallButton tone="accent" onClick={onNewSeed} title="Write your own seed for any property and lane">
+                <Sprout size={11} /> New seed
+              </SmallButton>
+            )}
+            {onRunIntake && (
+              <SmallButton
+                onClick={onRunIntake}
+                disabled={intakeStatus === 'running' || intakeLocked}
+                title="Run Foundry's proposal intake now instead of at :20 (at most once every 2 minutes)"
+              >
+                <Play size={11} /> Run intake now
+              </SmallButton>
+            )}
+            <SmallButton
+              onClick={onResearch}
+              disabled={researchStatus === 'queued' || locked}
+              title="One extra ideation run -- capped at 1 a day"
+            >
+              <Telescope size={11} /> Research more
+            </SmallButton>
+          </div>
+          {onRunIntake && intakeStatus !== 'idle' && (
+            <span className="text-[10.5px]" style={{ color: intakeStatus === 'error' ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>
+              {intakeStatus === 'running'
+                ? 'Starting the intake…'
+                : intakeStatus === 'error'
+                  ? 'Intake not started; try again later'
+                  : `${intakeStatus === 'ran_recently' ? 'Intake ran under 2 minutes ago' : 'Intake started'}; results show after Hermes’s next sync${
+                      intakeLocked ? ` (again from ${shortTime(intakeAvailableAt)})` : ''
+                    }`}
+            </span>
+          )}
           <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
             {researchStatus === 'queued'
               ? 'Queued -- new proposals appear within a few minutes'

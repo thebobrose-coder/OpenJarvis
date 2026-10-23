@@ -102,6 +102,12 @@ export interface SeedbankProperty {
   lanes: Lane[];
   /** v1.8; absent in an older seedbank. */
   thesis_lane?: ThesisLane | null;
+  /** v1.16: the bundle's pillars; the composer offers these and nothing else. */
+  pillars?: { id: string; name: string }[];
+  /** v1.16.1: the property's store; null when it has none (verify then answers 502). */
+  storefront?: { store: string; host: string } | null;
+  /** Absent means active. */
+  active?: boolean;
 }
 
 export interface ContentSeedbank extends FeedMeta {
@@ -150,6 +156,10 @@ export interface Proposal {
   target_queries?: string[] | null;
   /** v1.10: 1-3; null means the default 2. */
   priority?: number | null;
+  /** v1.16: "operator" for the operator's own seeds. */
+  proposed_by?: 'content-strategist' | 'operator' | string;
+  /** v1.16: the thesis prompt a seed came from. */
+  source_prompt_id?: string | null;
 }
 
 export interface ThesisPrompt {
@@ -160,6 +170,8 @@ export interface ThesisPrompt {
   why_it_matters?: string | null;
   links?: string[];
   created_at: string;
+  /** v1.16; in practice null, since a seeded prompt leaves the list. */
+  seeded_proposal_id?: string | null;
 }
 
 export interface ContentProposals extends FeedMeta {
@@ -443,3 +455,69 @@ export async function researchMore(): Promise<void> {
   const res = await apiFetch('/api/content/ideation/refresh', { method: 'POST' });
   if (!res.ok) throw await failure(res, 'Research');
 }
+
+/**
+ * The operator's own seed (v1.16): exactly the bridge's keys, nothing else
+ * (it answers 400 to any other, motion keys included until v1.14).
+ */
+export interface SeedBody {
+  property_id: string;
+  /** The lane's bundle value: `short`, `thesis`, `expeditionDebrief`, ... */
+  content_type: string;
+  /** 1-6000 characters; for long-form the title is line 1. */
+  text: string;
+  pillar_hint?: string;
+  product_handle?: string;
+  url?: string;
+  target_queries?: string[];
+  priority?: number | null;
+  source_prompt_id?: string;
+}
+
+export const SEED_LIMITS = { text: 6000, url: 500, title: 120 } as const;
+/** Store handles: lowercase letters, digits and hyphens, at most 120. */
+export const HANDLE_RE = /^[a-z0-9][a-z0-9-]{0,119}$/;
+
+/** Hermes mints the proposal id; its verdict arrives in `content_proposals`. */
+export async function sendSeed(body: SeedBody): Promise<string> {
+  const res = await apiFetch('/api/content/seeds', jsonInit(body));
+  if (!res.ok) throw await failure(res, 'Queue');
+  const out = await res.json();
+  return String(out.proposal_id ?? '');
+}
+
+export type VerifyResult =
+  | { state: 'found'; title?: string | null; source?: string }
+  | { state: 'not_found'; source?: string }
+  /** The storefront didn't answer, or none is known: the intake checks again. */
+  | { state: 'unchecked'; reason: string };
+
+export async function verifyProduct(property: string, handle: string): Promise<VerifyResult> {
+  const q = new URLSearchParams({ property, handle });
+  let res: Response;
+  try {
+    res = await apiFetch(`/api/content/verify-product?${q}`);
+  } catch {
+    return { state: 'unchecked', reason: 'Hermes is unreachable' };
+  }
+  const body = await res.json().catch(() => null);
+  if (res.ok && body && typeof body.found === 'boolean') {
+    return body.found ? { state: 'found', title: body.title, source: body.source } : { state: 'not_found', source: body.source };
+  }
+  return { state: 'unchecked', reason: String(body?.error ?? body?.detail ?? `status ${res.status}`) };
+}
+
+/** Start Foundry's intake now. `availableAt` is the epoch ms it may run
+ * again; `started` is false when it ran under 2 minutes ago (429). */
+export async function runIntake(): Promise<{ started: boolean; availableAt: number }> {
+  const res = await apiFetch('/api/content/intake/run', { method: 'POST' });
+  if (res.status === 429) {
+    const body = await res.json().catch(() => null);
+    const wait = Number(body?.retry_after) || INTAKE_COOLDOWN_MS / 1000;
+    return { started: false, availableAt: Date.now() + wait * 1000 };
+  }
+  if (!res.ok) throw await failure(res, 'Intake run');
+  return { started: true, availableAt: Date.now() + INTAKE_COOLDOWN_MS };
+}
+
+export const INTAKE_COOLDOWN_MS = 2 * 60 * 1000;

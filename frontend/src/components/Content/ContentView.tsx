@@ -1,6 +1,7 @@
 import { firstBlock } from '../../lib/voice-api';
+import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import type { ApprovalEdits, PromptAction } from '../../lib/content-api';
+import type { ApprovalEdits, PromptAction, SeedBody, VerifyResult } from '../../lib/content-api';
 import { applyDecisions, type ContentFeedStates, type PendingDecision } from '../../hooks/useContentData';
 import { ContentHeader } from './ContentHeader';
 import { ALL_PROPERTIES, matchesProperty } from './format';
@@ -8,6 +9,7 @@ import { HealthStrip } from './HealthStrip';
 import { PerformancePanel } from './PerformancePanel';
 import { ProposalsQueue, type QueueTab } from './ProposalsQueue';
 import { SeedbankStrip } from './SeedbankStrip';
+import { SeedComposer, draftFromPrompt, emptyDraft, type SeedDraft } from './SeedComposer';
 import { ThesisLane } from './ThesisLane';
 import { ThesisPrompts } from './ThesisPrompts';
 import { WinnersPanel } from './WinnersPanel';
@@ -28,6 +30,17 @@ export interface ContentViewProps {
   onClearNotice?: () => void;
   /** For tests: which proposals tab opens first. */
   initialTab?: QueueTab;
+  // v1.16 operator seeds.
+  /** Resolves to the proposal id Hermes minted. */
+  onQueueSeed?: (body: SeedBody) => Promise<string>;
+  onVerifyProduct?: (property: string, handle: string) => Promise<VerifyResult>;
+  onRunIntake?: () => void;
+  intakeStatus?: 'idle' | 'running' | 'started' | 'ran_recently' | 'error';
+  intakeAvailableAt?: number | null;
+  /** Thesis prompts with a seed sent this session. */
+  seededPrompts?: string[];
+  /** For tests: the composer open with this draft. */
+  initialComposer?: SeedDraft | null;
 }
 
 /**
@@ -57,6 +70,26 @@ export function ContentView(props: ContentViewProps) {
   const thesisLanes = (seedbank?.properties ?? []).filter((p) => p.thesis_lane != null && matchesProperty(selected, p.id));
   const alerts = (feeds.content_health.data?.alerts ?? []).filter((a) => !a.property || matchesProperty(selected, a.property));
 
+  // The composer is open with a draft ("New seed" or a prompt's "Seed this");
+  // a new key remounts it, so a new draft starts clean.
+  const [composer, setComposer] = useState<{ draft: SeedDraft; key: number } | null>(
+    props.initialComposer ? { draft: props.initialComposer, key: 0 } : null,
+  );
+  const composerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (composer) composerRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }, [composer]);
+  const seeds = props.onQueueSeed && props.onVerifyProduct ? { queue: props.onQueueSeed, verify: props.onVerifyProduct } : null;
+  const openComposer = (draft: SeedDraft) => setComposer((c) => ({ draft, key: (c?.key ?? 0) + 1 }));
+
+  // Queued theses' places in their lane, by Foundry signal id.
+  const lanePositions: Record<string, number> = {};
+  for (const p of seedbank?.properties ?? []) {
+    for (const q of p.thesis_lane?.queue ?? []) {
+      if (q.signal_id && q.lane_position != null) lanePositions[q.signal_id] = q.lane_position;
+    }
+  }
+
   const pillarsByProperty: Record<string, string[]> = {};
   for (const p of [...applied.pending, ...applied.recent]) {
     if (!p.pillar_hint) continue;
@@ -76,6 +109,10 @@ export function ContentView(props: ContentViewProps) {
         researchAvailableAt={props.researchAvailableAt}
         now={props.now ?? Date.now()}
         onResearch={props.onResearch}
+        onNewSeed={seeds ? () => openComposer(emptyDraft(seedbank, showProperty ? undefined : selected)) : undefined}
+        onRunIntake={props.onRunIntake}
+        intakeStatus={props.intakeStatus}
+        intakeAvailableAt={props.intakeAvailableAt}
       />
 
       {props.notice && (
@@ -90,6 +127,21 @@ export function ContentView(props: ContentViewProps) {
               <X size={12} />
             </button>
           )}
+        </div>
+      )}
+
+      {seeds && composer && (
+        <div ref={composerRef} className="grid grid-cols-12 gap-4 mb-4 scroll-mt-4">
+          <SeedComposer
+            key={composer.key}
+            seedbank={seedbank}
+            draft={composer.draft}
+            proposals={[...applied.pending, ...applied.recent]}
+            lanePositions={lanePositions}
+            onQueue={seeds.queue}
+            onVerify={seeds.verify}
+            onClose={() => setComposer(null)}
+          />
         </div>
       )}
 
@@ -118,8 +170,15 @@ export function ContentView(props: ContentViewProps) {
           size={prompts.length ? 'wide' : 'full'}
           initialTab={props.initialTab}
           speech={firstBlock(proposals?.speech)}
+          lanePositions={lanePositions}
         />
-        <ThesisPrompts prompts={prompts} showProperty={showProperty} onMark={props.onPrompt} />
+        <ThesisPrompts
+          prompts={prompts}
+          showProperty={showProperty}
+          onMark={props.onPrompt}
+          onSeed={seeds ? (t) => openComposer(draftFromPrompt(t, seedbank)) : undefined}
+          seeded={props.seededPrompts}
+        />
       </div>
 
       {thesisLanes.length > 0 && (
