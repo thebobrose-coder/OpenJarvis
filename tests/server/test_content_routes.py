@@ -557,6 +557,59 @@ def test_seed_passes_the_motion_fields_and_drops_the_defaults():
     )
 
 
+EPISODE = {
+    "property_id": "alpha",
+    "content_type": "episode",
+    "text": "Sample topic about budget rigs",
+    "episode_class": "sample-class",
+    "sources": [" https://example.com/a ", "https://example.com/b"],
+    "target_minutes": 8,
+}
+
+
+def test_episode_seed_carries_its_three_fields():
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        assert client.post("/api/content/seeds", json=EPISODE).status_code == 202
+
+    sent = json.loads(seen[0].content)
+    assert sent["episode_class"] == "sample-class"
+    assert sent["sources"] == ["https://example.com/a", "https://example.com/b"]
+    assert sent["target_minutes"] == 8
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"episode_class": None},
+        {"sources": []},
+        {"sources": ["http://example.com/a"]},
+        {"sources": [f"https://example.com/{i}" for i in range(11)]},
+        {"target_minutes": 3},
+        {"target_minutes": 13},
+        {"target_minutes": True},
+        {"target_minutes": None},
+    ],
+)
+def test_episode_seed_refuses_a_missing_or_bad_field(bad):
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        resp = client.post("/api/content/seeds", json={**EPISODE, **bad})
+
+    assert resp.status_code == 400
+    assert seen == []
+
+
+def test_episode_fields_are_refused_off_the_episode_lane():
+    client, patcher, seen = _client(_minted)
+    with patcher:
+        resp = client.post("/api/content/seeds", json={**SEED, "target_minutes": 8})
+
+    assert resp.status_code == 400
+    assert "episode lane" in resp.json()["detail"]
+    assert seen == []
+
+
 def test_seed_of_6000_characters_passes():
     text = "x" * 6000
     client, patcher, seen = _client(_minted)

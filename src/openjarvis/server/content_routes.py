@@ -15,6 +15,10 @@ and `GET /api/content/verify-product` proxy the bridge, and
 `POST /api/content/intake/run` starts Foundry's intake task now instead of at
 its next :20 (the stack-health pattern; at most once every 2 minutes). These
 three answer only requests from this machine.
+
+v1.17 (hq 0019) adds the episode lane's seed fields: `episode_class`,
+`sources` and `target_minutes`, required on that lane and refused on any other.
+The studio's own files are served by `studio_routes`.
 """
 
 from __future__ import annotations
@@ -84,8 +88,16 @@ _SEED_KEYS = frozenset(
         "motion",
         "motion_brief",
         "video_asset_key",
+        "episode_class",
+        "sources",
+        "target_minutes",
     }
 )
+# v1.17: the episode lane's fields, required there and refused on any other lane.
+EPISODE_TYPE = "episode"
+_EPISODE_KEYS = ("episode_class", "sources", "target_minutes")
+_SOURCES_MAX = 10
+_MINUTES = (4, 12)
 _SEED_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
 _HANDLE = re.compile(r"^[a-z0-9][a-z0-9-]{0,119}$")
 _URL_MAX = 500
@@ -220,6 +232,52 @@ def _motion(body: dict | None) -> dict[str, Any]:
     return out
 
 
+def _episode(body: dict, content_type: str) -> dict[str, Any]:
+    """Pop the episode fields (v1.17): on the `episode` lane all three are
+    required (a class id, 1-10 https sources, 4-12 minutes); on any other lane
+    none may be sent. Hermes checks the class against the bundle."""
+    present = [k for k in _EPISODE_KEYS if body.get(k) is not None]
+    values = {k: body.pop(k, None) for k in _EPISODE_KEYS}
+    if content_type != EPISODE_TYPE:
+        if present:
+            raise HTTPException(
+                status_code=400, detail=f"{present[0]} is only for the episode lane"
+            )
+        return {}
+    cls, sources, minutes = (values[k] for k in _EPISODE_KEYS)
+    if not (isinstance(cls, str) and _SEED_ID.fullmatch(cls)):
+        raise HTTPException(status_code=400, detail="episode_class is required")
+    if (
+        not isinstance(sources, list)
+        or not 1 <= len(sources) <= _SOURCES_MAX
+        or not all(
+            isinstance(s, str)
+            and s.strip().startswith("https://")
+            and len(s.strip()) <= _URL_MAX
+            for s in sources
+        )
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"sources: 1-{_SOURCES_MAX} https links of at most {_URL_MAX} "
+            "characters",
+        )
+    if (
+        isinstance(minutes, bool)
+        or not isinstance(minutes, int)
+        or not _MINUTES[0] <= minutes <= _MINUTES[1]
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"target_minutes is a whole number {_MINUTES[0]}-{_MINUTES[1]}",
+        )
+    return {
+        "episode_class": cls,
+        "sources": [s.strip() for s in sources],
+        "target_minutes": minutes,
+    }
+
+
 def _seed_body(body: dict | None) -> dict[str, Any]:
     """A seed, shape-checked as the bridge checks it: only its keys, empty
     optional fields dropped. Hermes validates lanes, pillars, phrases and names."""
@@ -263,6 +321,7 @@ def _seed_body(body: dict | None) -> dict[str, Any]:
         ):
             raise bad(f"url must start https:// and be at most {_URL_MAX} characters")
         seed["url"] = url
+    seed.update(_episode(body, seed["content_type"]))
     seed.update(_targeting(body))
     # A seed has no stored values to keep or clear: the defaults are left out.
     seed.update({k: v for k, v in _motion(body).items() if v})

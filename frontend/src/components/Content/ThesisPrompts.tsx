@@ -1,4 +1,4 @@
-import { Check, Lightbulb, Sprout, X } from 'lucide-react';
+import { Check, Clapperboard, Lightbulb, Sprout, X } from 'lucide-react';
 import type { PromptAction, ThesisPrompt } from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { shortDateTime } from '../shared/format';
@@ -10,6 +10,8 @@ export function ThesisPrompts({
   showProperty,
   onMark,
   onSeed,
+  onSeedEpisode,
+  episodeClassName,
   seeded = [],
 }: {
   prompts: ThesisPrompt[];
@@ -17,6 +19,10 @@ export function ThesisPrompts({
   onMark: (id: string, action: PromptAction) => void;
   /** v1.16: open the composer pre-filled from this prompt. */
   onSeed?: (prompt: ThesisPrompt) => void;
+  /** v1.17: seed the prompt as an episode of the operator-only class, where its property has one. */
+  onSeedEpisode?: (prompt: ThesisPrompt) => void;
+  /** That class's name for this prompt's property, or null when it has none. */
+  episodeClassName?: (prompt: ThesisPrompt) => string | null;
   /** Prompts with a seed sent this session; Hermes marks them used once the file is written. */
   seeded?: string[];
 }) {
@@ -58,6 +64,11 @@ export function ThesisPrompts({
                 {onSeed && (
                   <SmallButton tone="accent" onClick={() => onSeed(t)} title="Open it in the composer as your thesis seed">
                     <Sprout size={11} /> Seed this
+                  </SmallButton>
+                )}
+                {onSeedEpisode && episodeClassName?.(t) && (
+                  <SmallButton onClick={() => onSeedEpisode(t)} title="Open it in the composer as a studio episode">
+                    <Clapperboard size={11} /> Seed as {/^[aeiou]/i.test(episodeClassName(t) ?? '') ? 'an' : 'a'} {episodeClassName(t)}
                   </SmallButton>
                 )}
                 {seeded.includes(t.id) && (

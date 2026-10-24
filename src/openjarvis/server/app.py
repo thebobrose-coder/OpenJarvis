@@ -30,6 +30,7 @@ from openjarvis.server.research_router import router as research_router
 from openjarvis.server.routes import router
 from openjarvis.server.stack_routes import stack_router
 from openjarvis.server.store_performance_routes import store_performance_router
+from openjarvis.server.studio_routes import studio_router
 from openjarvis.server.trading_routes import trading_router
 from openjarvis.server.upload_router import router as upload_router
 from openjarvis.server.voice_routes import voice_router
@@ -560,6 +561,7 @@ def create_app(
     app.include_router(trading_router)
     app.include_router(stack_router)
     app.include_router(waiting_router)
+    app.include_router(studio_router)
     app.include_router(voice_router)
     app.include_router(hermes_usage_router)
     app.include_router(upload_router)

@@ -120,6 +120,15 @@ export interface SeedbankProperty {
   motion?: PropertyMotion | null;
   /** Absent means active. */
   active?: boolean;
+  /** v1.17: the studio channel's episode classes; absent where there's no episode lane. */
+  episode_classes?: EpisodeClass[];
+}
+
+export interface EpisodeClass {
+  id: string;
+  name: string;
+  /** Only the operator seeds it; Hermes never proposes it. */
+  operator_only: boolean;
 }
 
 export interface ContentSeedbank extends FeedMeta {
@@ -178,6 +187,10 @@ export interface Proposal {
   motion_brief?: string | null;
   /** Only ever the operator's own asset key. */
   video_key?: string | null;
+  /** v1.17, the episode lane; null off it. */
+  episode_class?: string | null;
+  sources?: string[] | null;
+  target_minutes?: number | null;
 }
 
 export interface ThesisPrompt {
@@ -518,7 +531,13 @@ export interface SeedBody {
   motion?: 'always' | 'never';
   motion_brief?: string;
   video_asset_key?: string;
+  /** v1.17: required on the `episode` lane, refused on any other. */
+  episode_class?: string;
+  sources?: string[];
+  target_minutes?: number;
 }
+
+export const EPISODE_LIMITS = { sources: 10, minMinutes: 4, maxMinutes: 12, defaultMinutes: 8 } as const;
 
 export const SEED_LIMITS = { text: 6000, url: 500, title: 120 } as const;
 /** Store handles: lowercase letters, digits and hyphens, at most 120. */

@@ -3,13 +3,16 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { ApprovalEdits, PromptAction, PropertyMotion, SeedBody, VerifyResult } from '../../lib/content-api';
 import { applyDecisions, type ContentFeedStates, type PendingDecision } from '../../hooks/useContentData';
+import type { EpisodeDetail, EpisodeSummary, StudioStatus } from '../../lib/studio-api';
 import { ContentHeader } from './ContentHeader';
+import { EpisodeDrawer, type EpisodeActions } from './EpisodeDrawer';
+import { EpisodesPanel, type RunStatus } from './EpisodesPanel';
 import { ALL_PROPERTIES, matchesProperty } from './format';
 import { HealthStrip } from './HealthStrip';
 import { PerformancePanel } from './PerformancePanel';
 import { ProposalsQueue, type QueueTab } from './ProposalsQueue';
 import { SeedbankStrip } from './SeedbankStrip';
-import { SeedComposer, draftFromPrompt, emptyDraft, type SeedDraft } from './SeedComposer';
+import { SeedComposer, draftFromPrompt, emptyDraft, episodeDraftFromPrompt, promptEpisodeClass, type SeedDraft } from './SeedComposer';
 import { ThesisLane } from './ThesisLane';
 import { ThesisPrompts } from './ThesisPrompts';
 import { WinnersPanel } from './WinnersPanel';
@@ -41,6 +44,28 @@ export interface ContentViewProps {
   seededPrompts?: string[];
   /** For tests: the composer open with this draft. */
   initialComposer?: SeedDraft | null;
+  /** hq 0019 Part B: the studio's episodes; absent hides the panel. */
+  studio?: StudioProps;
+}
+
+export interface StudioProps {
+  status: StudioStatus | null;
+  episodes: EpisodeSummary[];
+  loading: boolean;
+  error: string | null;
+  onOpen: (id: string) => void;
+  onRun: () => void;
+  runStatus?: RunStatus;
+  runAvailableAt?: number | null;
+  onPause: (propertyId: string, paused: boolean) => void;
+  pausing?: Record<string, boolean>;
+  /** The open episode's drawer. */
+  openId: string | null;
+  detail: EpisodeDetail | null;
+  detailLoading: boolean;
+  detailError: string | null;
+  actions: EpisodeActions | null;
+  onClose: () => void;
 }
 
 /**
@@ -159,6 +184,26 @@ export function ContentView(props: ContentViewProps) {
         />
       </div>
 
+      {props.studio && (
+        <div className="grid grid-cols-12 gap-4 mb-4">
+          <EpisodesPanel
+            status={props.studio.status}
+            episodes={props.studio.episodes}
+            selectedProperty={selected}
+            showProperty={showProperty}
+            loading={props.studio.loading}
+            error={props.studio.error}
+            now={props.now ?? Date.now()}
+            onOpen={props.studio.onOpen}
+            onRun={props.studio.onRun}
+            runStatus={props.studio.runStatus}
+            runAvailableAt={props.studio.runAvailableAt}
+            onPause={props.studio.onPause}
+            pausing={props.studio.pausing}
+          />
+        </div>
+      )}
+
       <div className="grid grid-cols-12 gap-4 mb-4 items-start">
         <ProposalsQueue
           pending={pending}
@@ -181,6 +226,15 @@ export function ContentView(props: ContentViewProps) {
           showProperty={showProperty}
           onMark={props.onPrompt}
           onSeed={seeds ? (t) => openComposer(draftFromPrompt(t, seedbank)) : undefined}
+          onSeedEpisode={
+            seeds
+              ? (t) => {
+                  const draft = episodeDraftFromPrompt(t, seedbank);
+                  if (draft) openComposer(draft);
+                }
+              : undefined
+          }
+          episodeClassName={(t) => promptEpisodeClass(t, seedbank)?.name ?? null}
           seeded={props.seededPrompts}
         />
       </div>
@@ -209,6 +263,19 @@ export function ContentView(props: ContentViewProps) {
           error={feeds.content_winners.error}
         />
       </div>
+
+      {props.studio?.actions && (
+        <EpisodeDrawer
+          open={!!props.studio.openId}
+          title={props.studio.detail?.summary.title || props.studio.detail?.manifest.topic || 'Episode'}
+          onClose={props.studio.onClose}
+          detail={props.studio.detail}
+          loading={props.studio.detailLoading}
+          error={props.studio.detailError}
+          actions={props.studio.actions}
+          now={props.now ?? Date.now()}
+        />
+      )}
     </div>
   );
 }

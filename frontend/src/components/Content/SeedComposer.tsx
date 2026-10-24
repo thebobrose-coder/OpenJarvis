@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { PackageCheck, Send, Sprout, X } from 'lucide-react';
 import {
+  EPISODE_LIMITS,
   HANDLE_RE,
   SEED_LIMITS,
+  type EpisodeClass,
   type ContentSeedbank,
   type Lane,
   type Proposal,
@@ -33,6 +35,9 @@ export interface SeedDraft {
   text: string;
   url: string;
   source_prompt_id?: string;
+  /** v1.17, the episode lane: the class and the sources to start from. */
+  episode_class?: string;
+  sources?: string[];
 }
 
 /** A property's lanes a seed may target: seedable or operator-only, never a feed lane. */
@@ -44,12 +49,29 @@ export const seedProperties = (seedbank: ContentSeedbank | null): SeedbankProper
 
 export const isShortForm = (lane: Lane) => lane.lane === 'short' || lane.content_type === 'short';
 
-/** Target queries: long-form only, and never on an operator-only thesis (v1.10, 0008 A1 D6). */
-export const queriesAllowed = (lane: Lane) => !isShortForm(lane) && !lane.operator_only;
+/** The studio's long-form YouTube lane (v1.17). */
+export const isEpisode = (lane: Lane) => lane.lane === 'episode' || lane.content_type === 'episode';
 
-/** The Video control (v1.14): a lane the property's bundle `motion` lists, never long-form or the thesis. */
+/** Target queries: long-form only, never on an operator-only thesis (v1.10, 0008 A1 D6), never on episodes (v1.17). */
+export const queriesAllowed = (lane: Lane) => !isShortForm(lane) && !lane.operator_only && !isEpisode(lane);
+
+/** The Video control (v1.14): a lane the property's bundle `motion` lists, never long-form, the thesis or an episode. */
 export const seedVideoAllowed = (prop: SeedbankProperty | undefined, lane: Lane | undefined) =>
-  !!prop && !!lane && videoAllowed(prop.motion, lane.lane, lane.content_type);
+  !!prop && !!lane && !isEpisode(lane) && videoAllowed(prop.motion, lane.lane, lane.content_type);
+
+/** Sources as typed: one per line, trimmed, empties dropped. */
+export const parseSources = (text: string) =>
+  text
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+/** The operator-only class a thesis prompt may seed as an episode ("Seed as a <class>"). */
+export function promptEpisodeClass(prompt: ThesisPrompt, seedbank: ContentSeedbank | null): EpisodeClass | null {
+  const prop = seedProperties(seedbank).find((p) => p.id === prompt.property_id);
+  if (!prop || !seedableLanes(prop).some(isEpisode)) return null;
+  return (prop.episode_classes ?? []).find((c) => c.operator_only) ?? null;
+}
 
 /** The title Foundry's intake takes for a long-form seed: line 1, at most 120 characters. */
 export function seedTitle(text: string): string {
@@ -82,6 +104,24 @@ export function draftFromPrompt(prompt: ThesisPrompt, seedbank: ContentSeedbank 
   };
 }
 
+/** "Seed as a <class>": the prompt on the episode lane, its links as the sources. */
+export function episodeDraftFromPrompt(prompt: ThesisPrompt, seedbank: ContentSeedbank | null): SeedDraft | null {
+  const cls = promptEpisodeClass(prompt, seedbank);
+  const prop = seedProperties(seedbank).find((p) => p.id === prompt.property_id);
+  const lane = prop ? seedableLanes(prop).find(isEpisode) : undefined;
+  if (!cls || !lane) return null;
+  const text = [prompt.signal.trim(), (prompt.why_it_matters ?? '').trim()].filter(Boolean).join('\n\n');
+  return {
+    property_id: prompt.property_id,
+    lane: lane.lane,
+    text: text.slice(0, SEED_LIMITS.text),
+    url: '',
+    source_prompt_id: prompt.id,
+    episode_class: cls.id,
+    sources: (prompt.links ?? []).filter((u) => u.startsWith('https://')).slice(0, EPISODE_LIMITS.sources),
+  };
+}
+
 export interface SeedForm {
   property_id: string;
   text: string;
@@ -93,6 +133,8 @@ export interface SeedForm {
   source_prompt_id?: string;
   /** v1.14, only where the Video control shows. */
   video?: { choice: MotionChoice; beat: string; assetKey: string };
+  /** v1.17, only on the episode lane. */
+  episode?: { cls: string; sources: string[]; minutes: number };
 }
 
 /** The body Queue sends: only the bridge's keys, empty fields left out. */
@@ -100,7 +142,12 @@ export function seedBody(form: SeedForm, lane: Lane): SeedBody {
   const body: SeedBody = { property_id: form.property_id, content_type: lane.content_type, text: form.text.trim() };
   if (form.pillar) body.pillar_hint = form.pillar;
   if (form.product.trim()) body.product_handle = form.product.trim();
-  if (form.url.trim()) body.url = form.url.trim();
+  if (form.url.trim() && !isEpisode(lane)) body.url = form.url.trim();
+  if (form.episode && isEpisode(lane)) {
+    body.episode_class = form.episode.cls;
+    body.sources = form.episode.sources.map((s) => s.trim()).filter(Boolean);
+    body.target_minutes = form.episode.minutes;
+  }
   const queries = queriesAllowed(lane) ? cleanQueries(form.queries) : [];
   if (queries.length) body.target_queries = queries;
   body.priority = form.priority;
@@ -131,6 +178,19 @@ export function seedProblems(form: SeedForm, lane: Lane | undefined, verify: Ver
   }
   const keyProblem = form.video ? assetKeyProblem(form.video.assetKey, form.property_id) : null;
   if (keyProblem) out.push(keyProblem);
+  if (lane && isEpisode(lane)) {
+    const ep = form.episode;
+    if (!ep?.cls) out.push('Pick the episode class.');
+    const sources = (ep?.sources ?? []).map((s) => s.trim()).filter(Boolean);
+    if (sources.length < 1 || sources.length > EPISODE_LIMITS.sources) out.push(`Give 1–${EPISODE_LIMITS.sources} sources.`);
+    if (sources.some((s) => !s.startsWith('https://') || s.length > SEED_LIMITS.url)) {
+      out.push(`Each source starts https:// and is at most ${SEED_LIMITS.url} characters.`);
+    }
+    const m = ep?.minutes;
+    if (m == null || !Number.isInteger(m) || m < EPISODE_LIMITS.minMinutes || m > EPISODE_LIMITS.maxMinutes) {
+      out.push(`Target minutes: a whole number ${EPISODE_LIMITS.minMinutes}–${EPISODE_LIMITS.maxMinutes}.`);
+    }
+  }
   return out;
 }
 
@@ -246,6 +306,9 @@ export function SeedComposer({
   const [choice, setChoice] = useState<MotionChoice>('default');
   const [beat, setBeat] = useState('');
   const [assetKey, setAssetKey] = useState('');
+  const [episodeClass, setEpisodeClass] = useState(draft.episode_class ?? '');
+  const [sourcesText, setSourcesText] = useState((draft.sources ?? []).join('\n'));
+  const [minutes, setMinutes] = useState<number>(EPISODE_LIMITS.defaultMinutes);
   const [phase, setPhase] = useState<'editing' | 'sending' | 'sent'>(initialSent ? 'sent' : 'editing');
   const [sentId, setSentId] = useState<string | null>(initialSent);
   const [error, setError] = useState<string | null>(null);
@@ -255,6 +318,9 @@ export function SeedComposer({
   const lane = lanes.find((l) => l.lane === laneKey);
   const pillars = prop?.pillars ?? [];
   const showVideo = seedVideoAllowed(prop, lane);
+  const episode = !!lane && isEpisode(lane);
+  const classes = prop?.episode_classes ?? [];
+  const chosenClass = classes.find((c) => c.id === episodeClass);
   const fromPrompt = !!draft.source_prompt_id && propertyId === draft.property_id;
   const form: SeedForm = {
     property_id: propertyId,
@@ -266,11 +332,12 @@ export function SeedComposer({
     priority,
     source_prompt_id: fromPrompt ? draft.source_prompt_id : undefined,
     video: showVideo ? { choice, beat, assetKey } : undefined,
+    episode: episode ? { cls: episodeClass, sources: parseSources(sourcesText), minutes } : undefined,
   };
   const checked = verify === 'checking' ? null : verify;
   const problems = seedProblems(form, lane, checked);
   const body = lane ? seedBody(form, lane) : null;
-  const longForm = lane ? !isShortForm(lane) : false;
+  const longForm = lane ? !isShortForm(lane) && !isEpisode(lane) : false;
   const handleOk = HANDLE_RE.test(product.trim());
 
   const pickProperty = (id: string) => {
@@ -279,6 +346,7 @@ export function SeedComposer({
     setLaneKey(next ? seedableLanes(next)[0]?.lane ?? '' : '');
     setPillar('');
     setVerify(null);
+    setEpisodeClass('');
   };
 
   const check = async () => {
@@ -361,7 +429,7 @@ export function SeedComposer({
               value={text}
               onChange={(e) => setText(e.target.value.slice(0, SEED_LIMITS.text + 200))}
               rows={longForm ? 10 : 4}
-              placeholder={longForm ? 'Title on the first line, then the seed' : 'The seed topic'}
+              placeholder={longForm ? 'Title on the first line, then the seed' : episode ? 'The episode topic' : 'The seed topic'}
               className="w-full rounded-md px-2 py-1.5 text-[12.5px] resize-y"
               style={field}
             />
@@ -406,16 +474,71 @@ export function SeedComposer({
             </div>
           </div>
 
-          <label className="flex flex-col gap-1">
-            <Label>URL</Label>
-            <input
-              value={url}
-              onChange={(e) => setUrl(e.target.value.slice(0, SEED_LIMITS.url))}
-              placeholder="https:// source link (optional)"
-              className="rounded-md px-2 py-1 text-[12px]"
-              style={field}
-            />
-          </label>
+          {episode && (
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2" role="group" aria-label="Episode">
+              <label className="flex flex-col gap-1">
+                <Label>Episode class</Label>
+                <span className="flex items-center gap-1.5">
+                  <select value={episodeClass} onChange={(e) => setEpisodeClass(e.target.value)} className="flex-1 rounded-md px-1.5 py-1 text-[12px] cursor-pointer" style={field} aria-label="Episode class">
+                    <option value="">Pick a class</option>
+                    {classes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.operator_only ? ' (yours only)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {chosenClass?.operator_only && (
+                    <Chip tone="warning" title="Only you seed this class; Hermes never proposes it">
+                      operator-only
+                    </Chip>
+                  )}
+                </span>
+              </label>
+              <label className="flex flex-col gap-1">
+                <Label>Target minutes</Label>
+                <input
+                  type="number"
+                  min={EPISODE_LIMITS.minMinutes}
+                  max={EPISODE_LIMITS.maxMinutes}
+                  step={1}
+                  value={minutes}
+                  onChange={(e) => setMinutes(Number(e.target.value))}
+                  className="w-20 rounded-md px-2 py-1 text-[12px]"
+                  style={field}
+                />
+              </label>
+              <label className="flex flex-col gap-1 sm:col-span-2">
+                <span className="flex items-center justify-between gap-2">
+                  <Label>Sources, one https link per line</Label>
+                  <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    {parseSources(sourcesText).length} / {EPISODE_LIMITS.sources}
+                  </span>
+                </span>
+                <textarea
+                  value={sourcesText}
+                  onChange={(e) => setSourcesText(e.target.value)}
+                  rows={3}
+                  placeholder="https://… (public primary sources: the studio scripts from these)"
+                  className="w-full rounded-md px-2 py-1.5 text-[12px] resize-y"
+                  style={field}
+                />
+              </label>
+            </div>
+          )}
+
+          {!episode && (
+            <label className="flex flex-col gap-1">
+              <Label>URL</Label>
+              <input
+                value={url}
+                onChange={(e) => setUrl(e.target.value.slice(0, SEED_LIMITS.url))}
+                placeholder="https:// source link (optional)"
+                className="rounded-md px-2 py-1 text-[12px]"
+                style={field}
+              />
+            </label>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
             {lane && queriesAllowed(lane) ? (
@@ -477,6 +600,7 @@ export function SeedComposer({
           )}
           <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
             Your seed, born approved. Hermes checks the lane, pillar and wording; Foundry’s intake, compliance scan and G1 still apply.
+            {episode ? ' An episode also waits for your G0 script review in the studio.' : ''}
             {fromPrompt ? ' The prompt is marked used once the seed reaches the outbox.' : ''}
           </p>
           <div className="flex gap-1.5">

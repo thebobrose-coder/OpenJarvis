@@ -431,6 +431,42 @@ the card renders the patch's `images [{media_id, url, before, after}]` instead.
 
 Copy patches and unknown fields render as before.
 
+**Content page: the studio's Episodes and G0** (hq 0019 Part B; the local
+studio's files, plus contract v1.17's episode lane). The long-form YouTube
+studio writes its status and one folder per episode on this disk; the page
+reads them and writes only the operator's files.
+- **Episodes panel:** one card per studio channel (the channel name comes
+  from the content bundle at runtime) with queued, in production, published
+  and runway, this month's spend and GPU minutes against the caps, the
+  channel's pause, and each episode with a stage chip. **Run studio now**
+  starts the studio's task, at most once every 2 minutes. There is no publish
+  button: publishing is G1's approval.
+- **G0 drawer** (`awaiting-g0`): the script with inline edit, the claims
+  table with a check box per claim (`unsourced` claims flagged as needing a
+  ruling; Approve stays disabled until every claim is checked and the script
+  keeps one heading per planned beat), the studio's notes for G0, the visual
+  plan per beat, Omni (off by default), and Approve, Request rewrite (with a
+  note, at most two) or Reject, each with a confirm step. The decision is
+  `g0.json`, applied on the studio's next run. "Waiting on you" G0 rows open
+  the drawer through `?focus=`.
+- **Episode detail:** the 60 s cut and the full cut, loaded on demand, the
+  checks and spend, the stage history, and the publish fields (title,
+  description, tags, thumbnail pick) written to `publish.json` until the
+  episode goes to G1, with the visibility it will get (the channel's first
+  episodes unlisted) and the AI-label reminder. Media loads as blobs through
+  the API, so no CSP change was needed.
+- **Composer:** the `episode` lane takes the class (with the operator-only
+  badge), 1–10 sources and the target minutes (4–12, default 8), and never
+  target queries, a URL or the Video control. A thesis prompt whose property
+  has an operator-only episode class offers "Seed as a …" beside Seed this.
+- **Server:** `server/studio_routes.py`, all loopback only and never outside
+  the studio folder (`<WORKSPACE_DATA_DIR>/studio`): status, the episode
+  list and detail, media by name, `PUT …/script` and `POST …/g0` only at
+  `awaiting-g0` (with a version hash, so a newer draft answers 409),
+  `PUT …/publish` only before G1, `POST /run`, and pause or resume. Every
+  write is atomic. `POST /api/content/seeds` takes the three episode fields,
+  required on that lane and refused on any other.
+
 **Content page: the operator's own seeds** (contract v1.16, hq 0008 A1).
 A seed for any active property and any seedable or operator-only lane goes
 through the same outbox and intake as an approved Hermes proposal, with no
