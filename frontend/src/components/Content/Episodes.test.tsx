@@ -69,6 +69,7 @@ function summary(over: Partial<EpisodeSummary> = {}): EpisodeSummary {
     youtubeVisibility: null,
     postId: null,
     stoppedReason: null,
+    stageNote: null,
     rewrites: 0,
     g0Pending: false,
     ...over,
@@ -98,6 +99,7 @@ function detail(over: Partial<EpisodeDetail> = {}, m: Partial<Manifest> = {}): E
     channel: null,
     visibility: { visibility: 'unlisted', number: 1, first: 5 },
     paused: false,
+    sourceIndex: null,
     ...over,
   };
 }
@@ -215,6 +217,51 @@ describe('EpisodesPanel', () => {
     });
     expect(html).toContain('last run failed: sample failure');
     expect(html).toContain('Ran just now');
+  });
+});
+
+describe('v0.1.3-v0.1.4 additions', () => {
+  const view = (d: EpisodeDetail) => renderToStaticMarkup(<EpisodeDrawerView detail={d} loading={false} error={null} actions={ACTIONS} now={NOW} />);
+  const HITS = [
+    { beat: 2, sentence: 'The sample source says this almost word for word.', sourceN: 1, run: 'says this almost word for word', kind: 'run' as const },
+    { beat: 2, sentence: 'Another dense sentence.', sourceN: 2, run: 'dense sentence', kind: 'density' as const },
+  ];
+
+  it('reads "not checked" on a draft without sourceCopy', () => {
+    expect(view(detail())).toContain('Not checked: this draft was written before');
+  });
+
+  it('shows the hits by beat with the shared words marked and the source named from the snapshot', () => {
+    const html = view(detail({ sourceIndex: [{ n: 1, url: 'https://example.com/a' }, { n: 2, url: 'https://example.com/b' }] }, { sourceCopy: HITS }));
+    expect(html).toContain('Source copy (2)');
+    expect(html).toContain('data-copy-beat="2"');
+    expect(html).toContain('Beat 2: TWO · 2 hits');
+    expect(html).toMatch(/<mark[^>]*>says this almost word for word<\/mark>/);
+    expect(html).toContain('copied run');
+    expect(html).toContain('dense overlap');
+    expect(html).toContain('title="https://example.com/b"');
+    expect(html).toContain('2 source-copy hits');
+  });
+
+  it('is a note, never a block on Approve', () => {
+    const html = view(detail({}, { sourceCopy: HITS }));
+    expect(html).not.toContain('source copy');
+    expect(html).toContain('Check every claim: 2 of 2 not checked.');
+    expect(html).not.toMatch(/Approve[^<]*source/i);
+  });
+
+  it('says so when the check found nothing', () => {
+    expect(view(detail({}, { sourceCopy: [] }))).toContain('No sentence follows a source’s wording.');
+  });
+
+  it('puts the studio wait note on the card and the run error beside the button', () => {
+    const html = panel({
+      episodes: [summary({ stage: 'visualizing', stageNote: 'waiting for the operator fixed text' })],
+      runStatus: 'error',
+      runError: 'ERROR: The system cannot find the file specified.',
+    });
+    expect(html).toContain('waiting for the operator fixed text');
+    expect(html).toContain('Run studio now failed: ERROR: The system cannot find the file specified.');
   });
 });
 

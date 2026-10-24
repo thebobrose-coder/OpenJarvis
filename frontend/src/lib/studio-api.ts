@@ -76,6 +76,8 @@ export interface EpisodeSummary {
   youtubeVisibility: 'unlisted' | 'public' | null;
   postId: string | null;
   stoppedReason: string | null;
+  /** The studio's latest note in the current stage: a wait, a refusal or a stop. */
+  stageNote: string | null;
   rewrites: number;
   /** A g0.json is written and waits for the studio's next run. */
   g0Pending: boolean;
@@ -139,6 +141,19 @@ export interface Manifest {
   youtubeVisibility?: 'unlisted' | 'public';
   postId?: string;
   stoppedReason?: string;
+  /** v0.1.4: the source-copy check on the current script; absent on a draft written before it. */
+  sourceCopy?: SourceCopyHit[];
+}
+
+/** A stretch of narration in a source's wording (v0.1.4): a note for G0, never a block. */
+export interface SourceCopyHit {
+  beat: number;
+  sentence: string;
+  /** 1-based, as in `sources/index.json`. */
+  sourceN: number;
+  /** The shared words, at most 30. */
+  run: string;
+  kind: 'run' | 'density';
 }
 
 export interface PublishFile {
@@ -175,6 +190,8 @@ export interface EpisodeDetail {
   channel: StudioChannel | null;
   visibility: { visibility: 'unlisted' | 'public'; number: number | null; first: number } | null;
   paused: boolean;
+  /** The studio's source snapshot, to name a copy hit's source; null before it exists. */
+  sourceIndex: { n: number; url: string }[] | null;
 }
 
 export const RUN_COOLDOWN_MS = 2 * 60 * 1000;

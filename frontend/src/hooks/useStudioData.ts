@@ -34,6 +34,7 @@ export function useStudioData() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState<RunStatus>('idle');
   const [runAvailableAt, setRunAvailableAt] = useState<number | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
   const [pausing, setPausing] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const openRef = useRef(openId);
@@ -134,6 +135,7 @@ export function useStudioData() {
 
   const run = useCallback(async () => {
     setRunStatus('running');
+    setRunError(null);
     try {
       const { started, availableAt } = await runStudio();
       setRunStatus(started ? 'started' : 'ran_recently');
@@ -142,8 +144,9 @@ export function useStudioData() {
       // A run takes a while (a script pass holds the GPU for minutes): look again soon.
       timers.current.push(window.setTimeout(() => void load(), 30 * 1000));
     } catch (e: unknown) {
+      // Shown beside the button: until the studio's task is registered, this is schtasks's own error.
       setRunStatus('error');
-      setNotice(e instanceof Error ? e.message : 'Studio run failed.');
+      setRunError(e instanceof Error ? e.message : 'Studio run failed.');
     }
   }, [load]);
 
@@ -177,6 +180,7 @@ export function useStudioData() {
     run,
     runStatus,
     runAvailableAt,
+    runError,
     pause,
     pausing,
     notice,

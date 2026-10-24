@@ -236,6 +236,30 @@ def _media(folder: Path) -> dict[str, Any]:
     }
 
 
+def _stage_note(m: dict[str, Any]) -> str | None:
+    """The latest note the studio left in the current stage: a wait (visuals
+    waiting for the operator's fixed text), a refusal, or a stop."""
+    for s in reversed(_stages(m)):
+        if s.get("stage") != m.get("stage"):
+            return None
+        if s.get("note"):
+            return str(s["note"])
+    return None
+
+
+def _source_index(folder: Path) -> list[dict[str, Any]] | None:
+    """The studio's source snapshot (v0.1.4), as {n, url}: names the source a
+    `sourceCopy` hit came from. None before the snapshot exists."""
+    index = _read_json(folder / "sources" / "index.json")
+    if not isinstance(index, list):
+        return None
+    return [
+        {"n": e.get("n"), "url": e.get("url")}
+        for e in index
+        if isinstance(e, dict) and isinstance(e.get("n"), int)
+    ]
+
+
 def _summary(folder: Path, m: dict[str, Any]) -> dict[str, Any]:
     cloud = m.get("cloud") if isinstance(m.get("cloud"), dict) else {}
     stages = _stages(m)
@@ -255,6 +279,7 @@ def _summary(folder: Path, m: dict[str, Any]) -> dict[str, Any]:
         "youtubeVisibility": m.get("youtubeVisibility"),
         "postId": m.get("postId"),
         "stoppedReason": m.get("stoppedReason"),
+        "stageNote": _stage_note(m),
         "rewrites": m.get("rewrites") or 0,
         "g0Pending": (folder / "g0.json").is_file(),
     }
@@ -367,6 +392,7 @@ def get_episode(episode_id: str, request: Request):
         "channel": channel,
         "visibility": _visibility(root, m, channel),
         "paused": _paused(root, pid),
+        "sourceIndex": _source_index(folder),
     }
 
 

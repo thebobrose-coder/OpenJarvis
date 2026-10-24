@@ -57,6 +57,7 @@ export interface StudioProps {
   onRun: () => void;
   runStatus?: RunStatus;
   runAvailableAt?: number | null;
+  runError?: string | null;
   onPause: (propertyId: string, paused: boolean) => void;
   pausing?: Record<string, boolean>;
   /** The open episode's drawer. */
@@ -198,6 +199,7 @@ export function ContentView(props: ContentViewProps) {
             onRun={props.studio.onRun}
             runStatus={props.studio.runStatus}
             runAvailableAt={props.studio.runAvailableAt}
+            runError={props.studio.runError}
             onPause={props.studio.onPause}
             pausing={props.studio.pausing}
           />

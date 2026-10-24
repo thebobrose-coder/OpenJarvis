@@ -585,3 +585,39 @@ def test_run_timeout_is_503(studio, monkeypatch):
     monkeypatch.setattr(sr.sys, "platform", "win32")
     monkeypatch.setattr(sr.subprocess, "run", boom)
     assert _client().post("/api/studio/run").status_code == 503
+
+
+# -- v0.1.3 / v0.1.4 additions -------------------------------------------------
+
+
+def test_the_card_carries_the_studio_wait_note(studio):
+    m = _manifest("visualizing")
+    m["stages"].append(
+        {
+            "stage": "visualizing",
+            "at": m["stages"][-1]["at"],
+            "ok": True,
+            "note": "waiting for the fixed text",
+        }
+    )
+    (studio / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+    row = _client().get("/api/studio/episodes").json()["episodes"][0]
+    assert row["stageNote"] == "waiting for the fixed text"
+
+
+def test_no_note_from_an_earlier_stage(studio):
+    row = _client().get("/api/studio/episodes").json()["episodes"][0]
+    assert row["stageNote"] is None  # "1 pass" belongs to scripted, not awaiting-g0
+
+
+def test_source_index_names_the_sources_when_the_snapshot_exists(studio):
+    client = _client()
+    assert client.get(f"/api/studio/episodes/{EID}").json()["sourceIndex"] is None
+    (studio / "sources").mkdir()
+    (studio / "sources" / "index.json").write_text(
+        json.dumps(
+            [{"n": 1, "url": "https://example.com/a", "fetchedAt": "x", "chars": 9}]
+        )
+    )
+    body = client.get(f"/api/studio/episodes/{EID}").json()
+    assert body["sourceIndex"] == [{"n": 1, "url": "https://example.com/a"}]

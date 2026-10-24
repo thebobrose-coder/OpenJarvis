@@ -10,6 +10,7 @@ import {
   type G0File,
   type PlanBeat,
   type PublishFile,
+  type SourceCopyHit,
 } from '../../lib/studio-api';
 import { ago } from '../../lib/waiting-api';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
@@ -77,8 +78,83 @@ function beatVisual(b: PlanBeat): string {
   return '';
 }
 
+/** The sentence with the shared words marked, when they appear in it as written. */
+function Marked({ sentence, run }: { sentence: string; run: string }) {
+  const at = run ? sentence.toLowerCase().indexOf(run.toLowerCase()) : -1;
+  if (at < 0) return <>{sentence}</>;
+  return (
+    <>
+      {sentence.slice(0, at)}
+      <mark style={{ background: 'var(--color-accent-subtle)', color: 'var(--color-text)' }}>{sentence.slice(at, at + run.length)}</mark>
+      {sentence.slice(at + run.length)}
+    </>
+  );
+}
+
+/**
+ * The studio's source-copy check (v0.1.4), by beat: each sentence that
+ * follows a source's wording, the shared words, and the source. A note for
+ * the operator, never a block on Approve. A draft written before the check
+ * carries no `sourceCopy` key and reads "not checked".
+ */
+export function SourceCopy({
+  hits,
+  beats,
+  index,
+  sources,
+}: {
+  hits: SourceCopyHit[] | undefined;
+  beats: PlanBeat[];
+  index: { n: number; url: string }[] | null;
+  /** The manifest's source list, the fallback name when the snapshot is missing. */
+  sources: string[];
+}) {
+  if (hits === undefined) {
+    return <Quiet>Not checked: this draft was written before the studio’s source-copy check. Its next script pass runs it.</Quiet>;
+  }
+  if (hits.length === 0) return <Quiet>No sentence follows a source’s wording.</Quiet>;
+  const byBeat = new Map<number, SourceCopyHit[]>();
+  for (const h of hits) byBeat.set(h.beat, [...(byBeat.get(h.beat) ?? []), h]);
+  const sourceUrl = (n: number) => index?.find((e) => e.n === n)?.url ?? (index ? null : sources[n - 1] ?? null);
+  return (
+    <ol className="flex flex-col gap-2">
+      {[...byBeat.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([beat, list]) => (
+          <li key={beat} className="flex flex-col gap-1.5 rounded-md px-2 py-1.5" style={{ background: 'var(--color-bg-secondary)' }} data-copy-beat={beat}>
+            <span className="font-medium" style={{ color: 'var(--color-text)' }}>
+              Beat {beat}
+              {beats.find((b) => b.beat === beat)?.heading ? `: ${beats.find((b) => b.beat === beat)?.heading}` : ''} · {list.length} hit{list.length > 1 ? 's' : ''}
+            </span>
+            {list.map((h, i) => {
+              const url = sourceUrl(h.sourceN);
+              return (
+                <div key={i} className="flex flex-col gap-0.5">
+                  <span style={{ color: 'var(--color-text)' }}>
+                    <Marked sentence={h.sentence} run={h.run} />
+                  </span>
+                  <span className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <Chip tone={h.kind === 'run' ? 'warning' : 'muted'}>{h.kind === 'run' ? 'copied run' : 'dense overlap'}</Chip>
+                    <span>shared: “{h.run}”</span>
+                    {url ? (
+                      <span style={{ color: 'var(--color-accent)' }}>
+                        <ExtLink url={url}>source {h.sourceN}</ExtLink>
+                      </span>
+                    ) : (
+                      <span>source {h.sourceN}</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </li>
+        ))}
+    </ol>
+  );
+}
+
 /** The visual plan per beat: kind, what it shows, the sound line, the claims it carries. */
-export function PlanTable({ beats }: { beats: PlanBeat[] }) {
+export function PlanTable({ beats, copyHits }: { beats: PlanBeat[]; copyHits?: Record<number, number> }) {
   return (
     <ol className="flex flex-col gap-1.5">
       {beats.map((b) => (
@@ -91,6 +167,7 @@ export function PlanTable({ beats }: { beats: PlanBeat[] }) {
             {b.words != null && <Chip tone="muted">{b.words} words</Chip>}
             {b.sound && <Chip tone="muted">{b.sound}</Chip>}
             {(b.claimIds ?? []).length > 0 && <Chip tone="muted">{(b.claimIds ?? []).join(', ')}</Chip>}
+            {copyHits?.[b.beat] ? <Chip tone="warning">{copyHits[b.beat]} source-copy hit{copyHits[b.beat] > 1 ? 's' : ''}</Chip> : null}
           </span>
           {beatVisual(b) && (
             <span className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
@@ -206,6 +283,8 @@ export function G0Review({ detail, actions, now }: { detail: EpisodeDetail; acti
   const unchecked = claims.filter((c) => !checked.has(c.id));
   const rewrites = m.rewrites ?? 0;
   const notes = g0Notes(m);
+  const copyHits: Record<number, number> = {};
+  for (const h of m.sourceCopy ?? []) copyHits[h.beat] = (copyHits[h.beat] ?? 0) + 1;
   const refusals = stageNotes(m).filter((n) => /refused|waits|unknown/i.test(n));
   const approveProblems = [
     ...(unchecked.length ? [`Check every claim: ${unchecked.length} of ${claims.length} not checked.`] : []),
@@ -339,9 +418,13 @@ export function G0Review({ detail, actions, now }: { detail: EpisodeDetail; acti
         />
       </Section>
 
+      <Section title={`Source copy${m.sourceCopy ? ` (${m.sourceCopy.length})` : ''}`}>
+        <SourceCopy hits={m.sourceCopy} beats={plan} index={detail.sourceIndex} sources={m.sources ?? []} />
+      </Section>
+
       {plan.length > 0 && (
         <Section title="Visual plan">
-          <PlanTable beats={plan} />
+          <PlanTable beats={plan} copyHits={copyHits} />
         </Section>
       )}
 

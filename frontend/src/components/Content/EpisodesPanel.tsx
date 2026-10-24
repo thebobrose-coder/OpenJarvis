@@ -41,10 +41,16 @@ function EpisodeRow({ ep, now, onOpen }: { ep: EpisodeSummary; now: number; onOp
       <SmallButton tone={atG0 && !ep.g0Pending ? 'accent' : 'neutral'} onClick={() => onOpen(ep.episodeId)}>
         {atG0 && !ep.g0Pending ? 'Review G0' : 'Open'}
       </SmallButton>
-      {ep.stoppedReason && (
+      {ep.stoppedReason ? (
         <span className="basis-full text-[11px]" style={{ color: 'var(--color-error)' }}>
           {ep.stoppedReason}
         </span>
+      ) : (
+        ep.stageNote && (
+          <span className="basis-full text-[11px]" style={{ color: /refused|fail|waiting|waits/i.test(ep.stageNote) ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }}>
+            {ep.stageNote}
+          </span>
+        )
       )}
     </li>
   );
@@ -69,6 +75,7 @@ export function EpisodesPanel({
   onRun,
   runStatus = 'idle',
   runAvailableAt = null,
+  runError = null,
   onPause,
   pausing = {},
 }: {
@@ -83,6 +90,8 @@ export function EpisodesPanel({
   onRun: () => void;
   runStatus?: RunStatus;
   runAvailableAt?: number | null;
+  /** Why the last Run studio now failed, shown beside the button (e.g. the task isn't registered). */
+  runError?: string | null;
   onPause: (propertyId: string, paused: boolean) => void;
   pausing?: Record<string, boolean>;
 }) {
@@ -114,6 +123,11 @@ export function EpisodesPanel({
     >
       {status && (
         <div className="flex flex-col gap-3">
+          {runError && runStatus === 'error' && (
+            <p className="text-[11.5px]" role="alert" style={{ color: 'var(--color-error)' }}>
+              Run studio now failed: {runError}
+            </p>
+          )}
           {(status.stale || last?.ok === false) && (
             <p className="text-[11.5px]" role="status" style={{ color: 'var(--color-warning)' }}>
               {last?.ok === false ? `The studio's last run failed${last.note ? `: ${last.note}` : ''}.` : 'The studio hasn’t written its status for over 30 minutes.'}

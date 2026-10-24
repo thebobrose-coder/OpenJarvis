@@ -54,6 +54,7 @@ export function ContentPage() {
           onRun: () => void studio.run(),
           runStatus: studio.runStatus,
           runAvailableAt: studio.runAvailableAt,
+          runError: studio.runError,
           onPause: (id, paused) => void studio.pause(id, paused),
           pausing: studio.pausing,
           openId: studio.openId,
