@@ -143,6 +143,11 @@ def wired(monkeypatch, data):
     monkeypatch.setattr(wr, "_hermes", hermes)
     monkeypatch.setattr(wr, "_trading", trading)
     monkeypatch.setattr(wr, "_data_dir", lambda: state["data"])
+
+    async def no_g1():
+        return None, None  # the G1 mirror has its own tests
+
+    monkeypatch.setattr(wr, "_g1", no_g1)
     return state
 
 

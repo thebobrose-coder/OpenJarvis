@@ -11,6 +11,7 @@ import { CultureAudioProvider } from '../lib/CultureAudioContext';
 import { VoicePlayerProvider } from '../lib/VoicePlayer';
 import { WaitingProvider } from '../lib/WaitingContext';
 import { DecisionsDrawer } from './Waiting/DecisionsDrawer';
+import { G1Drawer } from './Waiting/G1Drawer';
 
 export function Layout() {
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
@@ -40,6 +41,7 @@ export function Layout() {
       <SystemPulse apiReachable={apiReachable} />
       <ApprovalBell />
       <DecisionsDrawer />
+      <G1Drawer />
       <VoiceIndicator />
 
       {/* Health check banner */}

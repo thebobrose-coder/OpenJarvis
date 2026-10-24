@@ -58,7 +58,7 @@ export function WaitingPanelView({
  * action; the panel itself never acts.
  */
 export function WaitingPanel() {
-  const { waiting, loading, error, setDecisionsOpen } = useWaiting();
+  const { waiting, loading, error, setDecisionsOpen, setG1Open } = useWaiting();
   const navigate = useNavigate();
   return (
     <WaitingPanelView
@@ -69,6 +69,7 @@ export function WaitingPanel() {
       onDecisions={() => setDecisionsOpen(true)}
       onOpen={(item) => {
         if (item.opens === 'decisions') setDecisionsOpen(true);
+        else if (item.opens === 'g1') setG1Open(String(item.id));
         else {
           const href = linkFor(item);
           if (href) navigate(href);

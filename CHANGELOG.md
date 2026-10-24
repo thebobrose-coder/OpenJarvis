@@ -431,6 +431,26 @@ the card renders the patch's `images [{media_id, url, before, after}]` instead.
 
 Copy patches and unknown fields render as before.
 
+**The G1 mirror in "Waiting on you"** (hq 0020 D4; Foundry's approval
+mirror). Open content approvals now show in the bell and the Dashboard panel
+as "Posts to approve (G1)", right after Trading, and open a G1 drawer.
+- **G1 drawer:** the still, or the clip with sound (an episode's 60 s cut),
+  then the headline, caption, disclosures, targets (an episode's tags) and
+  the motion beat, as on the Telegram card, with the time left in the 24 h
+  window. Approve or Reject takes an optional note (≤ 500) and a confirm
+  step; it runs the same decision code as Telegram's buttons. A 409 reads
+  "Already decided (Telegram or app)" and refreshes the list. **G2** rows
+  show everything with no buttons: "Decide in Telegram".
+- **Server:** `server/g1_routes.py` signs `GET /approvals` and
+  `POST /approvals/<id>` with SigV4 for service `lambda`
+  (`server/sigv4.py`, standard library, checked against the AWS SDK's
+  signer) from a named AWS profile. The mirror URL and the profile name are
+  local config (credentials.toml `[g1]` `G1_MIRROR_URL`, `G1_AWS_PROFILE`).
+  With no config the G1 kind is absent and nothing errors. The presigned
+  links never reach the page and are never cached or logged: the drawer asks
+  `/api/g1/approvals/<id>/media/<still|clip>`, and the server lists again
+  and streams the file, so the CSP is unchanged. All routes are loopback only.
+
 **Content page: the studio's Episodes and G0** (hq 0019 Part B; the local
 studio's files, plus contract v1.17's episode lane). The long-form YouTube
 studio writes its status and one folder per episode on this disk; the page

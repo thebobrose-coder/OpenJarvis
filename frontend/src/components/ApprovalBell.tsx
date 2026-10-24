@@ -13,7 +13,7 @@ import { WaitingListView } from './Waiting/WaitingListView';
  * approvals" source was dormant here and is replaced, not stacked.
  */
 export function ApprovalBell() {
-  const { waiting, setDecisionsOpen } = useWaiting();
+  const { waiting, setDecisionsOpen, setG1Open } = useWaiting();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -33,6 +33,7 @@ export function ApprovalBell() {
   const onOpen = (item: WaitingItem) => {
     setOpen(false);
     if (item.opens === 'decisions') setDecisionsOpen(true);
+    else if (item.opens === 'g1') setG1Open(String(item.id));
     else {
       const href = linkFor(item);
       if (href) navigate(href);

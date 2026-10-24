@@ -2,7 +2,8 @@
  * "Waiting on you" (hq 0020 P1): one list of everything waiting on the
  * operator, for the bell and the Dashboard panel. /api/waiting merges Hermes's
  * `approvals` feed (contract v1.17 block 2) with the local kinds: x402 from
- * `trading_status`, G0 episodes, inbox decision boxes and work orders. It is
+ * `trading_status`, G0 episodes, inbox decision boxes, work orders and the G1
+ * mirror's open approvals (when configured). It is
  * an index: every row links to the page that already holds the action.
  * /api/decisions and its tick are the Decisions drawer (0020 A5). Pure
  * helpers live here so they test without a DOM.
@@ -18,7 +19,8 @@ export type WaitingKind =
   | 'g0'
   | 'decision'
   | 'x402'
-  | 'workorder';
+  | 'workorder'
+  | 'g1';
 
 export interface WaitingItem {
   kind: WaitingKind | (string & {});
@@ -32,7 +34,7 @@ export interface WaitingItem {
   priority: number | null;
   link: { page: string; focus: string | number | null } | null;
   /** Local rows that open a drawer here instead of a page. */
-  opens?: 'decisions';
+  opens?: 'decisions' | 'g1';
 }
 
 export interface WaitingSource {
@@ -85,6 +87,7 @@ export const SOURCE_STALE_S = 30 * 60;
 /** The groups, in the order the bell and the panel show them. */
 export const KIND_ORDER: WaitingKind[] = [
   'x402',
+  'g1',
   'decision',
   'g0',
   'proposal',
@@ -97,6 +100,7 @@ export const KIND_ORDER: WaitingKind[] = [
 
 export const KIND_LABEL: Record<string, string> = {
   x402: 'Trading',
+  g1: 'Posts to approve (G1)',
   decision: 'Decisions',
   g0: 'Episode scripts (G0)',
   proposal: 'Content proposals',
@@ -113,6 +117,7 @@ export const SOURCE_LABEL: Record<string, string> = {
   inbox: 'Inbox',
   studio: 'Studio',
   workorders: 'Work orders',
+  g1_mirror: 'G1 mirror',
   content_proposals: 'Content',
   catalog_fixes: 'Catalog fixes',
   bd_pipeline: 'BD pipeline',

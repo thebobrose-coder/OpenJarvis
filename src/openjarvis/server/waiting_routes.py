@@ -9,7 +9,9 @@ Sources, merged per request (the page polls every 60 s):
 - x402 from ``trading_status``: a KILL, a failing heartbeat, a stale status;
 - G0: studio manifests at ``awaiting-g0`` (foundry-studio.md);
 - decision boxes: unticked ``- [ ] **Dn.`` lines in the inbox briefs (0020 A5);
-- blocked work orders and failed orders from the dispatcher's reports.
+- blocked work orders and failed orders from the dispatcher's reports;
+- G1 and G2 rows from Foundry's G1 mirror (foundry-g1-mirror.md), when its URL
+  and AWS profile are configured (``g1_routes``); they open the G1 drawer.
 
 The local folders come from one setting, the private workspace's data root
 (credentials.toml ``[desks] WORKSPACE_DATA_DIR``). Without it the local kinds
@@ -49,7 +51,7 @@ DECIDED_DAYS = 14
 DECIDED_MAX = 30
 NOTE_MAX = 500
 HERMES_KINDS = ("proposal", "thesis_prompt", "patch", "follow_up", "rec")
-LOCAL_KINDS = ("g0", "decision", "x402", "workorder")
+LOCAL_KINDS = ("g0", "decision", "x402", "workorder", "g1")
 
 
 def _data_dir() -> Path | None:
@@ -436,6 +438,47 @@ def x402_items(status: dict[str, Any] | None, now: datetime) -> list[dict[str, A
     ]
 
 
+def g1_items(listing: dict[str, Any]) -> list[dict[str, Any]]:
+    """The mirror's rows as "Waiting on you" rows: the card's headline, never
+    its links. G2 rows are listed for reading; they're decided in Telegram."""
+    rows = []
+    for item in listing.get("items") or []:
+        episode = item.get("contentType") == "episode"
+        decidable = bool(item.get("decidable"))
+        title = item.get("headline") or item.get("executionName") or "Approval"
+        detail = (
+            "G2: compliance flagged, decide in Telegram"
+            if not decidable
+            else ("Episode for YouTube" if episode else item.get("contentType"))
+        )
+        rows.append(
+            {
+                "kind": "g1",
+                "id": str(item.get("approvalId")),
+                "source_feed": "g1_mirror",
+                "scope": item.get("propertyId"),
+                "title": _clip(f"Episode: {title}" if episode else title, 140),
+                "detail": _clip(detail, 280) or None,
+                "created_at": item.get("createdAt"),
+                "due": item.get("expiresAt"),
+                "priority": 1 if decidable else None,
+                "link": None,
+                "opens": "g1",
+            }
+        )
+    return rows
+
+
+async def _g1() -> tuple[dict[str, Any] | None, str | None]:
+    """The mirror's listing (None when not configured) or the error text."""
+    from openjarvis.server.g1_routes import MirrorError, listing
+
+    try:
+        return await listing(), None
+    except MirrorError as exc:
+        return None, str(exc)
+
+
 # ---------- the merged list ----------
 
 
@@ -517,6 +560,16 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
                 sources[name] = _source(newest, now)
             except OSError as exc:
                 sources[name] = {"generated_at": None, "error": type(exc).__name__}
+
+    g1, error = await _g1()
+    if g1 is not None:
+        rows = g1_items(g1)
+        counts["g1"] = len(rows)
+        items += rows
+        at = _parse_time(g1.get("generatedAt"))
+        sources["g1_mirror"] = _source(at or now, now)
+    elif error:
+        sources["g1_mirror"] = {"generated_at": None, "error": error}
 
     counts["total"] = sum(counts[k] for k in (*HERMES_KINDS, *LOCAL_KINDS))
     return {

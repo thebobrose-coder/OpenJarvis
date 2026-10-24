@@ -13,7 +13,7 @@ import {
 export const EMPTY = 'Nothing waiting on you';
 
 /** Whether a row does anything when clicked: a page link or a drawer here. */
-export const isOpenable = (item: WaitingItem) => item.opens === 'decisions' || linkFor(item) != null;
+export const isOpenable = (item: WaitingItem) => item.opens === 'decisions' || item.opens === 'g1' || linkFor(item) != null;
 
 function Row({ item, now, compact, onOpen }: { item: WaitingItem; now: number; compact: boolean; onOpen: (item: WaitingItem) => void }) {
   const due = dueLabel(item.due, now);
