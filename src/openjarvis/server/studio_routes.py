@@ -307,9 +307,8 @@ def _visibility(root: Path, m: dict[str, Any], channel: dict | None) -> dict | N
 # ---------- reads ----------
 
 
-@studio_router.get("/status")
-def get_status(request: Request):
-    _local_only(request)
+def status_doc() -> dict[str, Any]:
+    """The status the page shows (also the Content desk's ``studio_status``)."""
     root = _root()
     status = _read_json(root / "status.json")
     if not isinstance(status, dict):
@@ -339,6 +338,12 @@ def get_status(request: Request):
     }
 
 
+@studio_router.get("/status")
+def get_status(request: Request):
+    _local_only(request)
+    return status_doc()
+
+
 @studio_router.get("/episodes")
 def list_episodes(request: Request, property: str = ""):
     _local_only(request)
@@ -358,9 +363,8 @@ def list_episodes(request: Request, property: str = ""):
     return {"episodes": rows}
 
 
-@studio_router.get("/episodes/{episode_id}")
-def get_episode(episode_id: str, request: Request):
-    _local_only(request)
+def episode_doc(episode_id: str) -> dict[str, Any]:
+    """One episode's files (also the Content desk's ``episode`` tool)."""
     root = _root()
     folder = _episode_dir(root, episode_id)
     m = _manifest(folder)
@@ -394,6 +398,12 @@ def get_episode(episode_id: str, request: Request):
         "paused": _paused(root, pid),
         "sourceIndex": _source_index(folder),
     }
+
+
+@studio_router.get("/episodes/{episode_id}")
+def get_episode(episode_id: str, request: Request):
+    _local_only(request)
+    return episode_doc(episode_id)
 
 
 @studio_router.get("/episodes/{episode_id}/media/{name:path}")

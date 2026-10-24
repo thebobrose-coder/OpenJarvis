@@ -9,7 +9,9 @@ import { ContentPage } from './pages/ContentPage';
 import { TradingPage } from './pages/TradingPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { GetStartedPage } from './pages/GetStartedPage';
-import { AgentsPage } from './pages/AgentsPage';
+// The upstream Agents page (pages/AgentsPage.tsx) stays in the tree, unrouted:
+// /agents is the Desks roster (hq 0020 D2a).
+import { DesksPage } from './pages/DesksPage';
 import { BriefingPage } from './pages/BriefingPage';
 import { DataSourcesPage } from './pages/DataSourcesPage';
 import { LogsPage } from './pages/LogsPage';
@@ -197,7 +199,7 @@ export default function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="get-started" element={<GetStartedPage />} />
           <Route path="data-sources" element={<DataSourcesPage />} />
-          <Route path="agents" element={<AgentsPage />} />
+          <Route path="agents" element={<DesksPage />} />
           <Route path="briefing" element={<BriefingPage />} />
           <Route path="logs" element={<LogsPage />} />
         </Route>

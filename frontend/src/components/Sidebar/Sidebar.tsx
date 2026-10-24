@@ -68,7 +68,7 @@ export function Sidebar() {
     { path: '/commerce', icon: ShoppingBag, label: 'Commerce' },
     { path: '/content', icon: Sprout, label: 'Content' },
     { path: '/trading', icon: CandlestickChart, label: 'Trading' },
-    { path: '/agents', icon: Bot, label: 'Agents' },
+    { path: '/agents', icon: Bot, label: 'Desks' },
     { path: '/data-sources', icon: Database, label: 'Data Sources' },
     { path: '/logs', icon: ScrollText, label: 'Logs' },
     { path: '/settings', icon: Settings, label: 'Settings' },

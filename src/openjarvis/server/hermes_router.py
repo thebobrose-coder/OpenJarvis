@@ -683,3 +683,136 @@ async def hermes_usage(request: Request) -> dict:
         "cap": _hermes_cap(app_config),
         "key_configured": bool(hermes_api_key()),
     }
+
+
+# ---------------------------------------------------------------------------
+# Desks (hq 0020 P2): a Chat thread with a desk id
+# ---------------------------------------------------------------------------
+
+_SESSION_ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
+
+
+def decide_desk_route(
+    text: str,
+    *,
+    default_route: str,
+    usage: "HermesUsage",
+    cap: int,
+    key_available: bool,
+) -> tuple[RouteDecision, str]:
+    """Route one desk turn: a prefix wins, else the desk's default. A default
+    Hermes turn answers locally when there's no key or the daily cap is used
+    up; a forced one ("Hermes,") goes anyway, as in Auto."""
+    forced, stripped = parse_prefix(text)
+    if forced == "hermes":
+        return RouteDecision("hermes", "prefix"), stripped
+    if forced == "local":
+        return RouteDecision("local", "prefix"), stripped
+    if default_route != "hermes":
+        return RouteDecision("local", "desk_default"), text
+    if not key_available:
+        return RouteDecision(
+            "local",
+            "no_key",
+            notice="Hermes isn't set up, so this desk answered locally.",
+        ), text
+    if usage.count_today() >= cap:
+        notice = (
+            f"Hermes daily cap reached ({cap} turns), so the desk answered locally. "
+            "Start with 'Hermes,' to ask Hermes anyway."
+        )
+        return RouteDecision("local", "cap", notice=notice), text
+    return RouteDecision("hermes", "desk_default"), text
+
+
+def _hermes_host(app_config: Any) -> str:
+    hermes_cfg = getattr(getattr(app_config, "engine", None), "hermes", None)
+    host = os.environ.get("HERMES_HOST") or getattr(hermes_cfg, "host", "") or ""
+    return (host or "http://127.0.0.1:8642").rstrip("/")
+
+
+async def route_desk(
+    request_body: Any,
+    request: Request,
+    *,
+    local_transport: httpx.AsyncBaseTransport | None = None,
+    hermes_transport: httpx.AsyncBaseTransport | None = None,
+) -> Any:
+    """Serve one desk turn. Local: qwen with the soul, rulings and only the
+    desk's loopback tools. Hermes: the desk profile, with no system message."""
+    from fastapi import HTTPException
+
+    from openjarvis.server import desk_chat, desks
+
+    desk = desks.DESKS.get(str(request_body.desk))
+    if desk is None:
+        raise HTTPException(status_code=400, detail="Unknown desk")
+    app_config = getattr(request.app.state, "config", None)
+    text = _last_user_text(request_body.messages)
+    api_key = hermes_api_key()
+    decision, forwarded = decide_desk_route(
+        text,
+        default_route=desk.default_route,
+        usage=get_usage(),
+        cap=_hermes_cap(app_config),
+        key_available=bool(api_key),
+    )
+    messages = desk_chat.thread_messages(request_body.messages, forwarded)
+    route = {**decision.as_dict(), "desk": desk.id}
+
+    if decision.target == "hermes":
+        model, engine = HERMES_MODEL_ID, "hermes"
+        if not api_key:
+            events = _one_text(_no_key_message())
+        else:
+            get_usage().record_turn()
+            session = str(getattr(request_body, "desk_session", "") or "")
+            if not _SESSION_ID.fullmatch(session):
+                session = str(uuid.uuid4())
+            events = desk_chat.hermes_turn(
+                desk,
+                messages,
+                host=_hermes_host(app_config),
+                api_key=api_key,
+                session_id=session,
+                max_tokens=max(int(request_body.max_tokens or 0), 4096),
+                transport=hermes_transport,
+            )
+    else:
+        model, engine = local_model(request), "ollama"
+        events = desk_chat.local_turn(
+            desk,
+            messages,
+            host=_ollama_host(app_config),
+            model=model,
+            transport=local_transport,
+        )
+
+    if request_body.stream:
+        return StreamingResponse(
+            desk_chat.stream_events(events, route, model, engine),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+    content, trace = await desk_chat.collect(events)
+    return {
+        "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "telemetry": {"engine": engine},
+        "route": route,
+        "tool_trace": trace,
+    }
+
+
+async def _one_text(content: str):
+    yield ("text", {"content": content})

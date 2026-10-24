@@ -1,7 +1,7 @@
 import { firstBlock } from '../../lib/voice-api';
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import type { ApprovalEdits, PromptAction, PropertyMotion, SeedBody, VerifyResult } from '../../lib/content-api';
+import type { ApprovalEdits, PromptAction, PropertyMotion, Proposal, SeedBody, VerifyResult } from '../../lib/content-api';
 import { applyDecisions, type ContentFeedStates, type PendingDecision } from '../../hooks/useContentData';
 import type { EpisodeDetail, EpisodeSummary, StudioStatus } from '../../lib/studio-api';
 import { ContentHeader } from './ContentHeader';
@@ -10,7 +10,7 @@ import { EpisodesPanel, type RunStatus } from './EpisodesPanel';
 import { ALL_PROPERTIES, matchesProperty } from './format';
 import { HealthStrip } from './HealthStrip';
 import { PerformancePanel } from './PerformancePanel';
-import { ProposalsQueue, type QueueTab } from './ProposalsQueue';
+import { ProposalsQueue, type DeskDecision, type QueueTab } from './ProposalsQueue';
 import { SeedbankStrip } from './SeedbankStrip';
 import { SeedComposer, draftFromPrompt, emptyDraft, episodeDraftFromPrompt, promptEpisodeClass, type SeedDraft } from './SeedComposer';
 import { ThesisLane } from './ThesisLane';
@@ -24,6 +24,10 @@ export interface ContentViewProps {
   onSelectProperty: (id: string) => void;
   onApprove: (id: string, edits: ApprovalEdits) => void;
   onReject: (id: string, note: string) => void;
+  /** Desks (hq 0020 P2): "Ask the desk" on a proposal, and a desk card's
+   * filled-in editor. */
+  onAskDesk?: (proposal: Proposal) => void;
+  deskDecision?: DeskDecision | null;
   onPrompt: (id: string, action: PromptAction) => void;
   onResearch: () => void;
   researchStatus: 'idle' | 'queued' | 'error';
@@ -215,6 +219,8 @@ export function ContentView(props: ContentViewProps) {
           showProperty={showProperty}
           onApprove={props.onApprove}
           onReject={props.onReject}
+          onAskDesk={props.onAskDesk}
+          deskDecision={props.deskDecision}
           loading={feeds.content_proposals.loading}
           error={feeds.content_proposals.error}
           hasFeed={proposals != null}

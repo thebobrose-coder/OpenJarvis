@@ -186,6 +186,12 @@ interface AppState {
   loadConversations: () => void;
   importOverlayConversation: () => Promise<void>;
   createConversation: (model?: string) => string;
+  /** A new desk thread, optionally with the page item for its first message. */
+  openDeskThread: (desk: 'content' | 'bd', context?: { block: string; label: string }) => string;
+  /** Take a thread's pending page context (it goes with the first message). */
+  takePendingContext: (conversationId: string) => { block: string; label: string } | undefined;
+  /** A system line in a desk thread, after the operator acted on a card. */
+  addOutcome: (conversationId: string, text: string) => void;
   selectConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
   loadMessages: (conversationId: string | null) => void;
@@ -268,7 +274,23 @@ interface AppState {
   // "Ask" button) to seed the next chat visit with a draft prompt.
   pendingChatPrompt: string | null;
   setPendingChatPrompt: (prompt: string | null) => void;
+
+  // Desk card hand-offs: a clicked card's prefill for the page it opens
+  // (the BD drawer's message, the proposal editor). The page takes it once.
+  deskHandoff: DeskHandoff | null;
+  setDeskHandoff: (handoff: DeskHandoff | null) => void;
 }
+
+export type DeskHandoff =
+  | { kind: 'draft'; thread: string; page: string; focus: string; draft: string }
+  | {
+      kind: 'proposal_decision';
+      thread: string;
+      id: string;
+      decision: 'approve' | 'reject';
+      fields: import('./desk-cards').ProposalFields;
+    }
+  | { kind: 'tick'; thread: string; file: string; box: number; note: string };
 
 export const useAppStore = create<AppState>((set, get) => {
   const initial = loadConversations();
@@ -375,6 +397,51 @@ export const useAppStore = create<AppState>((set, get) => {
       return conv.id;
     },
 
+    openDeskThread: (desk, context) => {
+      const store = loadConversations();
+      const conv: Conversation = {
+        id: generateId(),
+        title: 'New thread',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        model: 'auto',
+        messages: [],
+        desk,
+        deskSession: crypto.randomUUID(),
+        ...(context ? { pendingContext: context } : {}),
+      };
+      store.conversations[conv.id] = conv;
+      store.activeId = conv.id;
+      saveConversations(store);
+      set({
+        conversations: Object.values(store.conversations).sort((a, b) => b.updatedAt - a.updatedAt),
+        activeId: conv.id,
+        messages: [],
+      });
+      return conv.id;
+    },
+
+    takePendingContext: (conversationId) => {
+      const store = loadConversations();
+      const conv = store.conversations[conversationId];
+      const context = conv?.pendingContext;
+      if (!conv || !context) return undefined;
+      delete conv.pendingContext;
+      saveConversations(store);
+      set({ conversations: Object.values(store.conversations).sort((a, b) => b.updatedAt - a.updatedAt) });
+      return context;
+    },
+
+    addOutcome: (conversationId, text) => {
+      get().addMessage(conversationId, {
+        id: generateId(),
+        role: 'assistant',
+        content: text,
+        timestamp: Date.now(),
+        outcome: true,
+      });
+    },
+
     selectConversation: (id: string) => {
       const store = loadConversations();
       store.activeId = id;
@@ -426,7 +493,7 @@ export const useAppStore = create<AppState>((set, get) => {
       if (!conv) return;
       conv.messages.push(message);
       conv.updatedAt = Date.now();
-      if (message.role === 'user' && conv.title === 'New chat') {
+      if (message.role === 'user' && (conv.title === 'New chat' || conv.title === 'New thread')) {
         conv.title =
           message.content.slice(0, 50) +
           (message.content.length > 50 ? '...' : '');
@@ -593,6 +660,9 @@ export const useAppStore = create<AppState>((set, get) => {
     // ── Chat composer prefill ───────────────────────────────────────
     pendingChatPrompt: null,
     setPendingChatPrompt: (prompt) => set({ pendingChatPrompt: prompt }),
+
+    deskHandoff: null,
+    setDeskHandoff: (handoff) => set({ deskHandoff: handoff }),
 
     // ── Opt-in sharing ──────────────────────────────────────────────
 

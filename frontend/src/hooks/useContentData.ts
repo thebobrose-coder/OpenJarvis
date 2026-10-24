@@ -187,6 +187,7 @@ export function useContentData() {
       try {
         await send();
         reloadAfterAction();
+        return true;
       } catch (e: unknown) {
         setPending((p) => {
           const next = { ...p };
@@ -194,6 +195,7 @@ export function useContentData() {
           return next;
         });
         setNotice(e instanceof Error ? e.message : `${what} failed.`);
+        return false;
       }
     },
     [reloadAfterAction],

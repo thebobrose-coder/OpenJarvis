@@ -431,6 +431,37 @@ the card renders the patch's `images [{media_id, url, before, after}]` instead.
 
 Copy patches and unknown fields render as before.
 
+**Desks: the Content desk and the BD desk** (hq 0020 P2). A desk is one role
+you can talk to: a Chat thread with a desk id, a soul the operator owns, read-only
+tools, a default route and the pages it is bound to. It reads, explains, drafts
+and proposes; the page's own controls still do every act.
+- **Router:** `/v1/chat/completions` takes `desk` and `desk_session`
+  (`hermes_router.route_desk`). The Content desk answers locally by default,
+  the BD desk on Hermes; "Hermes," and "local," override. **Local** turns run
+  qwen under the GPU lease with the soul and rulings as the system prompt and
+  only the desk's loopback tools (`server/desk_tools.py`: `brand_context`,
+  `episode`, `studio_status`, `panel_feed`), never the agent harness's shell,
+  file or memory tools. **Hermes** turns go to `/p/desk-<id>/` with one
+  `X-Hermes-Session-Id` per thread and no system message, and count under
+  the daily Hermes cap. An unserved desk says "Desk not served yet: run
+  sync-config.sh".
+- **Chat:** the conversation list groups desk threads by desk. "Ask the desk"
+  on a proposal (`/content`) and on the prospect drawer (`/bizdev`) opens a
+  thread with the item as a `context` block (≤ 8 KB, no secret-looking keys).
+- **Cards:** a reply's `card` blocks are validated against the desk's kinds
+  and targets and shown as buttons; invalid ones are dropped visibly. `open`
+  navigates and prefills (the BD drawer's message; the drawer shows the due
+  follow-up's touch), `tick` opens the Decisions drawer for its two-click
+  confirm, `proposal_decision` opens the approve or reject editor filled in,
+  and `ruling` records a ruling. The thread shows each outcome as a line.
+- **Rulings:** operator rulings only, in OpenJarvis's sqlite memory
+  (`server/desks.py`), exported to the desk's `rulings.md` on every change
+  (atomic, newest first, ≤ 8,000 characters, oldest dropped).
+- **Desks page** at `/agents` (the sidebar's "Desks"): the roster, and per desk
+  its soul (edited in place, ≤ 8,000 characters, hash-checked, atomic), route,
+  tools, rulings, threads and a tool-call trace. The upstream Agents page stays
+  in the tree, unrouted.
+
 **The G1 mirror in "Waiting on you"** (hq 0020 D4; Foundry's approval
 mirror). Open content approvals now show in the bell and the Dashboard panel
 as "Posts to approve (G1)", right after Trading, and open a G1 drawer.

@@ -166,6 +166,8 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     """
     from openjarvis.server import hermes_router
 
+    if request_body.desk:
+        return await hermes_router.route_desk(request_body, request)
     if request_body.model in hermes_router.ROUTED_MODEL_IDS:
         response, decision = await hermes_router.route_chat(request_body, request)
         if response is not None:

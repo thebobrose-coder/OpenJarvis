@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { EMPTY, WaitingListView, isOpenable } from './WaitingListView';
 import { DEFAULT_HINT, DecisionsView } from './DecisionsDrawer';
 import { WaitingPanelView } from '../Dashboard/WaitingPanel';
@@ -14,6 +14,16 @@ import {
   type Waiting,
   type WaitingItem,
 } from '../../lib/waiting-api';
+
+// The app store reads localStorage when it loads; node has none.
+vi.hoisted(() => {
+  const store = new Map<string, string>();
+  (globalThis as unknown as { localStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> }).localStorage ??= {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, String(v)),
+    removeItem: (k: string) => void store.delete(k),
+  };
+});
 
 // Neutral fixtures only: this repo is public.
 const NOW = Date.parse('2026-10-23T18:00:00Z');

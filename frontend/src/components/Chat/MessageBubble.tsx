@@ -14,10 +14,16 @@ import { XRayFooter } from './XRayFooter';
 import { SpeakMessageButton } from './SpeakMessageButton';
 import type { ChatMessage } from '../../types';
 import { stripThinkTags } from '../../lib/message-text';
+import { DESK_DEFAULTS, type DeskId } from '../../lib/desks-api';
+import { parseCards } from '../../lib/desk-cards';
+import { DeskReplyCards, OutcomeLine } from '../Desks/DeskCards';
 
 interface Props {
   message: ChatMessage;
   isLive?: boolean;
+  /** A desk thread: the reply's card blocks become buttons. */
+  desk?: DeskId;
+  thread?: string;
 }
 
 function getTextContent(node: any): string {
@@ -112,10 +118,15 @@ function RouteBadge({ route }: { route: 'local' | 'hermes' }) {
   );
 }
 
-export function MessageBubble({ message, isLive = false }: Props) {
+export function MessageBubble({ message, isLive = false, desk, thread }: Props) {
   const isUser = message.role === 'user';
 
-  const cleanContent = useMemo(() => stripThinkTags(message.content), [message.content]);
+  const parsed = useMemo(() => {
+    const text = stripThinkTags(message.content);
+    if (!desk || isUser || message.outcome) return { text, cards: [], dropped: [] };
+    return parseCards(text, DESK_DEFAULTS[desk]);
+  }, [message.content, desk, isUser, message.outcome]);
+  const cleanContent = parsed.text;
 
   // Build a ref→source lookup once per render. Memoized so the rehype plugin
   // identity stays stable until the source list actually changes.
@@ -133,9 +144,20 @@ export function MessageBubble({ message, isLive = false }: Props) {
     return base;
   }, [sourcesMap]);
 
+  if (message.outcome) return <OutcomeLine text={message.content} />;
+
   if (isUser) {
     return (
-      <div className="flex justify-end mb-4">
+      <div className="flex flex-col items-end mb-4 gap-1">
+        {message.context && (
+          <span
+            className="text-[11px] px-2 py-0.5 rounded-full"
+            style={{ color: 'var(--color-text-tertiary)', border: '1px solid var(--color-border)' }}
+            title="Sent ahead of this message as the page's context"
+          >
+            Context: {message.context.label}
+          </span>
+        )}
         <div
           className="max-w-[85%] px-4 py-2.5 text-sm leading-relaxed"
           style={{
@@ -188,6 +210,10 @@ export function MessageBubble({ message, isLive = false }: Props) {
             {cleanContent}
           </ReactMarkdown>
         </div>
+      )}
+
+      {desk && thread && (parsed.cards.length > 0 || parsed.dropped.length > 0) && (
+        <DeskReplyCards thread={thread} desk={desk} cards={parsed.cards} dropped={parsed.dropped} isLive={isLive} />
       )}
 
       {/* Route hint / one-off notice from the chat router */}

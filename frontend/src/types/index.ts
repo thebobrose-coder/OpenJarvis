@@ -132,6 +132,11 @@ export interface ChatMessage {
   usage?: TokenUsage;
   telemetry?: MessageTelemetry;
   audio?: { url: string };
+  /** A desk thread's page context (contract §1): sent ahead of this user
+   * message's text, shown as a chip, never as raw JSON. */
+  context?: { block: string; label: string };
+  /** A system line in a desk thread ("Ruling recorded"): never sent to a model. */
+  outcome?: boolean;
 }
 
 export interface Conversation {
@@ -141,6 +146,11 @@ export interface Conversation {
   updatedAt: number;
   model: string;
   messages: ChatMessage[];
+  /** Desks (hq 0020 P2): a desk thread's desk id and X-Hermes-Session-Id. */
+  desk?: 'content' | 'bd';
+  deskSession?: string;
+  /** "Ask the desk": the page item to prefix to the first message. */
+  pendingContext?: { block: string; label: string };
 }
 
 export interface ConversationStore {

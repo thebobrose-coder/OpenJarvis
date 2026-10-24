@@ -50,6 +50,10 @@ export interface BizDevViewProps {
   contactNotes?: Record<number, ContactNote>;
   /** Part D: Confirm on "Meeting on the calendar?". */
   onConfirmMeeting?: (id: number) => Promise<void>;
+  /** Desks (hq 0020 P2): a BD desk card's draft for the open prospect, put in
+   * the drawer's message field (never sent), and "Ask the desk". */
+  deskDraft?: string | null;
+  onAskDesk?: (prospect: PipelineProspect) => void;
 }
 
 /**
@@ -188,6 +192,10 @@ export function BizDevView(props: BizDevViewProps) {
           onAddContact={props.onAddContact ? (c) => props.onAddContact!(open.id, c) : undefined}
           contactNote={props.contactNotes?.[open.id] ?? null}
           onConfirmMeeting={props.onConfirmMeeting ? () => props.onConfirmMeeting!(open.id) : undefined}
+          followUp={followUps.find((f) => f.prospect_id === open.id) ?? null}
+          onMarkFollowUpSent={(touch) => props.onMove(open.id, 'sent', '', touch)}
+          deskDraft={props.deskDraft ?? null}
+          onAskDesk={props.onAskDesk ? () => props.onAskDesk!(open) : undefined}
         />
       )}
     </div>

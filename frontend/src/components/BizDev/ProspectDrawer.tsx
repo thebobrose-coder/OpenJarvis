@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarCheck, RotateCw, UserPlus, X } from 'lucide-react';
+import { CalendarCheck, MessagesSquare, RotateCw, UserPlus, X } from 'lucide-react';
 import {
   CONTACT_FIELD_MAX,
   EMAIL_MAX,
@@ -12,6 +12,7 @@ import {
   recheckReason,
   type Contact,
   type ContactAdd,
+  type FollowUp,
   type PipelineProspect,
   type RecheckResult,
   type SendConfig,
@@ -34,6 +35,7 @@ import { shortDateTime } from '../shared/format';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
 import { DraftComposer, type ComposeLine } from './DraftComposer';
 import { FeStatusChip } from './MailActions';
+import { followUpRecipient } from './FollowUpsStrip';
 import { EngagementChips, MeetingChip, RankChip, STAGE_LABELS } from './PipelineBoard';
 
 const OUTCOMES: StageAction[] = ['replied', 'meeting', 'won', 'lost', 'not_interested', 'do_not_contact', 'bounced'];
@@ -318,6 +320,10 @@ export function ProspectDrawer({
   onAddContact,
   contactNote = null,
   onConfirmMeeting,
+  followUp = null,
+  onMarkFollowUpSent,
+  deskDraft = null,
+  onAskDesk,
 }: {
   prospect: PipelineProspect;
   onClose: () => void;
@@ -337,7 +343,20 @@ export function ProspectDrawer({
   contactNote?: ContactNote | null;
   /** Part D: the stage move to Meeting, with the calendar note. */
   onConfirmMeeting?: () => Promise<void>;
+  /** This card's due follow-up: the drawer's Draft is that touch, as in the strip. */
+  followUp?: FollowUp | null;
+  onMarkFollowUpSent?: (touch: number) => void;
+  /** A BD desk card's draft (hq 0020 P2), placed in the message field. Send
+   * is still this drawer's own button. */
+  deskDraft?: string | null;
+  /** "Ask the desk": open a BD desk thread with this card as context. */
+  onAskDesk?: () => void;
 }) {
+  const closeButton = (
+    <button onClick={onClose} aria-label="Close" className="cursor-pointer p-1" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
+      <X size={14} />
+    </button>
+  );
   const [note, setNote] = useState('');
   const [confirm, setConfirm] = useState<SuppressionStage | null>(null);
   // 'idle' | 'posting' | 'posted', or the error message.
@@ -417,9 +436,16 @@ export function ProspectDrawer({
               {prospect.directory_url && <ExtLink url={prospect.directory_url}>Staff directory</ExtLink>}
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close" className="cursor-pointer p-1" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
-            <X size={14} />
-          </button>
+          {onAskDesk ? (
+            <div className="flex items-start gap-1 shrink-0">
+              <SmallButton onClick={onAskDesk} title="Open a BD desk thread with this card as context">
+                <MessagesSquare size={11} /> Ask the desk
+              </SmallButton>
+              {closeButton}
+            </div>
+          ) : (
+            closeButton
+          )}
         </header>
 
         {(prospect.fit_rationale || prospect.rank) && (
@@ -501,8 +527,27 @@ export function ProspectDrawer({
           )}
         </Section>
 
-        <Section title="Draft">
-          {prospect.draft || templatesFor(line?.templates, 1).length > 0 ? (
+        <Section title={followUp ? `Draft: follow-up, touch ${followUp.touch}` : 'Draft'}>
+          {deskDraft && (
+            <p role="note" className="text-[11px]" style={{ color: 'var(--color-accent)' }}>
+              The BD desk’s draft is in the message below. Nothing is sent until you press Send.
+            </p>
+          )}
+          {followUp ? (
+            <DraftComposer
+              key={`${prospect.id}-${followUp.touch}-${deskDraft ?? ''}`}
+              prospect={prospect}
+              line={line}
+              touch={followUp.touch}
+              draft={{ ...followUp.draft, to_email: followUpRecipient(followUp, prospect), draft_source: followUp.draft_source }}
+              sendConfig={sendConfig}
+              onSend={onSend}
+              sentLabel={`Mark touch ${followUp.touch} as sent?`}
+              onMarkSent={() => onMarkFollowUpSent?.(followUp.touch)}
+              onSaveTemplate={onSaveTemplate}
+              prefillBody={deskDraft}
+            />
+          ) : prospect.draft || templatesFor(line?.templates, 1).length > 0 || deskDraft ? (
             <>
               {prospect.draft?.to_role && <span className="text-[11px]">For: {prospect.draft.to_role}</span>}
               {!prospect.draft && <Quiet>No Hermes draft; pick a template.</Quiet>}
@@ -510,16 +555,17 @@ export function ProspectDrawer({
                 <Quiet>Hermes flagged: {prospect.draft_problems!.join('; ')}</Quiet>
               )}
               <DraftComposer
-                key={prospect.id}
+                key={`${prospect.id}-${deskDraft ?? ''}`}
                 prospect={prospect}
                 line={line}
-                // The drawer's draft is touch 1; follow-ups send from the strip.
+                // The drawer's draft is touch 1 unless a follow-up is due.
                 touch={1}
                 draft={prospect.draft ?? { subject: '', body: '' }}
                 sendConfig={sendConfig}
                 onSend={onSend}
                 onMarkSent={() => onMove('sent', note)}
                 onSaveTemplate={onSaveTemplate}
+                prefillBody={deskDraft}
               />
             </>
           ) : (

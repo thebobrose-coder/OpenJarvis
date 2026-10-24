@@ -3,11 +3,17 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Chip, Quiet, SmallButton } from '../shared/ui';
 import { useWaiting } from '../../lib/WaitingContext';
+import { useAppStore } from '../../lib/store';
 import { NOTE_MAX, ago, fetchDecisions, tickDecision, type DecisionBox, type Decisions } from '../../lib/waiting-api';
 
 export const DEFAULT_HINT = 'Unticked means the default: leaving it alone is a choice too.';
 
 const boxKey = (b: Pick<DecisionBox, 'file' | 'line'>) => `${b.file}:${b.line}`;
+
+/** The open box a desk's `tick` card names (hq 0020 P2), by brief and number. */
+export function findCardBox(decisions: Decisions | null, file: string, box: number): DecisionBox | null {
+  return decisions?.open.find((b) => b.file === file && b.number === box) ?? null;
+}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -27,8 +33,10 @@ function OpenBox({
   onNote,
   onArm,
   onTick,
+  fromDesk = false,
 }: {
   box: DecisionBox;
+  fromDesk?: boolean;
   state: 'idle' | 'armed' | 'posting' | 'done';
   note: string;
   onNote: (note: string) => void;
@@ -36,7 +44,17 @@ function OpenBox({
   onTick: () => void;
 }) {
   return (
-    <li className="flex flex-col gap-1.5 rounded-lg p-3" style={{ background: 'var(--color-bg-secondary)' }} data-box={boxKey(box)}>
+    <li
+      id={fromDesk ? 'desk-card-box' : undefined}
+      className="flex flex-col gap-1.5 rounded-lg p-3"
+      style={{ background: 'var(--color-bg-secondary)', border: fromDesk ? '1px solid var(--color-accent)' : undefined }}
+      data-box={boxKey(box)}
+    >
+      {fromDesk && (
+        <span role="note" className="text-[11px]" style={{ color: 'var(--color-accent)' }}>
+          A desk proposed this tick. Tick, then Confirm, to write it; or leave it.
+        </span>
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
         <Chip tone="accent">{box.folder}</Chip>
         <span className="text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -116,8 +134,11 @@ export function DecisionsView({
   onNote,
   onArm,
   onTick,
+  highlight = null,
 }: {
   decisions: Decisions | null;
+  /** The box a desk card named, by its key: marked, never armed. */
+  highlight?: string | null;
   loading: boolean;
   error: string | null;
   states: Record<string, 'idle' | 'armed' | 'posting' | 'done'>;
@@ -150,6 +171,7 @@ export function DecisionsView({
                 onNote={(n) => onNote(boxKey(b), n)}
                 onArm={(a) => onArm(boxKey(b), a)}
                 onTick={() => onTick(b)}
+                fromDesk={highlight === boxKey(b)}
               />
             ))}
           </ul>
@@ -206,11 +228,21 @@ export function DecisionsDrawer() {
   const [states, setStates] = useState<Record<string, 'idle' | 'armed' | 'posting' | 'done'>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
+  // A desk's tick card: the box it names gets the card's note, and the
+  // operator's own two clicks write it (hq 0020 P2).
+  const handoff = useAppStore((s) => s.deskHandoff);
+  const setDeskHandoff = useAppStore((s) => s.setDeskHandoff);
+  const addOutcome = useAppStore((s) => s.addOutcome);
+  const card = handoff?.kind === 'tick' ? handoff : null;
+  // True once this opening's own listing has arrived (not the last one's).
+  const [fresh, setFresh] = useState(false);
+  const cardBox = card ? findCardBox(decisions, card.file, card.box) : null;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setDecisions(await fetchDecisions());
+      setFresh(true);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -221,11 +253,29 @@ export function DecisionsDrawer() {
 
   useEffect(() => {
     if (decisionsOpen) {
+      setFresh(false);
       setStates({});
       setMessage(null);
       void load();
     }
   }, [decisionsOpen, load]);
+
+  useEffect(() => {
+    if (!card || !decisions || !fresh) return;
+    if (!cardBox) {
+      setMessage(`The desk's card names D${card.box} in ${card.file}, which isn't an open box.`);
+      addOutcome(card.thread, `D${card.box} isn't open in ${card.file}; nothing ticked`);
+      setDeskHandoff(null);
+      return;
+    }
+    const key = boxKey(cardBox);
+    if (card.note) setNotes((s) => (s[key] ? s : { ...s, [key]: card.note }));
+    document.getElementById('desk-card-box')?.scrollIntoView({ block: 'center' });
+  }, [card, decisions, fresh, cardBox, addOutcome, setDeskHandoff]);
+
+  useEffect(() => {
+    if (!decisionsOpen && card) setDeskHandoff(null);
+  }, [decisionsOpen, card, setDeskHandoff]);
 
   useEffect(() => {
     if (!decisionsOpen) return;
@@ -243,6 +293,10 @@ export function DecisionsDrawer() {
       await tickDecision(box, (notes[key] ?? '').trim());
       setStates((s) => ({ ...s, [key]: 'done' }));
       setMessage(null);
+      if (card && cardBox && boxKey(cardBox) === key) {
+        addOutcome(card.thread, `Ticked D${box.number} on ${box.title}`);
+        setDeskHandoff(null);
+      }
       void refresh();
     } catch (e) {
       setStates((s) => ({ ...s, [key]: 'idle' }));
@@ -279,6 +333,7 @@ export function DecisionsDrawer() {
           onNote={(k, n) => setNotes((s) => ({ ...s, [k]: n }))}
           onArm={(k, a) => setStates((s) => ({ ...s, [k]: a ? 'armed' : 'idle' }))}
           onTick={(b) => void tick(b)}
+          highlight={cardBox ? boxKey(cardBox) : null}
         />
       </aside>
     </div>

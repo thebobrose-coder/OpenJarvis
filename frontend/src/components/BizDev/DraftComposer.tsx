@@ -104,6 +104,7 @@ export function DraftComposer({
   blocked,
   onSaveTemplate,
   compact = false,
+  prefillBody = null,
 }: {
   prospect: PipelineProspect;
   line: ComposeLine | null | undefined;
@@ -120,6 +121,8 @@ export function DraftComposer({
   onSaveTemplate?: (t: TemplateSave) => Promise<void>;
   /** The strip: the editor folds away under "Edit". */
   compact?: boolean;
+  /** A BD desk card's draft (hq 0020 P2): starts the body, never sends. */
+  prefillBody?: string | null;
 }) {
   const contacts = prospect.contacts ?? [];
   const [to, setTo] = useState(() => initialRecipient(contacts, draft.to_email));
@@ -143,7 +146,7 @@ export function DraftComposer({
   );
 
   const [subject, setSubject] = useState(base.subject);
-  const [body, setBody] = useState(base.body);
+  const [body, setBody] = useState(prefillBody || base.body);
   // Another template replaces the editor's text. A new starting text for the
   // same choice (another recipient's merge, a new Hermes draft) replaces it
   // only when it wasn't edited; a pipeline refresh that changes nothing

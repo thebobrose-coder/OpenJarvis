@@ -32,6 +32,10 @@ class ChatCompletionRequest(BaseModel):
     # assistant turn in this conversation ("hermes"/"local"), for sticky
     # routing. Ignored for every other model.
     last_route: Optional[str] = None
+    # Desks (hq 0020 P2): a desk thread's id ("content", "bd") and its
+    # X-Hermes-Session-Id. A turn with a desk id goes to hermes_router.route_desk.
+    desk: Optional[str] = None
+    desk_session: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,8 @@ import { shouldAutoplayFinishedReply, useTtsStore } from '../../lib/tts';
 import { stripThinkTags } from '../../lib/message-text';
 import { Sparkles, PanelRightOpen, PanelRightClose, Database, MessageSquare, X } from 'lucide-react';
 import { listConnectors } from '../../lib/connectors-api';
+import { DeskThreadHeader } from '../Desks/DeskCards';
+import { DESK_DEFAULTS } from '../../lib/desks-api';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -19,6 +21,8 @@ function getGreeting(): string {
 export function ChatArea() {
   const activeId = useAppStore((s) => s.activeId);
   const messages = useAppStore((s) => s.messages);
+  const activeConv = useAppStore((s) => s.conversations.find((c) => c.id === s.activeId));
+  const desk = activeConv?.desk;
   const streamState = useAppStore((s) => s.streamState);
   const systemPanelOpen = useAppStore((s) => s.systemPanelOpen);
   const toggleSystemPanel = useAppStore((s) => s.toggleSystemPanel);
@@ -135,7 +139,15 @@ export function ChatArea() {
   return (
     <div className="flex flex-col h-full">
       {/* Toggle bar */}
-      <div className="flex items-center justify-end px-3 py-1.5 shrink-0">
+      <div className="flex items-center justify-end gap-3 px-3 py-1.5 shrink-0">
+        {desk && (
+          <div className="flex-1 min-w-0">
+            <DeskThreadHeader
+              desk={desk}
+              context={activeConv?.pendingContext?.label ?? messages.find((m) => m.context)?.context?.label}
+            />
+          </div>
+        )}
         <button
           onClick={toggleSystemPanel}
           className="p-1.5 rounded-md transition-colors cursor-pointer"
@@ -180,7 +192,18 @@ export function ChatArea() {
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto"
       >
-        {isEmpty ? (
+        {isEmpty && desk ? (
+          <div className="flex flex-col items-center justify-center h-full px-4 gap-2 text-center" data-desk-empty>
+            <div className="text-[15px] font-medium" style={{ color: 'var(--color-text)' }}>
+              {DESK_DEFAULTS[desk].name}
+            </div>
+            <p className="text-[12.5px] max-w-md" style={{ color: 'var(--color-text-secondary)' }}>
+              It reads, explains, drafts and proposes. It never acts: a proposed action comes back as a card,
+              and nothing happens until you click it.
+              {activeConv?.pendingContext && ` Your first message goes with ${activeConv.pendingContext.label}.`}
+            </p>
+          </div>
+        ) : isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full px-4">
             <div
               className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
@@ -237,6 +260,8 @@ export function ChatArea() {
                   key={msg.id}
                   message={msg}
                   isLive={isLastAssistant && isCurrentChatStreaming}
+                  desk={desk}
+                  thread={activeId ?? undefined}
                 />
               );
             })}

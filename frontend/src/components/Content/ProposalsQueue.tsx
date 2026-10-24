@@ -1,7 +1,8 @@
 import { SpeakButton } from '../shared/SpeakButton';
 import type { SpeechBlock } from '../../lib/voice-api';
 import { useState } from 'react';
-import { Check, ClipboardList, Pencil, Plus, X } from 'lucide-react';
+import { Check, ClipboardList, MessagesSquare, Pencil, Plus, X } from 'lucide-react';
+import type { ProposalFields } from '../../lib/desk-cards';
 import { LIMITS, type ApprovalEdits, type Proposal, type PropertyMotion } from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { shortDateTime } from '../shared/format';
@@ -148,10 +149,21 @@ export function QueryChips({ queries, onChange }: { queries: string[]; onChange:
 
 /** Inline edit before approving: topic, pillar, product, target queries,
  * priority, video (v1.14, where the property's lane allows a clip) and a note. */
+/** A desk's proposal_decision card, opened here filled in (hq 0020 P2). The
+ * operator's own submit still sends it. */
+export interface DeskDecision {
+  id: string;
+  decision: 'approve' | 'reject';
+  fields: ProposalFields;
+  /** Changes per click, so a second card on the same proposal refills it. */
+  nonce: number;
+}
+
 export function ApproveEditor({
   proposal,
   pillars,
   motion = null,
+  initial,
   onApprove,
   onCancel,
 }: {
@@ -160,18 +172,21 @@ export function ApproveEditor({
   pillars: string[];
   /** The property's seedbank `motion`; null shows no Video control. */
   motion?: PropertyMotion | null;
+  /** A desk card's suggested values, shown for the operator to check. */
+  initial?: ProposalFields;
   onApprove: (edits: ApprovalEdits) => void;
   onCancel: () => void;
 }) {
   const current = proposal.pillar_hint ?? '';
   const options = [...new Set([current, ...pillars].filter(Boolean))];
-  const [topic, setTopic] = useState(proposal.topic);
-  const [pillarChoice, setPillarChoice] = useState(current || OTHER);
-  const [pillarText, setPillarText] = useState('');
-  const [product, setProduct] = useState(proposal.product_handle ?? '');
-  const [note, setNote] = useState('');
-  const [queries, setQueries] = useState(() => cleanQueries(proposal.target_queries ?? []));
-  const [priority, setPriority] = useState(proposal.priority ?? DEFAULT_PRIORITY);
+  const startPillar = initial?.pillar_hint ?? current;
+  const [topic, setTopic] = useState(initial?.topic ?? proposal.topic);
+  const [pillarChoice, setPillarChoice] = useState(options.includes(startPillar) ? startPillar : OTHER);
+  const [pillarText, setPillarText] = useState(options.includes(startPillar) ? '' : startPillar);
+  const [product, setProduct] = useState(initial?.product_handle ?? proposal.product_handle ?? '');
+  const [note, setNote] = useState(initial?.note ?? '');
+  const [queries, setQueries] = useState(() => cleanQueries(initial?.target_queries ?? proposal.target_queries ?? []));
+  const [priority, setPriority] = useState(initial?.priority ?? proposal.priority ?? DEFAULT_PRIORITY);
   const pillar = pillarChoice === OTHER ? pillarText : pillarChoice;
   const editQueries = queriesEditable(proposal);
   const editPriority = 'priority' in proposal;
@@ -285,6 +300,11 @@ export function ApproveEditor({
           style={field}
         />
       </label>
+      {initial && (
+        <p role="note" className="text-[11px]" style={{ color: 'var(--color-accent)' }}>
+          Filled in from the Content desk’s card. Check it, then approve or cancel.
+        </p>
+      )}
       <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
         Your edits are yours, not Hermes copy. Hermes checks edited queries with Foundry’s intake rules; Foundry’s
         compliance scan and G1 approval still apply.
@@ -316,8 +336,16 @@ export function ApproveEditor({
 }
 
 /** Reject is final: ask for an optional note and say so. */
-export function RejectConfirm({ onReject, onCancel }: { onReject: (note: string) => void; onCancel: () => void }) {
-  const [note, setNote] = useState('');
+export function RejectConfirm({
+  onReject,
+  onCancel,
+  initialNote = '',
+}: {
+  onReject: (note: string) => void;
+  onCancel: () => void;
+  initialNote?: string;
+}) {
+  const [note, setNote] = useState(initialNote);
   return (
     <div
       role="alertdialog"
@@ -433,7 +461,9 @@ export function ProposalCard({
   showProperty,
   onApprove,
   onReject,
-  initialMode = 'idle',
+  initialMode,
+  onAskDesk,
+  deskDecision,
 }: {
   proposal: Proposal;
   pillars: string[];
@@ -443,8 +473,14 @@ export function ProposalCard({
   onApprove: (edits: ApprovalEdits) => void;
   onReject: (note: string) => void;
   initialMode?: 'idle' | 'edit' | 'reject';
+  /** "Ask the desk": open a Content desk thread with this proposal as context. */
+  onAskDesk?: () => void;
+  /** A desk card for this proposal: opens its editor filled in. */
+  deskDecision?: DeskDecision | null;
 }) {
-  const [mode, setMode] = useState(initialMode);
+  const [mode, setMode] = useState(
+    initialMode ?? (deskDecision ? (deskDecision.decision === 'approve' ? 'edit' : 'reject') : 'idle'),
+  );
   const links = proposal.source_links ?? [];
 
   return (
@@ -480,11 +516,16 @@ export function ProposalCard({
           proposal={proposal}
           pillars={pillars}
           motion={motion}
+          initial={deskDecision?.decision === 'approve' ? deskDecision.fields : undefined}
           onApprove={onApprove}
           onCancel={() => setMode('idle')}
         />
       ) : mode === 'reject' ? (
-        <RejectConfirm onReject={onReject} onCancel={() => setMode('idle')} />
+        <RejectConfirm
+          onReject={onReject}
+          onCancel={() => setMode('idle')}
+          initialNote={deskDecision?.decision === 'reject' ? deskDecision.fields.note : undefined}
+        />
       ) : (
         <div className="flex flex-wrap items-center gap-1.5">
           <SmallButton tone="accent" onClick={() => onApprove({})} title="Approve as proposed: Foundry's intake queues it">
@@ -503,6 +544,11 @@ export function ProposalCard({
           <SmallButton onClick={() => setMode('reject')} title="Reject (final)">
             <X size={11} /> Reject
           </SmallButton>
+          {onAskDesk && (
+            <SmallButton onClick={onAskDesk} title="Open a Content desk thread with this proposal as context">
+              <MessagesSquare size={11} /> Ask the desk
+            </SmallButton>
+          )}
         </div>
       )}
     </article>
@@ -578,6 +624,8 @@ export function ProposalsQueue({
   initialTab = 'pending',
   speech = null,
   lanePositions,
+  onAskDesk,
+  deskDecision = null,
 }: {
   pending: Proposal[];
   recent: Proposal[];
@@ -596,6 +644,8 @@ export function ProposalsQueue({
   speech?: SpeechBlock | null;
   /** Thesis-lane positions by Foundry signal id, for queued items. */
   lanePositions?: Record<string, number>;
+  onAskDesk?: (proposal: Proposal) => void;
+  deskDecision?: DeskDecision | null;
 }) {
   const [tab, setTab] = useState<QueueTab>(initialTab);
   const newest = [...pending].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
@@ -632,13 +682,15 @@ export function ProposalsQueue({
               <div className="flex flex-col gap-2.5 max-h-[75vh] overflow-y-auto pr-1">
                 {newest.map((p) => (
                   <ProposalCard
-                    key={p.id}
+                    key={deskDecision?.id === p.id ? `${p.id}:${deskDecision.nonce}` : p.id}
                     proposal={p}
                     pillars={pillarsByProperty[p.property_id] ?? []}
                     motion={motionByProperty[p.property_id] ?? null}
                     showProperty={showProperty}
                     onApprove={(edits) => onApprove(p.id, edits)}
                     onReject={(note) => onReject(p.id, note)}
+                    onAskDesk={onAskDesk ? () => onAskDesk(p) : undefined}
+                    deskDecision={deskDecision?.id === p.id ? deskDecision : null}
                   />
                 ))}
               </div>

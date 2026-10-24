@@ -18,6 +18,7 @@ import {
   type RouteInfo,
 } from '../../lib/chat-routing';
 import { MicButton } from './MicButton';
+import { DESK_DEFAULTS } from '../../lib/desks-api';
 import { useSpeech } from '../../hooks/useSpeech';
 import { useDailyBriefAudio } from '../../lib/DailyBriefAudioContext';
 import type {
@@ -95,6 +96,8 @@ export function InputArea() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const activeId = useAppStore((s) => s.activeId);
+  // A desk thread (hq 0020 P2): its turns carry the desk id and session.
+  const activeDesk = useAppStore((s) => s.conversations.find((c) => c.id === s.activeId)?.desk);
   const selectedModel = useAppStore((s) => s.selectedModel);
   const streamState = useAppStore((s) => s.streamState);
   const messages = useAppStore((s) => s.messages);
@@ -195,7 +198,11 @@ export function InputArea() {
   const sendMessage = useCallback(async () => {
     const content = input.trim();
     if (!content || streamState.isStreaming) return;
-    if (!selectedModel) {
+    const convState = activeId ? useAppStore.getState().conversations.find((c) => c.id === activeId) : undefined;
+    const desk = convState?.desk;
+    const deskSession = convState?.deskSession;
+    const research = deepResearch && !desk;
+    if (!selectedModel && !desk) {
       toast.error('Pick a model first (⌘K)');
       return;
     }
@@ -207,20 +214,25 @@ export function InputArea() {
       convId = createConversation(selectedModel);
     }
 
+    // "Ask the desk": the page item goes ahead of the first message's text.
+    const context = desk ? useAppStore.getState().takePendingContext(convId) : undefined;
     const userMsg: ChatMessage = {
       id: generateId(),
       role: 'user',
       content,
       timestamp: Date.now(),
+      ...(context ? { context } : {}),
     };
     addMessage(convId, userMsg);
 
     // Build API messages before adding assistant placeholder
     const currentMessages = useAppStore.getState().messages;
-    const apiMessages = currentMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const apiMessages = currentMessages
+      .filter((m) => !m.outcome)
+      .map((m) => ({
+        role: m.role,
+        content: (m.context?.block ?? '') + m.content,
+      }));
     // Sticky routing: which backend answered the previous assistant turn.
     const lastRoute = [...currentMessages]
       .reverse()
@@ -233,7 +245,7 @@ export function InputArea() {
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
-      isResearch: deepResearch || undefined,
+      isResearch: research || undefined,
     };
     addMessage(convId, assistantMsg);
 
@@ -263,7 +275,7 @@ export function InputArea() {
     setStreamState({
       conversationId: convId,
       isStreaming: true,
-      phase: deepResearch ? 'Researching...' : 'Generating...',
+      phase: research ? 'Researching...' : desk ? 'Asking the desk...' : 'Generating...',
       elapsedMs: 0,
       activeToolCalls: [],
       content: '',
@@ -272,13 +284,13 @@ export function InputArea() {
       timestamp: Date.now(),
       level: 'info',
       category: 'chat',
-      message: deepResearch
+      message: research
         ? `Research: "${content.slice(0, 80)}${content.length > 80 ? '...' : ''}"`
         : `Request: "${content.slice(0, 80)}${content.length > 80 ? '...' : ''}" → ${selectedModel}`,
     });
 
     try {
-      if (deepResearch) {
+      if (research) {
         for await (const ev of streamResearch(
           content,
           isRouterModel(selectedModel) ? localModel : selectedModel,
@@ -405,12 +417,13 @@ export function InputArea() {
       } else {
       for await (const sseEvent of streamChat(
         {
-          model: selectedModel,
+          model: desk ? AUTO_MODEL_ID : selectedModel,
           messages: apiMessages,
           stream: true,
           temperature,
           max_tokens: maxTokens,
-          ...(selectedModel === AUTO_MODEL_ID && lastRoute ? { last_route: lastRoute } : {}),
+          ...(desk ? { desk, desk_session: deskSession } : {}),
+          ...(!desk && selectedModel === AUTO_MODEL_ID && lastRoute ? { last_route: lastRoute } : {}),
         },
         controller.signal,
       )) {
@@ -528,14 +541,14 @@ export function InputArea() {
         routeInfo?.target ??
         (routedEngine === 'hermes' || selectedModel === HERMES_MODEL_ID
           ? 'hermes'
-          : engineLabel === 'cloud' || engineLabel === 'litellm' || deepResearch
+          : engineLabel === 'cloud' || engineLabel === 'litellm' || research
             ? undefined
             : 'local');
       const telemetry: MessageTelemetry = {
         engine: engineLabel,
         model_id:
           route === 'hermes' ? HERMES_MODEL_ID
-          : isRouterModel(selectedModel) ? localModel
+          : desk || isRouterModel(selectedModel) ? localModel
           : selectedModel,
         route,
         route_hint: routeInfo?.hint,
@@ -580,7 +593,7 @@ export function InputArea() {
       // `done` event's usage payload — re-fetching here would overwrite
       // it with a potentially stale snapshot if the server's research
       // telemetry hasn't been merged into /v1/savings yet.
-      if (!deepResearch) {
+      if (!research) {
         fetchSavings()
           .then((data) => useAppStore.getState().setSavings(data))
           .catch(() => {});
@@ -611,7 +624,7 @@ export function InputArea() {
 
   return (
     <div className="px-4 pb-4 pt-2" style={{ maxWidth: 'var(--chat-max-width)', margin: '0 auto', width: '100%' }}>
-      <div className="mb-2 flex flex-col gap-1">
+      <div className="mb-2 flex flex-col gap-1" hidden={!!activeDesk}>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -656,7 +669,11 @@ export function InputArea() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={selectedModel ? 'Message OpenJarvis...' : 'Pick a model first (⌘K)...'}
+          placeholder={
+            activeDesk
+              ? `Ask the ${DESK_DEFAULTS[activeDesk].name}…  ('Hermes,' or 'local,' picks the route)`
+              : selectedModel ? 'Message OpenJarvis...' : 'Pick a model first (⌘K)...'
+          }
           rows={1}
           className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
           style={{ color: 'var(--color-text)', maxHeight: '200px' }}
@@ -681,8 +698,8 @@ export function InputArea() {
             />
             <button
               onClick={sendMessage}
-              disabled={streamState.isStreaming || !input.trim() || modelLoading || !selectedModel}
-              title={selectedModel ? 'Send message' : 'Pick a model first (⌘K)'}
+              disabled={streamState.isStreaming || !input.trim() || modelLoading || (!selectedModel && !activeDesk)}
+              title={selectedModel || activeDesk ? 'Send message' : 'Pick a model first (⌘K)'}
               className="p-2 rounded-xl transition-colors shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-default"
               style={{
                 background: input.trim() ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
