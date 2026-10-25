@@ -217,7 +217,13 @@ def test_local_desk_turn_gets_soul_rulings_and_only_its_tools(data, monkeypatch)
     assert "Prefer short hooks." in system["content"]
     assert "```" not in system["content"] or "card" in system["content"]
     names = {t["function"]["name"] for t in first["tools"]}
-    assert names == {"brand_context", "episode", "studio_status", "panel_feed"}
+    # The desk's loopback tools, plus its card kinds (a call only adds a card).
+    assert names == {"brand_context", "episode", "studio_status", "panel_feed"} | {
+        "open",
+        "tick",
+        "proposal_decision",
+        "ruling",
+    }
     for forbidden in (
         "shell_exec",
         "file_read",
@@ -251,7 +257,7 @@ def test_bd_local_turn_has_only_panel_feed_over_bd_feeds(data):
         )
     )
     tools = fake.requests[0]["tools"]
-    assert [t["function"]["name"] for t in tools] == ["panel_feed"]
+    assert [t["function"]["name"] for t in tools] == ["panel_feed", "open", "ruling"]
     enum = tools[0]["function"]["parameters"]["properties"]["feed"]["enum"]
     assert enum == ["bd_pipeline", "bd_stats"]
     # The prefix is stripped before the model sees the turn.
@@ -273,6 +279,93 @@ def test_a_tool_outside_the_desk_is_refused(data):
     )
     end = next(d for e, d in events if e == "tool_call_end")
     assert end["success"] is False and "isn't a tool on this desk" in end["result"]
+
+
+class ScriptedOllama:
+    """Answers /api/chat from a list of messages, the last one repeating."""
+
+    def __init__(self, *messages):
+        self.messages = list(messages)
+        self.requests: list[dict] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(json.loads(request.content))
+        i = min(len(self.requests) - 1, len(self.messages) - 1)
+        return httpx.Response(200, json={"message": self.messages[i]})
+
+
+def _call(name, arguments):
+    return {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [{"function": {"name": name, "arguments": arguments}}],
+    }
+
+
+def _local(desk, fake, text="hi"):
+    return asyncio.run(
+        _drain(
+            asyncio.run(
+                hr.route_desk(
+                    _body(desk, text),
+                    _request(),
+                    local_transport=httpx.MockTransport(fake),
+                )
+            )
+        )
+    )
+
+
+def test_a_repeated_tool_call_is_not_rerun_and_the_turn_still_answers(data):
+    same = _call("panel_feed", {"feed": "content_proposals"})
+    fake = ScriptedOllama(same, same, {"role": "assistant", "content": "Two waiting."})
+    events = _local("content", fake)
+    assert [e for e, _ in events].count("tool_call_end") == 1
+    # After the repeat, tools are withdrawn so the model has to answer.
+    assert "tools" not in fake.requests[2]
+    assert _text(events) == "Two waiting."
+
+
+def test_an_empty_final_reply_gets_one_nudge_then_a_plain_notice(data):
+    same = _call("panel_feed", {"feed": "content_proposals"})
+    empty = {"role": "assistant", "content": ""}
+    fake = ScriptedOllama(same, same, empty)
+    events = _local("content", fake)
+    nudge = fake.requests[-1]["messages"][-1]
+    assert nudge["role"] == "user" and "Answer the operator now" in nudge["content"]
+    assert "tools" not in fake.requests[-1]
+    assert _text(events) == desk_chat.NO_TEXT
+
+
+def test_a_card_kind_called_as_a_tool_becomes_a_card_block(data):
+    body = json.dumps({"text": "Quote the rule number with the rule."})
+    fake = ScriptedOllama(
+        _call("ruling", {"label": "Quote numbers", "body": body}),
+        {"role": "assistant", "content": "The ruling card is there to click."},
+    )
+    events = _local("content", fake, "make that a ruling")
+    text = _text(events)
+    assert text.startswith("The ruling card is there to click.")
+    block = text.split("```card\n", 1)[1].split("\n```", 1)[0]
+    assert json.loads(block) == {
+        "kind": "ruling",
+        "body": {"text": "Quote the rule number with the rule."},
+        "label": "Quote numbers",
+    }
+    # Nothing was recorded: proposing a card writes no ruling.
+    assert desks.rulings_store().list("content") == []
+    assert "tool_call_end" not in [e for e, _ in events]
+
+
+def test_a_card_kind_outside_the_desk_is_refused_as_a_tool(data):
+    fake = ScriptedOllama(
+        _call("tick", {"label": "x", "target": {"file": "a/b.md", "box": "D1"}}),
+        {"role": "assistant", "content": "ok"},
+    )
+    events = _local("bd", fake, "local, tick it")
+    end = next(d for e, d in events if e == "tool_call_end")
+    assert end["success"] is False
+    assert "```card" not in _text(events)
 
 
 def test_a_held_gpu_lease_answers_without_calling_ollama(data, monkeypatch):

@@ -98,9 +98,12 @@ def system_prompt(desk: desks.Desk) -> str:
         "verbatim from the tool output, never from memory.\n"
         "To propose an action, end your reply with one or more fenced code blocks "
         "whose info string is card, each holding one JSON object. The operator "
-        "clicks a card to act; nothing happens otherwise. Card kinds on this desk:\n"
+        "clicks a card to act; nothing happens otherwise. Calling the tool named "
+        "after a card kind adds that card for you. Card kinds on this desk:\n"
         f"{_card_shapes(desk)}\n"
-        "Propose a ruling card when the operator states a lasting preference.\n"
+        "When the operator states a lasting preference or asks for a ruling, call "
+        "the ruling tool with that preference, then say in one line that the card "
+        "is there to click.\n"
         "Keep replies short, in the stack's own vocabulary.",
     ]
     soul = desks.soul_text(desk.id)
@@ -191,6 +194,102 @@ async def _run_tool(fn: Callable[..., Any], args: dict[str, Any]) -> str:
         return json.dumps({"error": type(exc).__name__})
 
 
+def _card_from_call(desk: desks.Desk, name: str, args: dict[str, Any]) -> str | None:
+    """qwen sometimes calls a card kind as a tool. Turn that into the card
+    block it meant, for the operator to click; the UI still validates it."""
+    if name not in desk.card_kinds:
+        return None
+    card: dict[str, Any] = {"kind": name}
+    for key in ("target", "body"):
+        value = args.get(key)
+        if isinstance(value, str):
+            value = _args(value)
+        if isinstance(value, dict) and value:
+            card[key] = value
+    body = card.get("body") or {}
+    label = args.get("label")
+    if not isinstance(label, str) or not label.strip():
+        text = body.get("text") if isinstance(body, dict) else None
+        label = str(text)[:60] if text else name.replace("_", " ").capitalize()
+    card["label"] = label.strip()
+    return "```card\n" + json.dumps(card, ensure_ascii=False) + "\n```"
+
+
+_OBJ = {"type": "object"}
+_CARD_TOOLS: dict[str, dict[str, Any]] = {
+    "ruling": {
+        "description": (
+            "Propose a ruling card: a lasting operator preference for this desk. "
+            "Use it when the operator states one or asks for a ruling. It records "
+            "nothing until the operator clicks it."
+        ),
+        "properties": {
+            "label": {"type": "string", "description": "The button text"},
+            "body": {
+                "type": "object",
+                "properties": {"text": {"type": "string", "description": "≤ 500"}},
+                "required": ["text"],
+            },
+        },
+        "required": ["label", "body"],
+    },
+    "open": {
+        "description": "Propose a card that opens a page on an item. Opens nothing "
+        "until the operator clicks it.",
+        "properties": {"label": {"type": "string"}, "target": _OBJ, "body": _OBJ},
+        "required": ["label", "target"],
+    },
+    "tick": {
+        "description": "Propose a card that opens a decision box for the operator "
+        "to tick. Ticks nothing itself.",
+        "properties": {"label": {"type": "string"}, "target": _OBJ, "body": _OBJ},
+        "required": ["label", "target"],
+    },
+    "proposal_decision": {
+        "description": "Propose a card that opens a proposal's approve or reject "
+        "editor, filled in. Decides nothing itself.",
+        "properties": {"label": {"type": "string"}, "target": _OBJ, "body": _OBJ},
+        "required": ["label", "target", "body"],
+    },
+}
+
+
+def card_schemas(desk: desks.Desk) -> list[dict[str, Any]]:
+    """The desk's card kinds as tools for a local turn: a call only adds the
+    card block to the reply (``_card_from_call``)."""
+    out = []
+    for kind in desk.card_kinds:
+        spec = _CARD_TOOLS.get(kind)
+        if spec is None:
+            continue
+        params = {k: v for k, v in spec.items() if k != "description"}
+        out.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": kind,
+                    "description": spec["description"],
+                    "parameters": {"type": "object", **params},
+                },
+            }
+        )
+    return out
+
+
+def _call_key(name: str, args: dict[str, Any]) -> str:
+    return name + json.dumps(args, sort_keys=True, default=str)
+
+
+NUDGE = (
+    "Answer the operator now in plain text from the tool results above. Don't "
+    "call a tool. End with card blocks if you propose an action."
+)
+NO_TEXT = (
+    "The desk's model returned no text this turn. Ask again, or start with "
+    "'Hermes,' to ask on Hermes."
+)
+
+
 async def local_turn(
     desk: desks.Desk,
     messages: list[dict[str, str]],
@@ -210,15 +309,19 @@ async def local_turn(
         )
         return
     tools = desk_tools.tools_for(desk)
-    schemas = desk_tools.schemas_for(desk)
+    schemas = desk_tools.schemas_for(desk) + card_schemas(desk)
     convo: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt(desk)},
         *messages,
     ]
+    seen: set[str] = set()
+    cards: list[str] = []
+    offer_tools = True
     async with httpx.AsyncClient(
         timeout=LOCAL_TIMEOUT_S, transport=transport
     ) as client:
-        for round_no in range(MAX_TOOL_ROUNDS + 1):
+
+        async def ask(with_tools: bool) -> dict[str, Any]:
             payload: dict[str, Any] = {
                 "model": model,
                 "messages": convo,
@@ -226,16 +329,19 @@ async def local_turn(
                 "think": False,
                 "options": {"temperature": 0.3},
             }
-            # The last round has no tools, so the model has to answer.
-            if round_no < MAX_TOOL_ROUNDS:
+            if with_tools:
                 payload["tools"] = schemas
             resp = await client.post(f"{host}/api/chat", json=payload)
             resp.raise_for_status()
-            msg = resp.json().get("message") or {}
+            return resp.json().get("message") or {}
+
+        msg: dict[str, Any] = {}
+        for round_no in range(MAX_TOOL_ROUNDS + 1):
+            # The last round has no tools, so the model has to answer.
+            msg = await ask(offer_tools and round_no < MAX_TOOL_ROUNDS)
             calls = msg.get("tool_calls") or []
-            if not calls or round_no == MAX_TOOL_ROUNDS:
-                yield ("text", {"content": msg.get("content") or ""})
-                return
+            if not calls or not offer_tools or round_no == MAX_TOOL_ROUNDS:
+                break
             convo.append(
                 {
                     "role": "assistant",
@@ -247,6 +353,27 @@ async def local_turn(
                 fn_spec = call.get("function") or {}
                 name = str(fn_spec.get("name") or "")
                 args = _args(fn_spec.get("arguments"))
+                card = _card_from_call(desk, name, args)
+                if card is not None:
+                    cards.append(card)
+                    result = json.dumps(
+                        {
+                            "ok": "The card is shown to the operator. Nothing is "
+                            "recorded or done until they click it."
+                        }
+                    )
+                    convo.append({"role": "tool", "content": result, "tool_name": name})
+                    continue
+                key = _call_key(name, args)
+                if key in seen:
+                    # A repeat call: don't run it again, and stop offering tools.
+                    offer_tools = False
+                    result = json.dumps(
+                        {"error": "You already have this result above. " + NUDGE}
+                    )
+                    convo.append({"role": "tool", "content": result, "tool_name": name})
+                    continue
+                seen.add(key)
                 yield ("tool_start", {"tool": name, "arguments": args})
                 started = time.monotonic()
                 fn = tools.get(name)
@@ -265,6 +392,14 @@ async def local_turn(
                     },
                 )
                 convo.append({"role": "tool", "content": result, "tool_name": name})
+        text = (msg.get("content") or "").strip()
+        if not text:
+            # One nudge without tools before giving up.
+            convo.append({"role": "user", "content": NUDGE})
+            text = ((await ask(False)).get("content") or "").strip()
+    if cards:
+        text = "\n\n".join([text, *cards]) if text else "\n\n".join(cards)
+    yield ("text", {"content": text or NO_TEXT})
 
 
 # ---------- Hermes route ----------

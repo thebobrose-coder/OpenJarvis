@@ -461,6 +461,11 @@ and proposes; the page's own controls still do every act.
   its soul (edited in place, ≤ 8,000 characters, hash-checked, atomic), route,
   tools, rulings, threads and a tool-call trace. The upstream Agents page stays
   in the tree, unrouted.
+- **Local desk turns always answer:** a repeated identical tool call isn't
+  rerun (tools are withdrawn so the model answers), an empty final reply gets
+  one nudge and then a plain notice, and the desk's card kinds are offered as
+  tools whose call only adds the card block to the reply. Before this, qwen
+  could loop on one tool and the thread showed "No response was generated".
 
 **The G1 mirror in "Waiting on you"** (hq 0020 D4; Foundry's approval
 mirror). Open content approvals now show in the bell and the Dashboard panel
