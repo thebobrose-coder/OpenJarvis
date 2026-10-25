@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Activity, Briefcase, Gavel, MessagesSquare, Plus, ScrollText, Wrench } from 'lucide-react';
+import { Activity, Gavel, MessagesSquare, Plus, ScrollText, Wrench } from 'lucide-react';
+import { deskIcon } from './deskIcon';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { Chip, Quiet, SmallButton } from '../shared/ui';
 import { ToolCallCard } from '../Chat/ToolCallCard';
@@ -59,6 +60,11 @@ const TOOL_NOTES: Record<string, string> = {
   episode: 'one studio episode’s files',
   studio_status: 'the studio’s last run',
   panel_feed: 'this desk’s dashboard feeds',
+  stack_health: 'the Stack drawer’s latest run',
+  health_events: 'the cloud Health relay’s events',
+  briefs: 'the Decisions drawer’s listing',
+  runbook: 'the hq runbooks',
+  precheck: 'Foundry’s pre-check, as the Compliance panel runs it',
 };
 
 function ago(ms: number, now: number): string {
@@ -79,7 +85,7 @@ function Label({ children }: { children: string }) {
 
 /** One desk in the roster row. */
 function RosterCard({ desk, active, onSelect }: { desk: DeskInfo; active: boolean; onSelect: () => void }) {
-  const Icon = desk.id === 'bd' ? Briefcase : MessagesSquare;
+  const Icon = deskIcon(desk.id);
   return (
     <button
       onClick={onSelect}
@@ -96,7 +102,7 @@ function RosterCard({ desk, active, onSelect }: { desk: DeskInfo; active: boolea
           {desk.name}
         </span>
         <Chip tone={desk.default_route === 'hermes' ? 'accent' : 'neutral'}>
-          {desk.default_route === 'hermes' ? 'Hermes' : 'local'}
+          {desk.hermes === false ? 'local only' : desk.default_route === 'hermes' ? 'Hermes' : 'local'}
         </Chip>
       </span>
       <span className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
@@ -358,9 +364,11 @@ export function DesksView(props: DesksViewProps) {
                   <div className="flex flex-col gap-1">
                     <Label>Default route</Label>
                     <span style={{ color: 'var(--color-text)' }}>
-                      {desk.default_route === 'hermes'
-                        ? 'Hermes (the desk’s read-only profile). Start with “local,” to answer on this machine.'
-                        : 'Local qwen on this machine. Start with “Hermes,” for the desk’s Hermes profile.'}
+                      {desk.hermes === false
+                        ? 'Local qwen on this machine only. This desk has no Hermes profile.'
+                        : desk.default_route === 'hermes'
+                          ? 'Hermes (the desk’s read-only profile). Start with “local,” to answer on this machine.'
+                          : 'Local qwen on this machine. Start with “Hermes,” for the desk’s Hermes profile.'}
                     </span>
                     <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
                       Hermes turns count under the daily Hermes cap.

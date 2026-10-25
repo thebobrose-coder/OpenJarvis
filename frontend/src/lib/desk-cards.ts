@@ -55,6 +55,8 @@ export const DRAFT_MAX = 5000;
 const KINDS: CardKind[] = ['open', 'tick', 'proposal_decision', 'ruling'];
 /** Pages with a text field an `open` card's draft can fill. */
 const DRAFT_PAGES = new Set(['/bizdev']);
+/** Pages whose `open` card must name an item. */
+const FOCUS_REQUIRED = new Set(['/bizdev', '/content', '/commerce#fixes']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const FOCUS = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const BRIEF = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\.md$/;
@@ -91,7 +93,9 @@ export function validateCard(raw: unknown, desk: Desk): Result {
     const page = str(target.page);
     const focus = typeof target.focus === 'number' ? String(target.focus) : str(target.focus);
     if (!desk.pages.includes(page)) return drop(label, `this desk can't open ${page || 'that page'}`);
-    if (!FOCUS.test(focus)) return drop(label, 'no item to focus');
+    // A page with no item (the Stack drawer, a whole page) may leave focus empty.
+    if (focus && !FOCUS.test(focus)) return drop(label, 'not an item id');
+    if (!focus && FOCUS_REQUIRED.has(page)) return drop(label, 'no item to focus');
     if (page === '/bizdev' && !/^[1-9][0-9]{0,9}$/.test(focus)) return drop(label, 'not a prospect id');
     const draft = typeof body.draft === 'string' ? body.draft.trim() : '';
     if (draft && !DRAFT_PAGES.has(page)) return drop(label, `${page} has no text field for a draft`);
@@ -173,7 +177,8 @@ export function parseCards(
 export function outcomeLine(card: DeskCard, result: 'done' | 'opened', extra?: string): string {
   switch (card.kind) {
     case 'open':
-      return `Opened ${card.page} (${card.focus})${card.draft ? ', draft in the message field' : ''}`;
+      if (card.page === '/stack') return 'Opened the Stack drawer';
+      return `Opened ${card.page}${card.focus ? ` (${card.focus})` : ''}${card.draft ? ', draft in the message field' : ''}`;
     case 'tick':
       return `Ticked D${card.box}${extra ? ` on ${extra}` : ''}`;
     case 'proposal_decision':
@@ -183,4 +188,12 @@ export function outcomeLine(card: DeskCard, result: 'done' | 'opened', extra?: s
     case 'ruling':
       return 'Ruling recorded';
   }
+}
+
+/** Where an `open` card goes: `/commerce#fixes` with a focus is
+ * `/commerce?focus=<id>#fixes`, as "Waiting on you" links it. */
+export function openUrl(page: string, focus: string): string {
+  const [path, hash] = page.split('#', 2);
+  const query = focus ? `?focus=${encodeURIComponent(focus)}` : '';
+  return `${path}${query}${hash ? `#${hash}` : ''}`;
 }

@@ -52,6 +52,14 @@ CONTENT_FEEDS = (
     "content_health",
 )
 BD_FEEDS = ("bd_pipeline", "bd_stats")
+COMMERCE_FEEDS = (
+    "ecom_daily",
+    "store_performance",
+    "ecom_recommendations",
+    "ecom_seo_health",
+    "compliance_findings",
+)
+COMPLIANCE_FEEDS = ("compliance_findings",)
 
 
 @dataclass(frozen=True)
@@ -71,6 +79,9 @@ class Desk:
     card_kinds: tuple[str, ...]
     #: What a turn costs, for the roster card.
     cost_note: str = ""
+    #: False for a local-only desk (v1.19): no Hermes profile, and a forced
+    #: "Hermes," turn is refused.
+    hermes: bool = True
 
     def public(self) -> dict[str, Any]:
         return {
@@ -109,6 +120,8 @@ DESKS: dict[str, Desk] = {
             local_tools=("panel_feed",),
             panel_feeds=BD_FEEDS,
             hermes_tools=(
+                "bd_due",
+                "bd_templates",
                 "bd_prospects",
                 "session_search",
                 "web_search",
@@ -116,9 +129,67 @@ DESKS: dict[str, Desk] = {
             ),
             card_kinds=("open", "ruling"),
             cost_note=(
-                'A Hermes "who is due" turn measured $0.18-0.21. '
-                "Start with 'local,' for the pipeline and stats at no cost."
+                '"Who is due" measured about $0.02 on Hermes (bd_due), and a '
+                "drafted follow-up about $0.13. 'local,' reads the pipeline and "
+                "stats at no cost."
             ),
+        ),
+        Desk(
+            id="commerce",
+            name="Commerce desk",
+            default_route="hermes",
+            pages=("/commerce", "/commerce#fixes"),
+            local_tools=("panel_feed",),
+            panel_feeds=COMMERCE_FEEDS,
+            hermes_tools=(
+                "ecom_briefing",
+                "ecom_store_kpis",
+                "ecom_products",
+                "ecom_seo_health",
+                "ecom_recommendations",
+                "search_analytics",
+                "ga4_report",
+                "list_stores",
+                "catalog_snapshot",
+                "catalog_diff",
+                "order_totals",
+                "bundle_info",
+                "list_properties",
+                "get_property",
+                "property_for_store",
+                "session_search",
+                "web_search",
+                "web_extract",
+            ),
+            card_kinds=("open", "ruling"),
+            cost_note=(
+                "A Hermes turn measured $0.05-0.12. 'local,' reads the page's "
+                "feeds at no cost."
+            ),
+        ),
+        Desk(
+            id="ops",
+            name="Ops desk",
+            default_route="local",
+            pages=("/stack", "/logs"),
+            local_tools=("stack_health", "health_events", "briefs", "runbook"),
+            panel_feeds=(),
+            hermes_tools=(),
+            card_kinds=("open", "ruling"),
+            cost_note="Local only: every turn runs on this machine and costs nothing.",
+            hermes=False,
+        ),
+        Desk(
+            id="compliance",
+            name="Compliance desk",
+            default_route="local",
+            pages=("/commerce",),
+            local_tools=("precheck", "brand_context", "panel_feed"),
+            panel_feeds=COMPLIANCE_FEEDS,
+            hermes_tools=(),
+            card_kinds=("open", "ruling"),
+            cost_note="Local only: every turn runs on this machine and costs nothing.",
+            hermes=False,
         ),
     )
 }
@@ -421,3 +492,31 @@ def delete_ruling(desk_id: str, ruling_id: int, request: Request):
     if not rulings_store().delete(desk_id, ruling_id):
         raise HTTPException(status_code=404, detail="No such ruling")
     return {"id": ruling_id, "exported": export_rulings(desk_id)}
+
+
+# ---------- the paste-and-check widget (0020 P3) ----------
+
+
+class PrecheckBody(BaseModel):
+    propertyId: str  # noqa: N815 -- the CLI's own name
+    text: str
+    judge: bool = False
+
+
+@desks_router.get("/compliance/properties")
+def get_precheck_properties(request: Request):
+    """The property ids the widget's select offers, from Foundry's bundle."""
+    _local_only(request)
+    from openjarvis.server import desk_tools
+
+    return {"properties": desk_tools.property_ids()}
+
+
+@desks_router.post("/compliance/precheck")
+async def post_precheck(body: PrecheckBody, request: Request):
+    """One pre-check. The Compliance desk's ``precheck`` tool runs the same
+    ``run_precheck``: one implementation for the widget and the desk."""
+    _local_only(request)
+    from openjarvis.server import desk_tools
+
+    return await desk_tools.run_precheck(body.propertyId, body.text, body.judge)

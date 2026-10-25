@@ -699,11 +699,15 @@ def decide_desk_route(
     usage: "HermesUsage",
     cap: int,
     key_available: bool,
+    hermes_allowed: bool = True,
 ) -> tuple[RouteDecision, str]:
     """Route one desk turn: a prefix wins, else the desk's default. A default
     Hermes turn answers locally when there's no key or the daily cap is used
-    up; a forced one ("Hermes,") goes anyway, as in Auto."""
+    up; a forced one ("Hermes,") goes anyway, as in Auto. On a local-only desk
+    (v1.19) a forced Hermes turn is refused: reason ``local_only``."""
     forced, stripped = parse_prefix(text)
+    if forced == "hermes" and not hermes_allowed:
+        return RouteDecision("local", "local_only"), stripped
     if forced == "hermes":
         return RouteDecision("hermes", "prefix"), stripped
     if forced == "local":
@@ -756,11 +760,18 @@ async def route_desk(
         usage=get_usage(),
         cap=_hermes_cap(app_config),
         key_available=bool(api_key),
+        hermes_allowed=desk.hermes,
     )
     messages = desk_chat.thread_messages(request_body.messages, forwarded)
     route = {**decision.as_dict(), "desk": desk.id}
 
-    if decision.target == "hermes":
+    if decision.reason == "local_only":
+        model, engine = local_model(request), "ollama"
+        events = _one_text(
+            f"The {desk.name} is local only: it has no Hermes profile. Ask "
+            "again without 'Hermes,' and it answers on this machine."
+        )
+    elif decision.target == "hermes":
         model, engine = HERMES_MODEL_ID, "hermes"
         if not api_key:
             events = _one_text(_no_key_message())

@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useStackHealth } from '../../hooks/useStackHealth';
+import { contextBlock } from '../../lib/desks-api';
+import { useAppStore } from '../../lib/store';
 import { ALL_CLEAR, NO_RUN, clock, stripLines, type StackHealth, type StackLevel } from '../../lib/stack-api';
 import { formatAge } from '../Dashboard/FeedFreshness';
 import { StackHealthDrawer } from './StackHealthDrawer';
@@ -109,9 +111,26 @@ export function StackHealthDockView({ health, level, age, noticeOnly, missing, e
   );
 }
 
+/** The run as an Ops desk thread's context: counts and the FAIL and WARN rows. */
+export function stackContext(h: StackHealth): { block: string; label: string } {
+  const item = {
+    page: '/stack',
+    kind: 'stack_health',
+    ran_at: h.ran_at,
+    stale: h.stale,
+    counts: h.counts,
+    failing: h.failing,
+    warning: h.warning,
+  };
+  return { block: contextBlock(item), label: `stack health (${h.counts.FAIL} FAIL, ${h.counts.WARN} WARN)` };
+}
+
 export function StackHealthDock() {
   const s = useStackHealth();
-  const [open, setOpen] = useState(false);
+  const open = useAppStore((st) => st.stackDrawerOpen);
+  const setOpen = useAppStore((st) => st.setStackDrawerOpen);
+  const openDeskThread = useAppStore((st) => st.openDeskThread);
+  const navigate = useNavigate();
   return (
     <>
       <StackHealthDockView
@@ -131,6 +150,11 @@ export function StackHealthDock() {
           run={s.run}
           onRun={s.runNow}
           onClose={() => setOpen(false)}
+          onAskDesk={() => {
+            openDeskThread('ops', stackContext(s.health!));
+            setOpen(false);
+            navigate('/');
+          }}
         />
       )}
     </>

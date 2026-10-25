@@ -113,6 +113,7 @@ describe('card clicks go through the existing controls', () => {
       setHandoff: vi.fn((h) => void calls.push(`handoff ${h.kind}`)),
       addOutcome: vi.fn((_t: string, text: string) => void calls.push(`outcome ${text}`)),
       openDecisions: vi.fn(() => void calls.push('decisions')),
+      openStack: vi.fn(() => void calls.push('stack')),
       addRuling: vi.fn(async () => void calls.push('ruling')),
     };
   }

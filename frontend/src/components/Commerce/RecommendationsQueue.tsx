@@ -5,6 +5,7 @@ import type { PendingDecision } from '../../hooks/useCommerceData';
 import { applyDecisions } from '../../hooks/useCommerceData';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { ALL_STORES, num, shortDateTime } from './format';
+import { MessagesSquare } from 'lucide-react';
 import { Chip, ExtLink, Quiet, Select, SmallButton, Tile, type Tone } from '../shared/ui';
 
 export const CATEGORY_LABELS: Record<RecCategory, string> = {
@@ -98,12 +99,15 @@ export function RecommendationCard({
   storeName,
   productTitles,
   onDecide,
+  onAskDesk,
 }: {
   item: LedgerItem;
   storeName: string;
   /** Product id -> title, so product and page targets read as names. */
   productTitles: Record<string, string>;
   onDecide: (d: Decision, note: string) => void;
+  /** "Ask the desk" (0020 P3): a Commerce desk thread with this card as context. */
+  onAskDesk?: () => void;
 }) {
   const r = item.detail;
   const p = PRIORITY[item.priority] ?? PRIORITY[3];
@@ -122,6 +126,13 @@ export function RecommendationCard({
         <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
           {storeName} · {shortDateTime(item.created_at)}
         </span>
+        {onAskDesk && (
+          <span className="ml-auto">
+            <SmallButton onClick={onAskDesk} title="Open a Commerce desk thread with this recommendation as context">
+            <MessagesSquare size={11} /> Ask the desk
+          </SmallButton>
+          </span>
+        )}
       </div>
 
       <h3 className="text-[13.5px] font-semibold leading-snug" style={{ color: 'var(--color-text)' }}>
@@ -233,6 +244,7 @@ export function RecommendationsQueue({
   storeNames,
   productTitles,
   onDecide,
+  onAskDesk,
   loading,
   error,
 }: {
@@ -244,6 +256,7 @@ export function RecommendationsQueue({
   storeNames: Record<string, string>;
   productTitles: Record<string, string>;
   onDecide: (id: string, d: Decision, note: string) => void;
+  onAskDesk?: (item: LedgerItem) => void;
   loading?: boolean;
   error?: string | null;
 }) {
@@ -308,6 +321,7 @@ export function RecommendationsQueue({
                     storeName={storeNames[item.store] ?? item.store}
                     productTitles={productTitles}
                     onDecide={(d, note) => onDecide(item.id, d, note)}
+                    onAskDesk={onAskDesk ? () => onAskDesk(item) : undefined}
                   />
                 ))}
               </div>

@@ -15,6 +15,7 @@ import type {
   TokenUsage,
 } from '../types';
 import type { ManagedAgent } from './api';
+import type { DeskId } from './desks-api';
 import { isEmbedOnlyModel } from './model-capabilities';
 import { serializeToolCallArguments } from './tool-call';
 
@@ -187,7 +188,7 @@ interface AppState {
   importOverlayConversation: () => Promise<void>;
   createConversation: (model?: string) => string;
   /** A new desk thread, optionally with the page item for its first message. */
-  openDeskThread: (desk: 'content' | 'bd', context?: { block: string; label: string }) => string;
+  openDeskThread: (desk: DeskId, context?: { block: string; label: string }) => string;
   /** Take a thread's pending page context (it goes with the first message). */
   takePendingContext: (conversationId: string) => { block: string; label: string } | undefined;
   /** A system line in a desk thread, after the operator acted on a card. */
@@ -279,6 +280,9 @@ interface AppState {
   // (the BD drawer's message, the proposal editor). The page takes it once.
   deskHandoff: DeskHandoff | null;
   setDeskHandoff: (handoff: DeskHandoff | null) => void;
+  /** The sidebar's Stack drawer, opened by its dock or by an Ops desk card. */
+  stackDrawerOpen: boolean;
+  setStackDrawerOpen: (open: boolean) => void;
 }
 
 export type DeskHandoff =
@@ -663,6 +667,8 @@ export const useAppStore = create<AppState>((set, get) => {
 
     deskHandoff: null,
     setDeskHandoff: (handoff) => set({ deskHandoff: handoff }),
+    stackDrawerOpen: false,
+    setStackDrawerOpen: (open) => set({ stackDrawerOpen: open }),
 
     // ── Opt-in sharing ──────────────────────────────────────────────
 

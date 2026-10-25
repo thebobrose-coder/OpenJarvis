@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import type { Decision, RefreshTarget } from '../../lib/commerce-api';
+import type { ComplianceFinding, DailyStore, Decision, LedgerItem, RefreshTarget } from '../../lib/commerce-api';
+import type { PrecheckProps } from './PrecheckWidget';
 import type { FeedStates, PendingDecision, RefreshStatus } from '../../hooks/useCommerceData';
 import { AdsPanel } from './AdsPanel';
 import { BriefingPanel } from './BriefingPanel';
@@ -52,6 +53,15 @@ export interface CommerceViewProps {
   /** A deep link from "Waiting on you": a patch opens on the Fixes tab, a
    * rec scrolls into view on the Overview. `key` re-runs it per navigation. */
   focus?: { fix?: string | null; rec?: string | null; key?: string } | null;
+  /** Desks (hq 0020 P3): "Ask the desk" on a recommendation and the KPIs
+   * (Commerce desk) and on a compliance finding (Compliance desk). */
+  onAskDesk?: {
+    rec: (item: LedgerItem) => void;
+    kpis: (stores: DailyStore[]) => void;
+    finding: (f?: ComplianceFinding) => void;
+  };
+  /** The paste-and-check widget in the compliance panel. */
+  precheck?: PrecheckProps;
 }
 
 /**
@@ -73,6 +83,8 @@ export function CommerceView({
   fixes,
   initialTab = 'overview',
   focus = null,
+  onAskDesk,
+  precheck,
 }: CommerceViewProps) {
   const [tab, setTab] = useState<CommerceTab>(fixes ? initialTab : 'overview');
   // A fix another panel linked to: the Fixes tab opens on its view.
@@ -187,7 +199,12 @@ export function CommerceView({
       ) : (
         <>
           <div className="grid grid-cols-12 gap-4 mb-4">
-            <KpiStrip stores={selectedDaily} loading={dailyState.loading} error={dailyState.error} />
+            <KpiStrip
+              stores={selectedDaily}
+              loading={dailyState.loading}
+              error={dailyState.error}
+              onAskDesk={onAskDesk ? () => onAskDesk.kpis(selectedDaily) : undefined}
+            />
           </div>
 
           <div className="grid grid-cols-12 gap-4 mb-4">
@@ -212,6 +229,7 @@ export function CommerceView({
               storeNames={storeNames}
               productTitles={productTitles}
               onDecide={onDecide}
+              onAskDesk={onAskDesk?.rec}
               loading={feeds.ecom_recommendations.loading}
               error={feeds.ecom_recommendations.error}
             />
@@ -243,6 +261,8 @@ export function CommerceView({
               loading={feeds.compliance_findings.loading}
               error={feeds.compliance_findings.error}
               onOpenFix={fixes ? openFix : undefined}
+              onAskDesk={onAskDesk?.finding}
+              precheck={precheck}
             />
           </div>
         </>

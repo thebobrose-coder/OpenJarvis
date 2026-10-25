@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Copy, Loader2, Play, X } from 'lucide-react';
+import { Check, Copy, Loader2, MessagesSquare, Play, X } from 'lucide-react';
 import type { RunState } from '../../hooks/useStackHealth';
 import {
   cappedEvents,
@@ -112,6 +112,8 @@ export interface StackHealthDrawerProps {
   run: { state: RunState; detail: string | null };
   onRun: () => void;
   onClose: () => void;
+  /** "Ask the desk" (0020 P3): open an Ops desk thread with this run as context. */
+  onAskDesk?: () => void;
 }
 
 /**
@@ -120,7 +122,7 @@ export interface StackHealthDrawerProps {
  * and the footer with Run now and Speak. There is no page: this drawer is the
  * "link to the full error text".
  */
-export function StackHealthDrawer({ health, now, run, onRun, onClose }: StackHealthDrawerProps) {
+export function StackHealthDrawer({ health, now, run, onRun, onClose, onAskDesk }: StackHealthDrawerProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -151,9 +153,16 @@ export function StackHealthDrawer({ health, now, run, onRun, onClose }: StackHea
               {health.stale && <Chip tone="warning">stale</Chip>}
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close" className="cursor-pointer p-1" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
-            <X size={14} />
-          </button>
+          <div className="flex items-start gap-1 shrink-0">
+            {onAskDesk && (
+              <SmallButton onClick={onAskDesk} title="Open an Ops desk thread with this run as context">
+                <MessagesSquare size={11} /> Ask the desk
+              </SmallButton>
+            )}
+            <button onClick={onClose} aria-label="Close" className="cursor-pointer p-1" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
+              <X size={14} />
+            </button>
+          </div>
         </header>
 
         {health.failing.length > 0 && (

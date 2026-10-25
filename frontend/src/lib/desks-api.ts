@@ -6,13 +6,15 @@
  */
 import { apiFetch } from './api';
 
-export type DeskId = 'content' | 'bd';
+export type DeskId = 'content' | 'bd' | 'commerce' | 'ops' | 'compliance';
 export type CardKind = 'open' | 'tick' | 'proposal_decision' | 'ruling';
 
 export interface DeskInfo {
   id: DeskId;
   name: string;
   default_route: 'local' | 'hermes';
+  /** False for a local-only desk (v1.19): no Hermes profile. */
+  hermes?: boolean;
   pages: string[];
   local_tools: string[];
   panel_feeds: string[];
@@ -54,9 +56,27 @@ export const DESK_DEFAULTS: Record<DeskId, Pick<DeskInfo, 'id' | 'name' | 'defau
     card_kinds: ['open', 'tick', 'proposal_decision', 'ruling'],
   },
   bd: { id: 'bd', name: 'BD desk', default_route: 'hermes', pages: ['/bizdev'], card_kinds: ['open', 'ruling'] },
+  commerce: {
+    id: 'commerce',
+    name: 'Commerce desk',
+    default_route: 'hermes',
+    pages: ['/commerce', '/commerce#fixes'],
+    card_kinds: ['open', 'ruling'],
+  },
+  ops: { id: 'ops', name: 'Ops desk', default_route: 'local', pages: ['/stack', '/logs'], card_kinds: ['open', 'ruling'] },
+  compliance: {
+    id: 'compliance',
+    name: 'Compliance desk',
+    default_route: 'local',
+    pages: ['/commerce'],
+    card_kinds: ['open', 'ruling'],
+  },
 };
 
-export const isDeskId = (v: unknown): v is DeskId => v === 'content' || v === 'bd';
+/** v1.19: desks with no Hermes profile ("Hermes," is refused). */
+export const LOCAL_ONLY: DeskId[] = ['ops', 'compliance'];
+
+export const isDeskId = (v: unknown): v is DeskId => typeof v === 'string' && v in DESK_DEFAULTS;
 
 async function detail(res: Response, fallback: string): Promise<string> {
   const body = await res.json().catch(() => null);
@@ -146,4 +166,47 @@ export function contextBlock(item: Record<string, unknown>): string {
     obj._trimmed = true;
   }
   return '```context\n' + JSON.stringify(obj) + '\n```\n\n';
+}
+
+// -- the paste-and-check widget (0020 P3; foundry-studio.md v0.2) --------------
+
+export const PRECHECK_MAX = 20000;
+
+export interface PrecheckHit {
+  /** The check's name: banned-word, guard, ticker, sales-line, web-address, judge, … */
+  kind: string;
+  /** The rule or the compliance.md heading, verbatim. */
+  rule: string;
+  sentence: string;
+  match?: string;
+}
+
+export interface PrecheckResult {
+  propertyId: string;
+  ok: boolean;
+  judged?: boolean;
+  hits: PrecheckHit[];
+  /** Set when the pre-check couldn't run: never a pass. */
+  unavailable?: boolean;
+  error?: string;
+  bundle?: { generatedAt?: string } | null;
+}
+
+export async function fetchPrecheckProperties(): Promise<string[]> {
+  const res = await apiFetch('/api/desks/compliance/properties');
+  if (!res.ok) throw new Error(await detail(res, `Properties: ${res.status}`));
+  return (await res.json()).properties ?? [];
+}
+
+/** One pre-check: the same backend the Compliance desk's tool uses. */
+export async function runPrecheck(propertyId: string, text: string, judge: boolean): Promise<PrecheckResult> {
+  const res = await apiFetch('/api/desks/compliance/precheck', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ propertyId, text, judge }),
+  });
+  if (!res.ok) {
+    return { propertyId, ok: false, hits: [], unavailable: true, error: await detail(res, `pre-check unavailable (${res.status})`) };
+  }
+  return res.json();
 }

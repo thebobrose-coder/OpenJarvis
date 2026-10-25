@@ -147,7 +147,7 @@ export interface Conversation {
   model: string;
   messages: ChatMessage[];
   /** Desks (hq 0020 P2): a desk thread's desk id and X-Hermes-Session-Id. */
-  desk?: 'content' | 'bd';
+  desk?: 'content' | 'bd' | 'commerce' | 'ops' | 'compliance';
   deskSession?: string;
   /** "Ask the desk": the page item to prefix to the first message. */
   pendingContext?: { block: string; label: string };

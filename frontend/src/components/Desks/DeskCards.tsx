@@ -1,20 +1,22 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Briefcase, CheckSquare, ExternalLink, Gavel, Info, MessagesSquare, Pencil } from 'lucide-react';
+import { CheckSquare, ExternalLink, Gavel, Info, Pencil } from 'lucide-react';
 import { Chip, SmallButton } from '../shared/ui';
 import { useAppStore, type DeskHandoff } from '../../lib/store';
 import { useWaiting } from '../../lib/WaitingContext';
-import { addRuling, DESK_DEFAULTS, type DeskId } from '../../lib/desks-api';
-import { outcomeLine, type DeskCard, type DroppedCard } from '../../lib/desk-cards';
+import { addRuling, DESK_DEFAULTS, LOCAL_ONLY, type DeskId } from '../../lib/desks-api';
+import { deskIcon } from './deskIcon';
+import { openUrl, outcomeLine, type DeskCard, type DroppedCard } from '../../lib/desk-cards';
 
 const ICON = { open: ExternalLink, tick: CheckSquare, proposal_decision: Pencil, ruling: Gavel } as const;
 
 function cardHint(card: DeskCard): string {
   switch (card.kind) {
     case 'open':
+      if (card.page === '/stack') return 'Opens the Stack drawer. Run now stays its own button.';
       return card.draft
         ? `Opens ${card.page} on ${card.focus} with the draft in its message field. Nothing is sent.`
-        : `Opens ${card.page} on ${card.focus}.`;
+        : `Opens ${card.page}${card.focus ? ` on ${card.focus}` : ''}.`;
     case 'tick':
       return `Opens the Decisions drawer on D${card.box} (${card.file}); you confirm the tick there.`;
     case 'proposal_decision':
@@ -89,14 +91,16 @@ export function OutcomeLine({ text }: { text: string }) {
 /** A desk thread's header: which desk, its default route, the page context. Pure. */
 export function DeskThreadHeader({ desk, context }: { desk: DeskId; context?: string }) {
   const info = DESK_DEFAULTS[desk];
-  const Icon = desk === 'bd' ? Briefcase : MessagesSquare;
+  const Icon = deskIcon(desk);
   return (
     <div className="flex items-center gap-2 min-w-0 text-[12px]" data-desk-header>
       <Icon size={13} style={{ color: 'var(--color-accent)' }} />
       <span className="font-medium" style={{ color: 'var(--color-text)' }}>
         {info.name}
       </span>
-      <Chip tone="neutral">{info.default_route === 'hermes' ? 'Hermes by default' : 'local by default'}</Chip>
+      <Chip tone="neutral">
+        {LOCAL_ONLY.includes(desk) ? 'local only' : info.default_route === 'hermes' ? 'Hermes by default' : 'local by default'}
+      </Chip>
       {context && (
         <span className="truncate" style={{ color: 'var(--color-text-tertiary)' }} title={context}>
           Context: {context}
@@ -111,6 +115,8 @@ export interface CardDeps {
   setHandoff: (h: DeskHandoff) => void;
   addOutcome: (thread: string, text: string) => void;
   openDecisions: () => void;
+  /** The sidebar's Stack drawer (an Ops desk `open` to /stack). */
+  openStack: () => void;
   addRuling: (desk: DeskId, text: string, thread: string) => Promise<unknown>;
 }
 
@@ -121,8 +127,13 @@ export interface CardDeps {
 export async function runCard(card: DeskCard, thread: string, desk: DeskId, deps: CardDeps): Promise<void> {
   switch (card.kind) {
     case 'open':
+      if (card.page === '/stack') {
+        deps.openStack();
+        deps.addOutcome(thread, outcomeLine(card, 'opened'));
+        return;
+      }
       if (card.draft) deps.setHandoff({ kind: 'draft', thread, page: card.page, focus: card.focus, draft: card.draft });
-      deps.navigate(`${card.page}?focus=${encodeURIComponent(card.focus)}`);
+      deps.navigate(openUrl(card.page, card.focus));
       deps.addOutcome(thread, outcomeLine(card, 'opened'));
       return;
     case 'tick':
@@ -149,6 +160,7 @@ export function useDeskCardAction(thread: string, desk: DeskId) {
   const navigate = useNavigate();
   const setDeskHandoff = useAppStore((s) => s.setDeskHandoff);
   const addOutcome = useAppStore((s) => s.addOutcome);
+  const setStackDrawerOpen = useAppStore((s) => s.setStackDrawerOpen);
   const { setDecisionsOpen } = useWaiting();
   const [busy, setBusy] = useState<number | null>(null);
   const [done, setDone] = useState<number[]>([]);
@@ -162,6 +174,7 @@ export function useDeskCardAction(thread: string, desk: DeskId) {
           setHandoff: setDeskHandoff,
           addOutcome,
           openDecisions: () => setDecisionsOpen(true),
+          openStack: () => setStackDrawerOpen(true),
           addRuling,
         });
         setDone((d) => [...d, index]);
@@ -171,7 +184,7 @@ export function useDeskCardAction(thread: string, desk: DeskId) {
         setBusy(null);
       }
     },
-    [thread, desk, navigate, setDeskHandoff, addOutcome, setDecisionsOpen],
+    [thread, desk, navigate, setDeskHandoff, addOutcome, setDecisionsOpen, setStackDrawerOpen],
   );
   return { act, busy, done };
 }

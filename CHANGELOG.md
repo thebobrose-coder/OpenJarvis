@@ -467,6 +467,30 @@ and proposes; the page's own controls still do every act.
   tools whose call only adds the card block to the reply. Before this, qwen
   could loop on one tool and the thread showed "No response was generated".
 
+**Desks P3: the Commerce, Ops and Compliance desks, and paste-and-check**
+(hq 0020 P3, contract v1.19). Three more desks on the P2 framework, and one
+new widget. No Trading desk (P3 D1).
+- **Commerce desk:** Hermes by default (`desk-commerce`), bound to
+  `/commerce` and `/commerce#fixes`; "local," reads the page's five feeds.
+  "Ask the desk" on each recommendation card and on the Store KPIs panel.
+- **Ops desk (local only):** `stack_health`, `health_events`, `briefs` and
+  `runbook`, all read-only, from local config paths. "Ask the desk" in the
+  Stack drawer; its `open` card goes to the Stack drawer (`/stack`) or
+  `/logs`. Run now stays the drawer's own button.
+- **Compliance desk (local only):** `precheck`, `brand_context` and the
+  `compliance_findings` feed. "Ask the desk" on the compliance panel and on
+  each listed finding. It never dismisses a finding.
+- **Paste and check** in the compliance panel: a property, a text box,
+  "Check" (deterministic) and "Check with judge". It runs Foundry's pre-check
+  CLI as an argv list with the text on stdin, never a shell (30 s, or 180 s
+  with the judge). Hits show by kind, the rule verbatim and the match marked.
+  A timeout or a non-zero exit is "pre-check unavailable", never a pass. The
+  widget and the desk's tool share one route (`/api/desks/compliance/precheck`).
+- A forced "Hermes," turn on Ops or Compliance answers "local only". A Hermes
+  reply in several messages keeps every message's text, each break a new
+  paragraph. The BD roster note is now about $0.02 for "who is due" and $0.13
+  for a draft.
+
 **The G1 mirror in "Waiting on you"** (hq 0020 D4; Foundry's approval
 mirror). Open content approvals now show in the bell and the Dashboard panel
 as "Posts to approve (G1)", right after Trading, and open a G1 drawer.

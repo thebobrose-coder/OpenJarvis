@@ -18,7 +18,7 @@ import {
   type RouteInfo,
 } from '../../lib/chat-routing';
 import { MicButton } from './MicButton';
-import { DESK_DEFAULTS } from '../../lib/desks-api';
+import { DESK_DEFAULTS, LOCAL_ONLY } from '../../lib/desks-api';
 import { useSpeech } from '../../hooks/useSpeech';
 import { useDailyBriefAudio } from '../../lib/DailyBriefAudioContext';
 import type {
@@ -671,7 +671,9 @@ export function InputArea() {
           onKeyDown={handleKeyDown}
           placeholder={
             activeDesk
-              ? `Ask the ${DESK_DEFAULTS[activeDesk].name}…  ('Hermes,' or 'local,' picks the route)`
+              ? LOCAL_ONLY.includes(activeDesk)
+                ? `Ask the ${DESK_DEFAULTS[activeDesk].name}…  (local only)`
+                : `Ask the ${DESK_DEFAULTS[activeDesk].name}…  ('Hermes,' or 'local,' picks the route)`
               : selectedModel ? 'Message OpenJarvis...' : 'Pick a model first (⌘K)...'
           }
           rows={1}

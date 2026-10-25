@@ -1,10 +1,11 @@
-import { ShieldCheck } from 'lucide-react';
+import { MessagesSquare, ShieldCheck } from 'lucide-react';
 import type { ComplianceFinding, ComplianceFindings } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { SpeakButton } from '../shared/SpeakButton';
 import { firstBlock } from '../../lib/voice-api';
 import { num } from './format';
-import { Chip, ExtLink, Quiet } from '../shared/ui';
+import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
+import { PrecheckWidget, type PrecheckProps } from './PrecheckWidget';
 
 /** The advisory reasons (v1.4, 0011 A12) in words; an unknown one shows as is. */
 const ADVISORY_WORDS: Record<string, string> = {
@@ -14,7 +15,7 @@ const ADVISORY_WORDS: Record<string, string> = {
 /** "2 of 3 readings": a finding opened on writer copy by majority (A12). */
 export const readingsLabel = (r: NonNullable<ComplianceFinding['readings']>) => `${r.flagged} of ${r.of} readings`;
 
-function FindingLine({ f }: { f: ComplianceFinding }) {
+function FindingLine({ f, onAskDesk }: { f: ComplianceFinding; onAskDesk?: (f: ComplianceFinding) => void }) {
   return (
     <>
       <span style={{ color: 'var(--color-text-tertiary)' }}>{f.property}</span>
@@ -27,6 +28,17 @@ function FindingLine({ f }: { f: ComplianceFinding }) {
         <Chip tone="muted" title="The judge took 3 readings on writer copy">
           {readingsLabel(f.readings)}
         </Chip>
+      )}
+      {onAskDesk && (
+        <button
+          onClick={() => onAskDesk(f)}
+          data-ask-finding={f.id}
+          title="Open a Compliance desk thread with this finding as context"
+          className="cursor-pointer underline"
+          style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-accent)' }}
+        >
+          ask the desk
+        </button>
       )}
     </>
   );
@@ -43,12 +55,18 @@ export function CompliancePanel({
   loading,
   error,
   onOpenFix,
+  onAskDesk,
+  precheck,
 }: {
   findings: ComplianceFindings | null;
   loading?: boolean;
   error?: string | null;
   /** Show a patch's card on the Fixes tab. */
   onOpenFix?: (patchId: string) => void;
+  /** "Ask the desk" (0020 P3): a Compliance desk thread, on a finding or the panel. */
+  onAskDesk?: (f?: ComplianceFinding) => void;
+  /** The paste-and-check widget (0020 P3); absent, the panel is as before. */
+  precheck?: PrecheckProps;
 }) {
   const byProperty = Object.entries(findings?.counts.open_by_property ?? {}).sort((a, b) => b[1] - a[1]);
   const advisory = findings?.advisory_findings ?? [];
@@ -61,8 +79,18 @@ export function CompliancePanel({
       size="full"
       loading={loading}
       error={error}
-      actions={<SpeakButton feed="compliance_findings" block={firstBlock(findings?.speech)} />}
+      actions={
+        <span className="flex items-center gap-1">
+          {onAskDesk && (
+            <SmallButton onClick={() => onAskDesk()} title="Open a Compliance desk thread">
+              <MessagesSquare size={11} /> Ask the desk
+            </SmallButton>
+          )}
+          <SpeakButton feed="compliance_findings" block={firstBlock(findings?.speech)} />
+        </span>
+      }
     >
+      {precheck && <PrecheckWidget {...precheck} />}
       {!findings ? (
         <Quiet>No compliance run yet.</Quiet>
       ) : (
@@ -86,7 +114,7 @@ export function CompliancePanel({
               <ul className="flex flex-col gap-1 mt-1">
                 {majority.map((f) => (
                   <li key={f.id} className="flex flex-wrap items-center gap-1.5">
-                    <FindingLine f={f} />
+                    <FindingLine f={f} onAskDesk={onAskDesk} />
                   </li>
                 ))}
               </ul>
@@ -105,7 +133,7 @@ export function CompliancePanel({
                 {advisory.map((f) => (
                   <li key={f.id} className="flex flex-wrap items-center gap-1.5" data-advisory-id={f.id}>
                     <Chip tone="muted">advisory: {ADVISORY_WORDS[f.advisory_reason] ?? f.advisory_reason}</Chip>
-                    <FindingLine f={f} />
+                    <FindingLine f={f} onAskDesk={onAskDesk} />
                     {f.patch_id && onOpenFix && (
                       <button
                         onClick={() => onOpenFix(f.patch_id!)}

@@ -1,8 +1,18 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { event, health, row } from './stackHealthFixtures';
 import { ALL_CLEAR, NO_RUN, shouldChime, stackLevel, noticeOnly, type StackHealth, type StackLevel } from '../../lib/stack-api';
 import { StackHealthDockView, type StackHealthDockViewProps } from './StackHealthDock';
+
+// The dock imports the app store, which reads localStorage at import.
+vi.hoisted(() => {
+  const store = new Map<string, string>();
+  (globalThis as unknown as { localStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> }).localStorage ??= {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, String(v)),
+    removeItem: (k: string) => void store.delete(k),
+  };
+});
 
 // Invented fixtures only: this repo is public.
 function view(h: StackHealth | null, over: Partial<StackHealthDockViewProps> = {}) {

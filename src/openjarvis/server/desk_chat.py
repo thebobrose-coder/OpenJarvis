@@ -90,6 +90,7 @@ def _card_shapes(desk: desks.Desk) -> str:
 
 
 def system_prompt(desk: desks.Desk) -> str:
+    stack = " (/stack is the Stack drawer; its focus may be empty)"
     parts = [
         f"You are the {desk.name}, one desk in the operator's OpenJarvis app. You "
         "read, rank, explain, draft and propose. You never act: you can't approve, "
@@ -101,6 +102,9 @@ def system_prompt(desk: desks.Desk) -> str:
         "clicks a card to act; nothing happens otherwise. Calling the tool named "
         "after a card kind adds that card for you. Card kinds on this desk:\n"
         f"{_card_shapes(desk)}\n"
+        f"An open card's page is one of: {', '.join(desk.pages)}"
+        f"{stack if '/stack' in desk.pages else ''}. "
+        "Its focus is the item's own id from your tools, never a name.\n"
         "When the operator states a lasting preference or asks for a ruling, call "
         "the ruling tool with that preference, then say in one line that the card "
         "is there to click.\n"
@@ -447,6 +451,10 @@ async def hermes_turn(
                 yield ("text", {"content": f"Hermes error: HTTP {resp.status_code}"})
                 return
             event = None
+            # A desk often answers in several assistant messages (text, a tool
+            # call, then the card). They arrive as one stream; a tool event
+            # between them marks the break, so the next text starts a paragraph.
+            wrote_text = split = False
             async for line in resp.aiter_lines():
                 if not line:
                     event = None
@@ -465,6 +473,7 @@ async def hermes_turn(
                     continue
                 if event == "hermes.tool.progress":
                     tool, label = _progress_label(doc)
+                    split = wrote_text
                     yield ("tool_start", {"tool": tool, "arguments": label})
                     yield ("tool_end", {"tool": tool, "success": True, "result": label})
                     continue
@@ -478,6 +487,10 @@ async def hermes_turn(
                 ):
                     piece = (choices[0].get("delta") or {}).get("content")
                     if piece:
+                        if split:
+                            piece = "\n\n" + piece.lstrip("\n")
+                            split = False
+                        wrote_text = True
                         yield ("text", {"content": piece})
 
 

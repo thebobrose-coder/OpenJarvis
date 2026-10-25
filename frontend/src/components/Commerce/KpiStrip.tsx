@@ -1,15 +1,26 @@
-import { Gauge } from 'lucide-react';
+import { Gauge, MessagesSquare } from 'lucide-react';
 import type { DailyStore } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { delta, kpiTotals, money, num, ratio } from './format';
-import { Chip, ExtLink, Quiet, Tile } from '../shared/ui';
+import { Chip, ExtLink, Quiet, SmallButton, Tile } from '../shared/ui';
 
 /**
  * Sales, traffic, ads and catalog at a glance, for one store or summed for
  * all. The stores are new, so zeros are expected: nothing here turns red on
  * a zero, and a week-over-week drop is only muted text.
  */
-export function KpiStrip({ stores, error, loading }: { stores: DailyStore[]; error?: string | null; loading?: boolean }) {
+export function KpiStrip({
+  stores,
+  error,
+  loading,
+  onAskDesk,
+}: {
+  stores: DailyStore[];
+  error?: string | null;
+  loading?: boolean;
+  /** "Ask the desk" (0020 P3): a Commerce desk thread with these KPIs as context. */
+  onAskDesk?: () => void;
+}) {
   const t = kpiTotals(stores);
   const cur = t.mixedCurrency ? null : t.currency;
   const m = (n: number) => (t.mixedCurrency ? 'mixed currencies' : money(n, cur));
@@ -19,7 +30,21 @@ export function KpiStrip({ stores, error, loading }: { stores: DailyStore[]; err
   const ga4Connected = t.ga4.connectedStores > 0;
 
   return (
-    <DashboardPanel icon={Gauge} title="Store KPIs" tag="Daily" size="full" loading={loading} error={error}>
+    <DashboardPanel
+      icon={Gauge}
+      title="Store KPIs"
+      tag="Daily"
+      size="full"
+      loading={loading}
+      error={error}
+      actions={
+        onAskDesk && stores.length > 0 ? (
+          <SmallButton onClick={onAskDesk} title="Open a Commerce desk thread with these KPIs as context">
+            <MessagesSquare size={11} /> Ask the desk
+          </SmallButton>
+        ) : undefined
+      }
+    >
       {stores.length === 0 ? (
         <Quiet>No store data yet -- Hermes collects it daily at 06:45.</Quiet>
       ) : (
