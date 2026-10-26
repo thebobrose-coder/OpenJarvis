@@ -200,13 +200,21 @@ export async function fetchPrecheckProperties(): Promise<string[]> {
 
 /** One pre-check: the same backend the Compliance desk's tool uses. */
 export async function runPrecheck(propertyId: string, text: string, judge: boolean): Promise<PrecheckResult> {
-  const res = await apiFetch('/api/desks/compliance/precheck', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ propertyId, text, judge }),
-  });
-  if (!res.ok) {
-    return { propertyId, ok: false, hits: [], unavailable: true, error: await detail(res, `pre-check unavailable (${res.status})`) };
+  const unavailable = (error: string): PrecheckResult => ({ propertyId, ok: false, hits: [], unavailable: true, error });
+  let res: Response;
+  try {
+    res = await apiFetch('/api/desks/compliance/precheck', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ propertyId, text, judge }),
+    });
+  } catch (e) {
+    return unavailable(`pre-check unavailable: ${e instanceof Error ? e.message : 'no answer'}`);
   }
-  return res.json();
+  if (!res.ok) return unavailable(await detail(res, `pre-check unavailable (${res.status})`));
+  const doc = (await res.json().catch(() => null)) as PrecheckResult | null;
+  if (!doc || typeof doc !== 'object') return unavailable('pre-check unavailable: unreadable answer');
+  // Never a pass without a hits list (an answer without one isn't a check).
+  const hits = Array.isArray(doc.hits) ? doc.hits : [];
+  return { ...doc, hits, ok: !!doc.ok && Array.isArray(doc.hits) && hits.length === 0 };
 }

@@ -320,7 +320,15 @@ def test_exit_2_shows_the_cli_error(cli):
         "propertyId": "nope",
         "ok": False,
         "error": 'unknown property "nope"',
+        "hits": [],
     }
+
+
+def test_a_non_zero_exit_with_an_error_says_why_and_is_not_a_pass(cli):
+    FakePopen.answer = (1, json.dumps({"error": "ENOENT: no brand file"}))
+    out = asyncio.run(desk_tools.run_precheck("sample-prop", "Some text."))
+    assert out["ok"] is False and out["unavailable"] is True
+    assert out["error"].endswith("exit 1: ENOENT: no brand file")
 
 
 def test_garbage_or_a_hit_with_ok_true_is_not_a_pass(cli):
@@ -338,7 +346,7 @@ def test_precheck_input_is_checked_before_anything_runs(cli):
         ("sample-prop", "x" * 20001),
     ):
         out = asyncio.run(desk_tools.run_precheck(pid, text))
-        assert out["ok"] is False and out["error"]
+        assert out["ok"] is False and out["error"] and out["hits"] == []
     assert FakePopen.calls == []
 
 

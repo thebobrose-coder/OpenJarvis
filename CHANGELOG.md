@@ -490,6 +490,11 @@ new widget. No Trading desk (P3 D1).
   reply in several messages keeps every message's text, each break a new
   paragraph. The BD roster note is now about $0.02 for "who is due" and $0.13
   for a draft.
+- **Paste and check always shows an answer:** an input error or a CLI error
+  carries an empty `hits` list (the widget threw on one without), a request
+  that fails or an answer without hits shows as unavailable, and a non-zero
+  exit with a CLI error says why. A clean plain check now says that claims and
+  promises are judged only by "Check with judge".
 
 **The G1 mirror in "Waiting on you"** (hq 0020 D4; Foundry's approval
 mirror). Open content approvals now show in the bell and the Dashboard panel

@@ -35,7 +35,8 @@ export function Highlighted({ sentence, match }: { sentence: string; match?: str
 
 /** The hits grouped by kind, each with its rule verbatim. Pure. */
 export function PrecheckResultView({ result }: { result: PrecheckResult }) {
-  if (result.unavailable || (result.error && !result.hits.length)) {
+  const hitList = result.hits ?? [];
+  if (result.unavailable || (result.error && !hitList.length)) {
     return (
       <p data-precheck-error className="text-[12px]" style={{ color: 'var(--color-error)' }}>
         {result.error ?? 'pre-check unavailable'}
@@ -46,16 +47,18 @@ export function PrecheckResultView({ result }: { result: PrecheckResult }) {
   if (result.ok) {
     return (
       <p data-precheck-ok className="text-[12px]" style={{ color: 'var(--color-success)' }}>
-        No hits{result.judged ? ', judge included' : ' (deterministic checks; the judge adds compliance.md)'}.
+        {result.judged
+          ? 'No hits, judge included.'
+          : 'No hits on the word and phrase checks. Claims and promises (durability, "best", comparisons) are judged only by Check with judge.'}
       </p>
     );
   }
   const groups = new Map<string, PrecheckHit[]>();
-  for (const h of result.hits) groups.set(h.kind, [...(groups.get(h.kind) ?? []), h]);
+  for (const h of hitList) groups.set(h.kind, [...(groups.get(h.kind) ?? []), h]);
   return (
     <div className="flex flex-col gap-2" data-precheck-hits>
       <span className="text-[12px]" style={{ color: 'var(--color-text)' }}>
-        {result.hits.length} hit{result.hits.length === 1 ? '' : 's'}
+        {hitList.length} hit{hitList.length === 1 ? '' : 's'}
         {result.judged ? ', judge included' : ''}
       </span>
       {[...groups].map(([kind, hits]) => (
@@ -111,6 +114,14 @@ export function PrecheckWidget({ properties, onCheck, onAskDesk }: PrecheckProps
     setResult(null);
     try {
       setResult(await onCheck(chosen, text, judge));
+    } catch (e) {
+      setResult({
+        propertyId: chosen,
+        ok: false,
+        hits: [],
+        unavailable: true,
+        error: `pre-check unavailable: ${e instanceof Error ? e.message : 'no answer'}`,
+      });
     } finally {
       setBusy(null);
     }

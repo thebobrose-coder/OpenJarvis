@@ -349,19 +349,21 @@ def _unavailable(property_id: str, why: str) -> dict[str, Any]:
     }
 
 
+def _refused(property_id: str, why: str) -> dict[str, Any]:
+    """Input the pre-check didn't run on: never a pass, and still a result
+    the widget can render (``hits`` is always a list)."""
+    return {"propertyId": property_id, "ok": False, "error": why, "hits": []}
+
+
 async def run_precheck(property_id: str, text: str, judge: bool = False) -> dict:
     """One pre-check, for the widget's route and the desk's tool alike. Never
     a pass unless the CLI ran, exited 0 and returned ``ok: true`` with no hits."""
     if not isinstance(property_id, str) or not _ID.fullmatch(property_id):
-        return {"propertyId": property_id, "ok": False, "error": "Pick a property"}
+        return _refused(property_id, "Pick a property")
     if not isinstance(text, str) or not text.strip():
-        return {"propertyId": property_id, "ok": False, "error": "Paste some text"}
+        return _refused(property_id, "Paste some text")
     if len(text) > PRECHECK_TEXT_MAX:
-        return {
-            "propertyId": property_id,
-            "ok": False,
-            "error": f"Text over {PRECHECK_TEXT_MAX:,} characters",
-        }
+        return _refused(property_id, f"Text over {PRECHECK_TEXT_MAX:,} characters")
     command = precheck_command(property_id, bool(judge))
     if command is None:
         return _unavailable(property_id, "the Foundry repo isn't configured")
@@ -380,7 +382,9 @@ async def run_precheck(property_id: str, text: str, judge: bool = False) -> dict
     except ValueError:
         doc = None
     if code == 2 and isinstance(doc, dict) and doc.get("error"):
-        return {"propertyId": property_id, "ok": False, "error": str(doc["error"])}
+        return _refused(property_id, str(doc["error"]))
+    if code != 0 and isinstance(doc, dict) and doc.get("error"):
+        return _unavailable(property_id, f"exit {code}: {str(doc['error'])[:300]}")
     if code != 0 or not isinstance(doc, dict) or not isinstance(doc.get("hits"), list):
         return _unavailable(property_id, f"exit {code}")
     hits = [h for h in doc["hits"] if isinstance(h, dict)]

@@ -142,7 +142,14 @@ describe('paste-and-check', () => {
   it('a clean deterministic check says the judge was not run', () => {
     const html = renderToStaticMarkup(<PrecheckResultView result={{ propertyId: 'p', ok: true, judged: false, hits: [] }} />);
     expect(html).toContain('No hits');
-    expect(html).toContain('the judge adds compliance.md');
+    expect(html).toContain('judged only by Check with judge');
+  });
+
+  it('a result with no hits list still renders (an input error)', () => {
+    const html = renderToStaticMarkup(
+      <PrecheckResultView result={{ propertyId: 'p', ok: false, error: 'Pick a property' } as unknown as PrecheckResult} />,
+    );
+    expect(html).toContain('Pick a property');
   });
 
   it('the widget offers a property, the text box and both checks', () => {
@@ -178,6 +185,18 @@ describe('paste-and-check', () => {
     const out = await runPrecheck('sample-prop', 'Some text.', false);
     expect(out.ok).toBe(false);
     expect(out.unavailable).toBe(true);
+  });
+
+  it('a request that throws, or an answer without hits, is never a pass', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const thrown = await runPrecheck('sample-prop', 'Some text.', false);
+    expect(thrown.ok).toBe(false);
+    expect(thrown.unavailable).toBe(true);
+    expect(thrown.error).toContain('Failed to fetch');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const bare = await runPrecheck('sample-prop', 'Some text.', false);
+    expect(bare.ok).toBe(false);
+    expect(bare.hits).toEqual([]);
   });
 });
 
