@@ -3,10 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { ApprovalEdits, EpisodeClass, PromptAction, PropertyMotion, Proposal, SeedBody, VerifyResult } from '../../lib/content-api';
 import { applyDecisions, type ContentFeedStates, type PendingDecision } from '../../hooks/useContentData';
-import type { EpisodeDetail, EpisodeSummary, StudioStatus } from '../../lib/studio-api';
+import type { EpisodeAction, EpisodeDetail, EpisodeSummary, StudioStatus } from '../../lib/studio-api';
 import { ContentHeader } from './ContentHeader';
 import { EpisodeDrawer, type EpisodeActions } from './EpisodeDrawer';
-import { EpisodesPanel, type RunStatus } from './EpisodesPanel';
+import { EpisodesPanel, type OpenEpisode, type RunStatus } from './EpisodesPanel';
+import { nextRunAt } from './episodes';
 import { ALL_PROPERTIES, matchesProperty } from './format';
 import { HealthStrip } from './HealthStrip';
 import { PerformancePanel } from './PerformancePanel';
@@ -57,7 +58,7 @@ export interface StudioProps {
   episodes: EpisodeSummary[];
   loading: boolean;
   error: string | null;
-  onOpen: (id: string) => void;
+  onOpen: OpenEpisode;
   onRun: () => void;
   runStatus?: RunStatus;
   runAvailableAt?: number | null;
@@ -66,6 +67,8 @@ export interface StudioProps {
   pausing?: Record<string, boolean>;
   /** The open episode's drawer. */
   openId: string | null;
+  /** v0.4.5: the drawer opened on this action's confirm. */
+  openAction?: EpisodeAction | null;
   detail: EpisodeDetail | null;
   detailLoading: boolean;
   detailError: string | null;
@@ -287,6 +290,9 @@ export function ContentView(props: ContentViewProps) {
           error={props.studio.detailError}
           actions={props.studio.actions}
           now={props.now ?? Date.now()}
+          initialAction={props.studio.openAction ?? null}
+          run={{ onRun: props.studio.onRun, status: props.studio.runStatus ?? 'idle', availableAt: props.studio.runAvailableAt ?? null }}
+          nextRunAt={nextRunAt(props.studio.status)}
         />
       )}
     </div>

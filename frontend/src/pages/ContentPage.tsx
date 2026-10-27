@@ -104,6 +104,7 @@ export function ContentPage() {
           onPause: (id, paused) => void studio.pause(id, paused),
           pausing: studio.pausing,
           openId: studio.openId,
+          openAction: studio.openAction,
           detail: studio.detail,
           detailLoading: studio.detailLoading,
           detailError: studio.detailError,

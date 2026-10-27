@@ -4,7 +4,7 @@ import type { ContentSeedbank, Lane, ThesisPrompt } from '../../lib/content-api'
 import type { Claim, EpisodeDetail, EpisodeSummary, Manifest, StudioStatus } from '../../lib/studio-api';
 import { EpisodeDrawer, EpisodeDrawerView, type EpisodeActions } from './EpisodeDrawer';
 import { EpisodesPanel } from './EpisodesPanel';
-import { beatMarks, beatVisual, g0Body, g0Notes, isEpisodeId, parseTags, publishEditable, publishProblems, scriptSections, stageNotes } from './episodes';
+import { actionConfirm, actionOutcome, actionsFor, beatMarks, beatVisual, g0Body, g0Notes, isEpisodeId, nextRunAt, parseTags, publishEditable, publishProblems, scriptSections, stageNotes, untilRun } from './episodes';
 import {
   SeedComposer,
   episodeDraftFromPrompt,
@@ -72,6 +72,8 @@ function summary(over: Partial<EpisodeSummary> = {}): EpisodeSummary {
     stageNote: null,
     rewrites: 0,
     g0Pending: false,
+    actionPending: null,
+    seedHeld: false,
     ...over,
   };
 }
@@ -93,6 +95,7 @@ function detail(over: Partial<EpisodeDetail> = {}, m: Partial<Manifest> = {}): E
     narration: null,
     g0Pending: null,
     g0History: [],
+    actionHistory: [],
     media: { cut: null, short: null, thumbs: [] },
     version: 'v1',
     edited: false,
@@ -108,6 +111,7 @@ const ACTIONS: EpisodeActions = {
   onSaveScript: vi.fn(async () => undefined),
   onG0: vi.fn(async () => ({ decision: 'approve' as const, at: '', claimsChecked: [], edited: false })),
   onSavePublish: vi.fn(async () => undefined),
+  onAction: vi.fn(async () => ({ action: 'retry' as const, at: '2026-10-24T06:00:00Z' })),
   loadMedia: vi.fn(async () => 'blob:x'),
 };
 
@@ -508,5 +512,159 @@ describe('the composer on the episode lane', () => {
       />,
     );
     expect(html).toContain('Seed as a Sample Briefing');
+  });
+});
+
+describe('v0.4.5 episode actions', () => {
+  const held = (over: Partial<EpisodeSummary> = {}, m: Partial<Manifest> = {}) =>
+    detail({ summary: summary({ stage: m.stage ?? 'stopped', seedHeld: true, ...over }) }, { stage: 'stopped', stoppedReason: 'narration failed', ...m });
+  const view = (d: EpisodeDetail, over: Partial<Parameters<typeof EpisodeDrawerView>[0]> = {}) =>
+    renderToStaticMarkup(<EpisodeDrawerView detail={d} loading={false} error={null} actions={ACTIONS} now={NOW} {...over} />);
+  const buttons = (html: string) => ['Retry', 'Reject', 'Requeue seed'].filter((b) => html.includes(`</svg> ${b}</button>`));
+
+  it('offers the actions by stage and by the held seed', () => {
+    expect(actionsFor({ stage: 'stopped', seedHeld: true }).actions).toEqual(['retry', 'reject', 'requeue']);
+    expect(actionsFor({ stage: 'stopped', seedHeld: false }).actions).toEqual(['retry', 'reject']);
+    expect(actionsFor({ stage: 'rejected', seedHeld: true }).actions).toEqual(['requeue']);
+    expect(actionsFor({ stage: 'rejected', seedHeld: false }).actions).toEqual([]);
+    expect(actionsFor({ stage: 'published', seedHeld: false }).actions).toEqual([]);
+    for (const stage of ['queued', 'scripting', 'narrating', 'visualizing', 'assembling']) {
+      expect(actionsFor({ stage, seedHeld: false }).actions).toEqual(['reject']);
+    }
+    for (const stage of ['scanning', 'at-g1', 'publishing']) {
+      expect(actionsFor({ stage, seedHeld: false })).toEqual({ actions: [], hint: 'The pipeline has this episode: reject it at G1.' });
+    }
+  });
+
+  it('names the stop reason in the retry confirm and the reject-first step in the requeue confirm', () => {
+    expect(actionConfirm('retry', { stage: 'stopped', stoppedReason: 'narration failed' })).toContain('(narration failed)');
+    expect(actionConfirm('requeue', { stage: 'stopped' })).toMatch(/^Reject this episode first/);
+    expect(actionConfirm('requeue', { stage: 'rejected' })).toMatch(/^Send the topic back to its lane/);
+    expect(actionConfirm('requeue', { stage: 'rejected' })).toContain('from the plan stage');
+  });
+
+  it('reads the outcome off the last stage note, refusals marked', () => {
+    const st = (note: string) => ({ stages: [{ stage: 'stopped', at: '', ok: false }, { stage: 'stopped', at: '', ok: false, note }] });
+    expect(actionOutcome(st('retried'))).toEqual({ note: 'retried', refused: false });
+    expect(actionOutcome(st('seed requeued: back to the lane'))).toEqual({ note: 'seed requeued: back to the lane', refused: false });
+    expect(actionOutcome(st('action requeue refused: the seed is live'))).toEqual({ note: 'action requeue refused: the seed is live', refused: true });
+    expect(actionOutcome(st('waiting for the fixed text'))).toBeNull();
+    expect(actionOutcome({ stages: [{ stage: 'queued', at: '', ok: true, note: 'retried' }, { stage: 'scripting', at: '', ok: true }] })).toBeNull();
+  });
+
+  it('counts the next run 10 minutes after the last one', () => {
+    expect(nextRunAt(STATUS)).toBe(Date.parse('2026-10-24T06:05:00Z'));
+    expect(nextRunAt(null)).toBeNull();
+    expect(untilRun(NOW + 4 * 60_000, NOW)).toBe('in 4 min');
+    expect(untilRun(NOW - 1, NOW)).toBe('any moment now');
+    expect(untilRun(null, NOW)).toBe('');
+  });
+
+  it('shows Retry, Reject and Requeue seed on a stopped episode whose seed is held, with the reason', () => {
+    const html = view(held());
+    expect(buttons(html)).toEqual(['Retry', 'Reject', 'Requeue seed']);
+    expect(html).toContain('narration failed');
+    expect(html).toContain('data-episode-actions');
+  });
+
+  it('hides Requeue seed once the seed is free, and everything after the episode ends', () => {
+    expect(buttons(view(held({ seedHeld: false })))).toEqual(['Retry', 'Reject']);
+    expect(buttons(view(detail({ summary: summary({ stage: 'rejected', seedHeld: true }) }, { stage: 'rejected' })))).toEqual(['Requeue seed']);
+    const ended = view(detail({ summary: summary({ stage: 'published' }) }, { stage: 'published' }));
+    expect(buttons(ended)).toEqual([]);
+    expect(ended).not.toContain('data-episode-actions');
+  });
+
+  it('points to G1 while the pipeline has the episode, and leaves Reject to the G0 review at G0', () => {
+    const scanning = view(detail({ summary: summary({ stage: 'scanning' }) }, { stage: 'scanning' }));
+    expect(buttons(scanning)).toEqual([]);
+    expect(scanning).toContain('reject it at G1');
+    const atG0 = view(detail());
+    expect(atG0).not.toContain('data-episode-actions');
+    expect(atG0).toContain('Reject</button>'); // the G0 review's own Reject
+    const narrating = view(detail({ summary: summary({ stage: 'narrating' }) }, { stage: 'narrating' }));
+    expect(buttons(narrating)).toEqual(['Reject']);
+  });
+
+  it('opens on the confirm when armed, with the note field', () => {
+    const html = view(held(), { initialAction: 'requeue' });
+    expect(buttons(html)).toEqual([]);
+    expect(html).toContain('Reject this episode first, then send the topic back to its lane?');
+    expect(html).toContain('Confirm requeue seed');
+    expect(html).toContain('aria-label="Action note"');
+    expect(html).toContain('Cancel');
+  });
+
+  it('ignores an armed action the stage no longer allows', () => {
+    const html = view(held({ seedHeld: false }), { initialAction: 'requeue' });
+    expect(buttons(html)).toEqual(['Retry', 'Reject']);
+  });
+
+  it('shows the waiting action with the next run and Run now, and no buttons', () => {
+    const html = view(held({ actionPending: { action: 'retry', note: 'again', at: '2026-10-24T05:59:00Z' } }), {
+      run: { onRun: () => undefined, status: 'idle', availableAt: null },
+      nextRunAt: NOW + 3 * 60_000,
+    });
+    expect(html).toContain('waiting for the studio');
+    expect(html).toContain('retry');
+    expect(html).toContain('“again”');
+    expect(html).toContain('next run in 3 min');
+    expect(html).toContain('Run now');
+    expect(buttons(html)).toEqual([]);
+  });
+
+  it('shows the outcome after the run, a refusal in the warning style', () => {
+    const stages = (note: string) => [{ stage: 'stopped', at: '2026-10-24T05:50:00Z', ok: false }, { stage: 'stopped', at: '2026-10-24T05:58:00Z', ok: false, note }];
+    const refused = view(held({}, { stages: stages('action requeue refused: the seed is live') }));
+    expect(refused).toMatch(/color:var\(--color-warning\)[^>]*>Studio: action requeue refused: the seed is live/);
+    const ok = view(held({}, { stages: stages('retried') }));
+    expect(ok).toMatch(/color:var\(--color-text-secondary\)[^>]*>Studio: retried/);
+  });
+
+  it('puts the row actions on the card, the stop reason inline, and the sent chip while one waits', () => {
+    const stopped = panel({ episodes: [summary({ stage: 'stopped', stoppedReason: 'render failed', seedHeld: true })] });
+    expect(stopped).toContain('render failed');
+    expect(buttons(stopped)).toEqual(['Retry', 'Reject', 'Requeue seed']);
+    const waiting = panel({ episodes: [summary({ stage: 'stopped', stoppedReason: 'render failed', actionPending: { action: 'reject', at: '' } })] });
+    expect(waiting).toContain('reject sent');
+    expect(buttons(waiting)).toEqual([]);
+    const atG0 = panel();
+    expect(buttons(atG0)).toEqual([]);
+    expect(atG0).toContain('Review G0');
+  });
+
+  it('renders the lane queue and the held seeds, including waiting for its post', () => {
+    const html = panel({
+      status: {
+        ...STATUS,
+        lanes: [
+          {
+            ...STATUS.lanes[0],
+            queue: [
+              { signalId: 'sig-1', title: 'Sample queued topic', episodeClass: 'sample-class', createdAt: '2026-10-24T04:00:00Z', source: 'operator', waitingForPost: false },
+              { signalId: 'sig-2', title: 'Sample companion topic', episodeClass: 'sample-class', createdAt: '2026-10-24T05:00:00Z', source: 'companion', waitingForPost: true },
+            ],
+            heldSeeds: [{ episodeId: EID, signalId: 'sig-0', stage: 'rejected', title: 'Sample ended topic' }],
+          },
+          STATUS.lanes[1],
+        ],
+      },
+    });
+    expect(html).toContain('Queue (2)');
+    expect(html).toContain('1.</span>');
+    expect(html).toContain('Sample queued topic');
+    expect(html).toContain('operator');
+    expect(html).toContain('2h ago');
+    expect(html).toMatch(/Sample companion topic[\s\S]*waiting for its post/);
+    expect(html).not.toMatch(/Sample queued topic[\s\S]*?waiting for its post[\s\S]*?Sample companion topic/);
+    expect(html).toContain('Seeds held by ended episodes: 1');
+    expect(html).toContain('data-held-seeds');
+    expect(html).toMatch(/Sample ended topic[\s\S]*Requeue<\/button>/);
+  });
+
+  it('folds a long queue', () => {
+    const queue = Array.from({ length: 6 }, (_, i) => ({ signalId: `sig-${i}`, title: `Topic ${i}`, episodeClass: null, createdAt: null, source: null }));
+    const html = panel({ status: { ...STATUS, lanes: [{ ...STATUS.lanes[0], queue }, STATUS.lanes[1]] } });
+    expect(html).toMatch(/<details><summary[^>]*>Queue \(6\)/);
   });
 });

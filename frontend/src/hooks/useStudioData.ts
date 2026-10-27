@@ -7,9 +7,11 @@ import {
   runStudio,
   saveScript,
   savePublish,
+  sendAction,
   sendG0,
   setPaused,
   type Claim,
+  type EpisodeAction,
   type EpisodeDetail,
   type EpisodeSummary,
   type G0Body,
@@ -29,6 +31,8 @@ export function useStudioData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // v0.4.5: the drawer opens on this action's confirm (a row button, a held-seed Requeue link).
+  const [openAction, setOpenAction] = useState<EpisodeAction | null>(null);
   const [detail, setDetail] = useState<EpisodeDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -80,8 +84,9 @@ export function useStudioData() {
   }, [load]);
 
   const open = useCallback(
-    (id: string) => {
+    (id: string, action: EpisodeAction | null = null) => {
       setOpenId(id);
+      setOpenAction(action);
       openRef.current = id;
       setDetail(null);
       setDetailError(null);
@@ -92,6 +97,7 @@ export function useStudioData() {
 
   const close = useCallback(() => {
     setOpenId(null);
+    setOpenAction(null);
     setDetail(null);
   }, []);
 
@@ -128,6 +134,11 @@ export function useStudioData() {
         onSavePublish: async (body: PublishFile) => {
           await savePublish(openId, body);
           refreshAll(openId);
+        },
+        onAction: async (body: { action: EpisodeAction; note?: string }) => {
+          const written = await sendAction(openId, body);
+          refreshAll(openId);
+          return written;
         },
         loadMedia,
       }
@@ -171,6 +182,7 @@ export function useStudioData() {
     loading,
     error,
     openId,
+    openAction,
     open,
     close,
     detail,

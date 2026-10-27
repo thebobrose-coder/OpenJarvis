@@ -1,6 +1,16 @@
 /** Pure helpers for the Episodes panel and drawer (foundry-studio.md). */
 import type { Tone } from '../shared/ui';
-import { PUBLISH_LIMITS, type Claim, type G0Body, type Manifest, type PlanBeat, type PublishFile } from '../../lib/studio-api';
+import {
+  PUBLISH_LIMITS,
+  RUN_EVERY_MS,
+  type Claim,
+  type EpisodeAction,
+  type G0Body,
+  type Manifest,
+  type PlanBeat,
+  type PublishFile,
+  type StudioStatus,
+} from '../../lib/studio-api';
 
 export const STAGE: Record<string, { label: string; tone: Tone }> = {
   queued: { label: 'queued', tone: 'neutral' },
@@ -25,6 +35,56 @@ export const stageInfo = (stage: string) => STAGE[stage] ?? { label: stage, tone
 const SUBMITTED = new Set(['scanning', 'at-g1', 'publishing', 'published', 'rejected']);
 export const publishEditable = (m: Pick<Manifest, 'stage'> & { executionArn?: string }) =>
   !SUBMITTED.has(m.stage) && !m.executionArn;
+
+/** Stages before the pipeline: the operator may still reject here (v0.4.5). */
+const PRE_PIPELINE = new Set(['queued', 'scripting', 'scripted', 'awaiting-g0', 'rewrite-requested', 'narrating', 'visualizing', 'assembling']);
+const WITH_PIPELINE = new Set(['scanning', 'at-g1', 'publishing']);
+
+/**
+ * Which of the three episode actions (foundry-studio.md v0.4.5) apply now,
+ * by the contract's stage rules: Retry on a stopped episode; Reject at any
+ * stage before the pipeline and on a stopped one; Requeue seed on a rejected
+ * or stopped episode whose seed is still held. `hint` says why Reject is
+ * missing while the pipeline has the episode.
+ */
+export function actionsFor(ep: { stage: string; seedHeld: boolean }): { actions: EpisodeAction[]; hint: string | null } {
+  const actions: EpisodeAction[] = [];
+  if (ep.stage === 'stopped') actions.push('retry');
+  if (PRE_PIPELINE.has(ep.stage) || ep.stage === 'stopped') actions.push('reject');
+  if ((ep.stage === 'rejected' || ep.stage === 'stopped') && ep.seedHeld) actions.push('requeue');
+  return { actions, hint: WITH_PIPELINE.has(ep.stage) ? 'The pipeline has this episode: reject it at G1.' : null };
+}
+
+export const ACTION_LABEL: Record<EpisodeAction, string> = { retry: 'Retry', reject: 'Reject', requeue: 'Requeue seed' };
+
+/** The one-line confirm for an action, naming what the studio will do on its next run. */
+export function actionConfirm(action: EpisodeAction, ep: { stage: string; stoppedReason?: string | null }): string {
+  const stopped = ep.stoppedReason ? ` (${ep.stoppedReason})` : '';
+  if (action === 'retry') return `Retry from the stage that failed${stopped}? The studio resumes it on its next run.`;
+  if (action === 'reject') return `Reject this episode${ep.stage === 'stopped' ? stopped : ''}? It ends here; the seed stays claimed until you requeue it.`;
+  return `${ep.stage === 'stopped' ? 'Reject this episode first, then send' : 'Send'} the topic back to its lane? The studio builds it again from the plan stage.`;
+}
+
+/** The studio's outcome of the last action, when the manifest's last stage note is one (v0.4.5). */
+export function actionOutcome(m: Pick<Manifest, 'stages'>): { note: string; refused: boolean } | null {
+  const stages = m.stages ?? [];
+  const note = stages[stages.length - 1]?.note ?? '';
+  if (!/^(retried\b|operator reject at |seed requeued\b|action \w+ refused\b)/i.test(note)) return null;
+  return { note, refused: /^action \w+ refused/i.test(note) };
+}
+
+/** When the studio's task next runs: 10 minutes after its last run, or null without one. */
+export function nextRunAt(status: Pick<StudioStatus, 'lastRun'> | null): number | null {
+  const at = status?.lastRun?.at ? new Date(status.lastRun.at).getTime() : NaN;
+  return Number.isNaN(at) ? null : at + RUN_EVERY_MS;
+}
+
+/** "in 4 min", "any moment now" or "" for the next-run line. */
+export function untilRun(at: number | null, now: number): string {
+  if (at == null) return '';
+  const m = Math.ceil((at - now) / 60000);
+  return m <= 0 ? 'any moment now' : `in ${m} min`;
+}
 
 /** Episode ids are ULIDs; the "Waiting on you" G0 row links `?focus=<id>`. */
 export const isEpisodeId = (id: string | null | undefined) => !!id && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(id);

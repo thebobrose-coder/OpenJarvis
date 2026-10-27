@@ -22,12 +22,34 @@ export type EpisodeStage =
   | 'stopped'
   | 'rejected';
 
+/** An unclaimed seed in a lane, in lane order (v0.4.5). */
+export interface QueuedSeed {
+  signalId: string;
+  title: string | null;
+  episodeClass: string | null;
+  createdAt: string | null;
+  /** Where the seed came from, e.g. the operator, the intake or a companion post. */
+  source: string | null;
+  /** A companion seed whose post hasn't been published yet: the studio doesn't claim it. */
+  waitingForPost?: boolean;
+}
+
+/** An ended or stopped episode whose seed is still claimed (v0.4.5). */
+export interface HeldSeed {
+  episodeId: string;
+  signalId: string;
+  stage: EpisodeStage | string;
+  title: string | null;
+}
+
 export interface StudioLane {
   propertyId: string;
   queued: number;
   inProduction: number;
   published30d: number;
   runwayDays: number;
+  queue?: QueuedSeed[];
+  heldSeeds?: HeldSeed[];
 }
 
 export interface StudioSpend {
@@ -51,7 +73,7 @@ export interface StudioStatus {
   generatedAt: string;
   paused: Record<string, boolean>;
   lanes: StudioLane[];
-  inFlight: { episodeId: string; propertyId: string; stage: EpisodeStage | string; since: string }[];
+  inFlight: { episodeId: string; propertyId: string; stage: EpisodeStage | string; since: string; stoppedReason?: string }[];
   spend: { month: string } & Record<string, StudioSpend | string>;
   lastRun: { at: string; ok: boolean; advanced: number; note?: string };
   published: Record<string, number>;
@@ -81,6 +103,19 @@ export interface EpisodeSummary {
   rewrites: number;
   /** A g0.json is written and waits for the studio's next run. */
   g0Pending: boolean;
+  /** v0.4.5: an action.json written and not yet consumed by the studio. */
+  actionPending: ActionFile | null;
+  /** v0.4.5: the episode ended or stopped but still holds its seed (Requeue seed applies). */
+  seedHeld: boolean;
+}
+
+export type EpisodeAction = 'retry' | 'reject' | 'requeue';
+
+/** `action.json` (v0.4.5): consumed once per run, renamed `action.<at>.json`. */
+export interface ActionFile {
+  action: EpisodeAction;
+  note?: string;
+  at: string;
 }
 
 export interface Claim {
@@ -159,6 +194,8 @@ export interface Manifest {
   stoppedReason?: string;
   /** v0.1.4: the source-copy check on the current script; absent on a draft written before it. */
   sourceCopy?: SourceCopyHit[];
+  /** v0.4.5: set when a requeue freed the seed back to its lane. */
+  seedReleasedAt?: string;
 }
 
 /** A stretch of narration in a source's wording (v0.1.4): a note for G0, never a block. */
@@ -202,6 +239,8 @@ export interface EpisodeDetail {
   narration: { ok: boolean; seconds?: number; gpuMinutes?: number; error?: string } | null;
   g0Pending: G0File | null;
   g0History: G0File[];
+  /** v0.4.5: the actions the studio consumed, oldest first. */
+  actionHistory: ActionFile[];
   media: { cut: number | null; short: number | null; thumbs: string[] };
   /** Hash of script.md + claims.json, sent back with an edit. */
   version: string;
@@ -214,7 +253,10 @@ export interface EpisodeDetail {
 }
 
 export const RUN_COOLDOWN_MS = 2 * 60 * 1000;
+/** The studio's task runs every 10 minutes. */
+export const RUN_EVERY_MS = 10 * 60 * 1000;
 export const G0_NOTE_MAX = 1000;
+export const ACTION_NOTE_MAX = 1000;
 export const MAX_REWRITES = 2;
 export const PUBLISH_LIMITS = { titleMin: 2, titleMax: 100, description: 5000, tags: 500 } as const;
 
@@ -273,6 +315,17 @@ export interface G0Body {
 export async function sendG0(id: string, body: G0Body): Promise<G0File> {
   const res = await apiFetch(`/api/studio/episodes/${encodeURIComponent(id)}/g0`, json('POST', body));
   if (!res.ok) throw await failure(res, 'G0');
+  return res.json();
+}
+
+/**
+ * Write action.json (v0.4.5). The server applies the contract's stage rules
+ * (400) and refuses a second action while one waits (409); the studio
+ * consumes the file on its next run and leaves the outcome as a stage note.
+ */
+export async function sendAction(id: string, body: { action: EpisodeAction; note?: string }): Promise<ActionFile> {
+  const res = await apiFetch(`/api/studio/episodes/${encodeURIComponent(id)}/action`, json('POST', body));
+  if (!res.ok) throw await failure(res, 'Action');
   return res.json();
 }
 

@@ -1,10 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Film, RotateCcw, Save, X } from 'lucide-react';
+import { Check, Film, PlayCircle, RotateCcw, Save, Undo2, X } from 'lucide-react';
 import {
+  ACTION_NOTE_MAX,
   G0_NOTE_MAX,
   MAX_REWRITES,
+  type ActionFile,
   type Claim,
+  type EpisodeAction,
   type EpisodeDetail,
   type G0Body,
   type G0File,
@@ -16,6 +19,10 @@ import {
 import { ago } from '../../lib/waiting-api';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
 import {
+  ACTION_LABEL,
+  actionConfirm,
+  actionOutcome,
+  actionsFor,
   beatMarks,
   beatVisual,
   fmtBytes,
@@ -31,7 +38,9 @@ import {
   scriptSections,
   stageInfo,
   stageNotes,
+  untilRun,
 } from './episodes';
+import type { RunStatus } from './EpisodesPanel';
 
 const field = {
   background: 'var(--color-surface)',
@@ -44,8 +53,141 @@ export interface EpisodeActions {
   onSaveScript: (edit: { script?: string; claims?: Claim[] }) => Promise<void>;
   onG0: (body: G0Body) => Promise<G0File>;
   onSavePublish: (body: PublishFile) => Promise<void>;
+  /** v0.4.5: write action.json (retry, reject, requeue); the page reloads the episode. */
+  onAction: (body: { action: EpisodeAction; note?: string }) => Promise<ActionFile>;
   /** A media file of this episode as an object URL (the caller revokes it on close). */
   loadMedia: (name: string) => Promise<string>;
+}
+
+/** Run studio now, as the panel's button has it, for the drawer's "Waiting for the studio" line. */
+export interface RunControl {
+  onRun: () => void;
+  status: RunStatus;
+  availableAt: number | null;
+}
+
+const ACTION_ICON: Record<EpisodeAction, typeof RotateCcw> = { retry: RotateCcw, reject: X, requeue: Undo2 };
+
+/**
+ * The operator's episode actions (foundry-studio.md v0.4.5): Retry on a
+ * stopped episode, Reject before the pipeline, Requeue seed on an ended one
+ * that still holds its seed. Each is a one-line confirm with an optional
+ * note, written as action.json for the studio's next run. While one waits,
+ * the bar says so with the next-run time and offers Run now; after the run,
+ * the studio's last stage note is the outcome (a refusal in the warning
+ * style). At G0 the review's own Reject stands, so Reject is not repeated.
+ */
+export function EpisodeActionsBar({
+  detail,
+  actions,
+  now,
+  initialAction = null,
+  run,
+  nextRunAt = null,
+}: {
+  detail: EpisodeDetail;
+  actions: EpisodeActions;
+  now: number;
+  /** Opened armed from a row button or a held-seed Requeue link. */
+  initialAction?: EpisodeAction | null;
+  run?: RunControl;
+  nextRunAt?: number | null;
+}) {
+  const ep = detail.summary;
+  const m = detail.manifest;
+  const [arm, setArm] = useState<EpisodeAction | null>(initialAction);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [sent, setSent] = useState<ActionFile | null>(null);
+  const atG0 = m.stage === 'awaiting-g0' && !detail.g0Pending;
+  const offered = actionsFor(ep).actions.filter((a) => !(atG0 && a === 'reject'));
+  const hint = actionsFor(ep).hint;
+  const pending = detail.summary.actionPending ?? sent;
+  const outcome = pending ? null : actionOutcome(m);
+  const armed = arm && offered.includes(arm) ? arm : null;
+
+  const send = async (action: EpisodeAction) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      setSent(await actions.onAction({ action, ...(note.trim() ? { note: note.trim() } : {}) }));
+      setArm(null);
+      setNote('');
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!offered.length && !pending && !outcome && !hint) return null;
+  const coolingDown = run != null && run.availableAt != null && run.availableAt > now;
+  return (
+    <div className="flex flex-col gap-2 rounded-lg p-3" style={{ background: 'var(--color-bg-secondary)' }} data-episode-actions>
+      {pending && (
+        <p role="status" className="flex flex-wrap items-center gap-1.5">
+          <Chip tone="accent">waiting for the studio</Chip>
+          <span style={{ color: 'var(--color-text)' }}>{ACTION_LABEL[pending.action].toLowerCase()}</span>
+          {pending.note && <span style={{ color: 'var(--color-text-tertiary)' }}>“{pending.note}”</span>}
+          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            sent {ago(pending.at, now)}
+            {untilRun(nextRunAt, now) ? ` · next run ${untilRun(nextRunAt, now)}` : ''}
+          </span>
+          {run && (
+            <SmallButton onClick={run.onRun} disabled={run.status === 'running' || coolingDown} title="Start the studio's task now instead of waiting for its next run">
+              <PlayCircle size={11} /> {run.status === 'running' ? 'Starting…' : coolingDown ? 'Ran just now' : 'Run now'}
+            </SmallButton>
+          )}
+        </p>
+      )}
+      {outcome && (
+        <p role="status" className="text-[11.5px]" style={{ color: outcome.refused ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>
+          Studio: {outcome.note}
+        </p>
+      )}
+      {hint && <Quiet>{hint}</Quiet>}
+      {message && (
+        <p role="alert" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+          {message}
+        </p>
+      )}
+      {!pending && offered.length > 0 && (
+        armed ? (
+          <div className="flex flex-col gap-1.5">
+            <span style={{ color: 'var(--color-text)' }}>{actionConfirm(armed, { stage: ep.stage, stoppedReason: m.stoppedReason ?? ep.stoppedReason })}</span>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value.slice(0, ACTION_NOTE_MAX))}
+              placeholder="Note for the studio's log (optional)"
+              aria-label="Action note"
+              className="w-full rounded-md px-2 py-1 text-[12px]"
+              style={field}
+            />
+            <div className="flex flex-wrap gap-1.5">
+              <SmallButton tone={armed === 'reject' ? 'error' : 'accent'} onClick={() => void send(armed)} disabled={busy}>
+                Confirm {ACTION_LABEL[armed].toLowerCase()}
+              </SmallButton>
+              <SmallButton onClick={() => setArm(null)} disabled={busy}>
+                Cancel
+              </SmallButton>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {offered.map((a) => {
+              const Icon = ACTION_ICON[a];
+              return (
+                <SmallButton key={a} tone={a === 'reject' ? 'error' : 'neutral'} onClick={() => setArm(a)} disabled={busy}>
+                  <Icon size={11} /> {ACTION_LABEL[a]}
+                </SmallButton>
+              );
+            })}
+          </div>
+        )
+      )}
+    </div>
+  );
 }
 
 function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
@@ -751,12 +893,19 @@ export function EpisodeDrawerView({
   error,
   actions,
   now,
+  initialAction = null,
+  run,
+  nextRunAt = null,
 }: {
   detail: EpisodeDetail | null;
   loading: boolean;
   error: string | null;
   actions: EpisodeActions;
   now: number;
+  /** v0.4.5: the action the drawer opened armed with (a row button, a held-seed Requeue link). */
+  initialAction?: EpisodeAction | null;
+  run?: RunControl;
+  nextRunAt?: number | null;
 }) {
   if (!detail) return <Quiet>{loading ? 'Loading…' : error ?? 'Nothing to show.'}</Quiet>;
   const m = detail.manifest;
@@ -789,6 +938,7 @@ export function EpisodeDrawerView({
           {error}
         </p>
       )}
+      <EpisodeActionsBar key={`${m.episodeId}-${initialAction ?? ''}`} detail={detail} actions={actions} now={now} initialAction={initialAction} run={run} nextRunAt={nextRunAt} />
       {atG0 ? <G0Review key={m.episodeId} detail={detail} actions={actions} now={now} /> : <EpisodeInfo key={m.episodeId} detail={detail} actions={actions} now={now} />}
       <details>
         <summary className="cursor-pointer text-[11.5px]">Stage history ({(m.stages ?? []).length})</summary>
@@ -820,6 +970,9 @@ export function EpisodeDrawer({
   error: string | null;
   actions: EpisodeActions;
   now: number;
+  initialAction?: EpisodeAction | null;
+  run?: RunControl;
+  nextRunAt?: number | null;
 }) {
   useEffect(() => {
     if (!open) return;

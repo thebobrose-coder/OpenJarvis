@@ -12,6 +12,8 @@ those files and write only the ones the contract gives OpenJarvis:
   ``awaiting-g0``;
 - ``publish.json`` (title, description, tags, thumbnail), only before the
   episode is submitted to G1;
+- ``action.json`` (v0.4.5), the operator's retry, reject or requeue, by the
+  contract's stage rules, one at a time;
 - the ``pause/<propertyId>`` flag file.
 
 Every write is atomic (a temp file, then rename). No route serves or writes
@@ -75,6 +77,24 @@ TAG_MAX = 100
 SUBMITTED_STAGES = frozenset(
     {"scanning", "at-g1", "publishing", "published", "rejected"}
 )
+# action.json (foundry-studio.md v0.4.5): the operator's episode actions.
+ACTIONS = ("retry", "reject", "requeue")
+ACTION_NOTE_MAX = 1000
+# Reject ends an episode at any stage before the pipeline (and a stopped one);
+# from scanning on it is G1's call, and an ended one stays ended.
+PRE_PIPELINE_STAGES = frozenset(
+    {
+        "queued",
+        "scripting",
+        "scripted",
+        "awaiting-g0",
+        "rewrite-requested",
+        "narrating",
+        "visualizing",
+        "assembling",
+    }
+)
+ENDED_STAGES = frozenset({"published", "rejected"})
 # The bundle's studio keys the page shows; the rest of the bundle stays unread.
 _STUDIO_KEYS = (
     "channelName",
@@ -260,11 +280,37 @@ def _source_index(folder: Path) -> list[dict[str, Any]] | None:
     ]
 
 
-def _summary(folder: Path, m: dict[str, Any]) -> dict[str, Any]:
+def _held_seeds(root: Path) -> set[str]:
+    """The episodes whose seed is still claimed although they ended or
+    stopped: `lanes[].heldSeeds[].episodeId` in status.json (v0.4.5), as of
+    the studio's last run."""
+    status = _read_json(root / "status.json")
+    lanes = status.get("lanes") if isinstance(status, dict) else None
+    out: set[str] = set()
+    for lane in lanes or []:
+        seeds = lane.get("heldSeeds") if isinstance(lane, dict) else None
+        for seed in seeds or []:
+            if isinstance(seed, dict) and isinstance(seed.get("episodeId"), str):
+                out.add(seed["episodeId"])
+    return out
+
+
+def _action_pending(folder: Path) -> dict[str, Any] | None:
+    """The action.json the studio has not consumed yet, or None."""
+    doc = _read_json(folder / "action.json")
+    return doc if isinstance(doc, dict) and doc.get("action") in ACTIONS else None
+
+
+def _summary(
+    folder: Path, m: dict[str, Any], held: set[str] | None = None
+) -> dict[str, Any]:
     cloud = m.get("cloud") if isinstance(m.get("cloud"), dict) else {}
     stages = _stages(m)
+    episode_id = m.get("episodeId") or folder.name
+    if held is None:
+        held = _held_seeds(folder.parent.parent)
     return {
-        "episodeId": m.get("episodeId") or folder.name,
+        "episodeId": episode_id,
         "propertyId": m.get("propertyId") or folder.parent.name,
         "stage": m.get("stage"),
         "since": _since(m),
@@ -282,6 +328,10 @@ def _summary(folder: Path, m: dict[str, Any]) -> dict[str, Any]:
         "stageNote": _stage_note(m),
         "rewrites": m.get("rewrites") or 0,
         "g0Pending": (folder / "g0.json").is_file(),
+        # v0.4.5: an action.json waiting for the studio, and whether this
+        # ended or stopped episode still holds its seed (Requeue seed).
+        "actionPending": _action_pending(folder),
+        "seedHeld": episode_id in held and not m.get("seedReleasedAt"),
     }
 
 
@@ -351,6 +401,7 @@ def list_episodes(request: Request, property: str = ""):
     if property and not _PROPERTY.fullmatch(property):
         raise HTTPException(status_code=400, detail="Invalid property")
     rows = []
+    held = _held_seeds(root)
     pattern = f"{property}/*/manifest.json" if property else "*/*/manifest.json"
     for manifest in root.glob(pattern):
         folder = manifest.parent
@@ -358,7 +409,7 @@ def list_episodes(request: Request, property: str = ""):
             continue
         m = _read_json(manifest)
         if isinstance(m, dict):
-            rows.append(_summary(folder, m))
+            rows.append(_summary(folder, m, held))
     rows.sort(key=lambda r: r.get("updatedAt") or "", reverse=True)
     return {"episodes": rows}
 
@@ -377,10 +428,15 @@ def episode_doc(episode_id: str) -> dict[str, Any]:
         doc = _read_json(path)
         if isinstance(doc, dict):
             history.append(doc)
+    actions = []
+    for path in sorted(folder.glob("action.*.json")):
+        doc = _read_json(path)
+        if isinstance(doc, dict):
+            actions.append(doc)
     pid = str(m.get("propertyId") or folder.parent.name)
     channel = _channels(root).get(pid)
     return {
-        "summary": _summary(folder, m),
+        "summary": _summary(folder, m, _held_seeds(root)),
         "manifest": m,
         "script": script,
         "claims": _read_json(folder / "claims.json"),
@@ -390,6 +446,8 @@ def episode_doc(episode_id: str) -> dict[str, Any]:
         "narration": _read_json(folder / "narration.result.json"),
         "g0Pending": _read_json(folder / "g0.json"),
         "g0History": history,
+        # v0.4.5: the consumed actions, oldest first (`action.<at>.json`).
+        "actionHistory": actions,
         "media": _media(folder),
         "version": _version(folder),
         "edited": _edited(folder, m),
@@ -648,6 +706,74 @@ def put_publish(episode_id: str, body: PublishBody, request: Request):
         "thumbnail": body.thumbnail,
     }
     _write_json(folder / "publish.json", doc)
+    return doc
+
+
+# ---------- action.json (v0.4.5) ----------
+
+
+class ActionBody(BaseModel):
+    action: str
+    note: str = ""
+
+
+def action_refusal(action: str, m: dict[str, Any], held: bool) -> str | None:
+    """Why the stage rules forbid this action now, or None. The same rules
+    the studio applies, so a stale page cannot send one it would refuse."""
+    stage = str(m.get("stage") or "")
+    if action == "retry":
+        return (
+            None
+            if stage == "stopped"
+            else f"Retry needs a stopped episode, not {stage}"
+        )
+    if action == "reject":
+        if stage in PRE_PIPELINE_STAGES or stage == "stopped":
+            return None
+        if stage in ENDED_STAGES:
+            return f"The episode is already {stage}"
+        return f"The episode is {stage}: reject it at G1"
+    if action == "requeue":
+        if stage not in ("rejected", "stopped"):
+            return f"Requeue needs a rejected or stopped episode, not {stage}"
+        if m.get("seedReleasedAt"):
+            return "The seed is already back in its lane"
+        if not held:
+            return "This episode no longer holds its seed"
+        return None
+    return "retry, reject or requeue"
+
+
+@studio_router.post("/episodes/{episode_id}/action")
+def post_action(episode_id: str, body: ActionBody, request: Request):
+    """Write action.json: retry a stopped episode, reject one before the
+    pipeline, or requeue an ended one's seed. The studio consumes it on its
+    next run (every 10 minutes, or Run studio now) and renames it; the
+    outcome is the manifest's last stage note."""
+    _local_only(request)
+    root = _root()
+    folder = _episode_dir(root, episode_id)
+    m = _manifest(folder)
+    if body.action not in ACTIONS:
+        raise HTTPException(status_code=400, detail="retry, reject or requeue")
+    note = " ".join(body.note.split())
+    if len(note) > ACTION_NOTE_MAX:
+        raise HTTPException(
+            status_code=400, detail=f"The note is at most {ACTION_NOTE_MAX} characters"
+        )
+    why = action_refusal(body.action, m, episode_id in _held_seeds(root))
+    if why:
+        raise HTTPException(status_code=400, detail=why)
+    if (folder / "action.json").is_file():
+        raise HTTPException(
+            status_code=409,
+            detail="an action is already waiting for the studio's next run",
+        )
+    doc: dict[str, Any] = {"action": body.action}
+    if note:
+        doc["note"] = note
+    doc["at"] = _iso(datetime.now(timezone.utc))
+    _write_json(folder / "action.json", doc)
     return doc
 
 

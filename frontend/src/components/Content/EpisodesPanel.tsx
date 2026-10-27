@@ -1,12 +1,17 @@
-import { Clapperboard, Pause, Play, PlayCircle } from 'lucide-react';
-import type { EpisodeSummary, StudioSpend, StudioStatus } from '../../lib/studio-api';
+import { Clapperboard, Pause, Play, PlayCircle, RotateCcw, Undo2, X } from 'lucide-react';
+import type { EpisodeAction, EpisodeSummary, HeldSeed, QueuedSeed, StudioSpend, StudioStatus } from '../../lib/studio-api';
 import { ago } from '../../lib/waiting-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { Chip, Quiet, SmallButton } from '../shared/ui';
 import { matchesProperty } from './format';
-import { fmtMinutes, fmtUsd, stageInfo } from './episodes';
+import { ACTION_LABEL, actionsFor, fmtMinutes, fmtUsd, stageInfo } from './episodes';
 
 export type RunStatus = 'idle' | 'running' | 'started' | 'ran_recently' | 'error';
+
+/** Open an episode's drawer, armed with an action's confirm when one is given (v0.4.5). */
+export type OpenEpisode = (id: string, action?: EpisodeAction) => void;
+
+const ACTION_ICON: Record<EpisodeAction, typeof RotateCcw> = { retry: RotateCcw, reject: X, requeue: Undo2 };
 
 function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
@@ -19,9 +24,12 @@ function Stat({ label, value, warn }: { label: string; value: string; warn?: boo
   );
 }
 
-function EpisodeRow({ ep, now, onOpen }: { ep: EpisodeSummary; now: number; onOpen: (id: string) => void }) {
+function EpisodeRow({ ep, now, onOpen }: { ep: EpisodeSummary; now: number; onOpen: OpenEpisode }) {
   const stage = stageInfo(ep.stage);
   const atG0 = ep.stage === 'awaiting-g0';
+  // The row's actions open the drawer on that action's confirm. At G0 the
+  // review's own Reject stands; while an action waits, none is offered.
+  const quick = ep.actionPending ? [] : actionsFor(ep).actions.filter((a) => !(atG0 && a === 'reject'));
   return (
     <li id={`episode-${ep.episodeId}`} className="flex flex-wrap items-center gap-1.5 rounded-md px-2 py-1.5 scroll-mt-4" style={{ background: 'var(--color-surface)' }}>
       <Chip tone={stage.tone}>{stage.label}</Chip>
@@ -35,9 +43,22 @@ function EpisodeRow({ ep, now, onOpen }: { ep: EpisodeSummary; now: number; onOp
         </Chip>
       )}
       {ep.youtubeVisibility && <Chip tone="muted">{ep.youtubeVisibility}</Chip>}
+      {ep.actionPending && (
+        <Chip tone="accent" title="The studio applies it on its next run">
+          {ACTION_LABEL[ep.actionPending.action].toLowerCase()} sent
+        </Chip>
+      )}
       <span className="text-[11px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
         {ago(ep.since, now)}
       </span>
+      {quick.map((a) => {
+        const Icon = ACTION_ICON[a];
+        return (
+          <SmallButton key={a} tone={a === 'reject' ? 'error' : 'neutral'} onClick={() => onOpen(ep.episodeId, a)} title={`${ACTION_LABEL[a]}: confirm in the episode`}>
+            <Icon size={11} /> {ACTION_LABEL[a]}
+          </SmallButton>
+        );
+      })}
       <SmallButton tone={atG0 && !ep.g0Pending ? 'accent' : 'neutral'} onClick={() => onOpen(ep.episodeId)}>
         {atG0 && !ep.g0Pending ? 'Review G0' : 'Open'}
       </SmallButton>
@@ -56,12 +77,84 @@ function EpisodeRow({ ep, now, onOpen }: { ep: EpisodeSummary; now: number; onOp
   );
 }
 
+/** The lane's unclaimed seeds, in lane order (v0.4.5), folded when long. */
+function LaneQueue({ queue, now }: { queue: QueuedSeed[]; now: number }) {
+  const list = (
+    <ul className="flex flex-col gap-1" aria-label="Lane queue">
+      {queue.map((s, i) => (
+        <li key={s.signalId} className="flex flex-wrap items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px]" style={{ background: 'var(--color-surface)' }}>
+          <span className="tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+            {i + 1}.
+          </span>
+          <span className="flex-1 min-w-[8rem] truncate" style={{ color: 'var(--color-text)' }}>
+            {s.title || s.signalId}
+          </span>
+          {s.episodeClass && <Chip tone="muted">{s.episodeClass}</Chip>}
+          {s.source && <Chip tone="neutral">{s.source}</Chip>}
+          {s.waitingForPost && (
+            <Chip tone="warning" title="A companion seed: the studio claims it once its post is published">
+              waiting for its post
+            </Chip>
+          )}
+          <span className="text-[11px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+            {ago(s.createdAt, now)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+  if (queue.length <= 4) {
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+          Queue ({queue.length})
+        </span>
+        {list}
+      </div>
+    );
+  }
+  return (
+    <details>
+      <summary className="cursor-pointer text-[11px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+        Queue ({queue.length})
+      </summary>
+      <div className="mt-1">{list}</div>
+    </details>
+  );
+}
+
+/** Ended or stopped episodes still holding their seed: Requeue opens that episode's confirm. */
+function HeldSeeds({ seeds, onOpen }: { seeds: HeldSeed[]; onOpen: OpenEpisode }) {
+  return (
+    <div className="flex flex-col gap-1" data-held-seeds>
+      <span className="text-[11.5px]" style={{ color: 'var(--color-warning)' }}>
+        Seeds held by ended episodes: {seeds.length}
+      </span>
+      <ul className="flex flex-col gap-1">
+        {seeds.map((s) => (
+          <li key={s.episodeId} className="flex flex-wrap items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px]" style={{ background: 'var(--color-surface)' }}>
+            <Chip tone={stageInfo(s.stage).tone}>{stageInfo(s.stage).label}</Chip>
+            <span className="flex-1 min-w-[8rem] truncate" style={{ color: 'var(--color-text)' }}>
+              {s.title || s.signalId}
+            </span>
+            <SmallButton onClick={() => onOpen(s.episodeId, 'requeue')} title="Send the topic back to its lane: confirm in the episode">
+              <Undo2 size={11} /> Requeue
+            </SmallButton>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /**
  * The studio's episode lane per channel (hq 0019 Part B): queued, in
  * production with a stage chip, published, the runway, and this month's
- * spend and GPU minutes against the caps, from `status.json`. Run studio now
- * and the per-channel pause are the only controls; there is no publish
- * button, because publishing is G1's approval.
+ * spend and GPU minutes against the caps, from `status.json`; since v0.4.5
+ * the lane's queue and the seeds held by ended episodes. Run studio now, the
+ * per-channel pause and the episode actions (retry, reject, requeue; each
+ * confirmed in the episode) are the controls; there is no publish button,
+ * because publishing is G1's approval.
  */
 export function EpisodesPanel({
   status,
@@ -86,7 +179,7 @@ export function EpisodesPanel({
   loading: boolean;
   error: string | null;
   now: number;
-  onOpen: (id: string) => void;
+  onOpen: OpenEpisode;
   onRun: () => void;
   runStatus?: RunStatus;
   runAvailableAt?: number | null;
@@ -189,6 +282,8 @@ export function EpisodesPanel({
                       ))}
                     </ul>
                   )}
+                  {(lane.queue ?? []).length > 0 && <LaneQueue queue={lane.queue ?? []} now={now} />}
+                  {(lane.heldSeeds ?? []).length > 0 && <HeldSeeds seeds={lane.heldSeeds ?? []} onOpen={onOpen} />}
                 </section>
               );
             })}

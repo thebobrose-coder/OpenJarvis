@@ -516,6 +516,31 @@ as "Posts to approve (G1)", right after Trading, and open a G1 drawer.
   `/api/g1/approvals/<id>/media/<still|clip>`, and the server lists again
   and streams the file, so the CSP is unchanged. All routes are loopback only.
 
+**Content page: the Episodes panel gets controls** (foundry-studio.md
+v0.4.5). Until now the panel could only watch; the three actions Foundry's
+studio takes from `action.json` are now on the page.
+- **Episode actions:** **Retry** (a stopped episode resumes at the stage that
+  failed), **Reject** (ends it; offered at any stage before the pipeline and
+  on a stopped one; while the pipeline has it the hint says "reject it at
+  G1"; at G0 the review's own Reject stands) and **Requeue seed** (a rejected
+  or stopped episode whose seed is still held sends the topic back to its
+  lane, to be built again from the plan stage; a stopped one is rejected
+  first). Each is a one-line confirm with an optional note, in the episode
+  drawer; the row's buttons and the lane card's Requeue links open the
+  drawer on that confirm. The drawer then reads "waiting for the studio:
+  <action>" with the next-run time and a **Run now** button (the panel's
+  2-minute cooldown), and after the run shows the studio's outcome from the
+  last stage note, a refusal in the warning style. Stopped episodes show
+  their reason inline on the card.
+- **Lane card:** the lane's **queue** (title, class, source chip, age,
+  "waiting for its post" on a companion seed; folded past four) and **Seeds
+  held by ended episodes: N** with a Requeue link per seed.
+- **Server:** `POST /api/studio/episodes/{id}/action` writes `action.json`
+  (`{ action, note?, at }`, atomically) after the contract's stage rules
+  (400) and refuses a second one while the first is unconsumed (409). Every
+  summary carries `actionPending` and `seedHeld` (from `status.json`'s
+  `heldSeeds`); the detail carries `actionHistory` (the consumed files).
+
 **Content page: motion shots, the 4–6 minute episode, and the episode tag**
 (foundry-studio.md v0.4 and v0.4.3; foundry-seed-proposal.md v2.7.1 and v2.8;
 openjarvis-hermes.md v1.17.3).

@@ -188,8 +188,11 @@ def test_every_route_refuses_other_hosts(studio):
         ("post", "/api/studio/run"),
         ("post", "/api/studio/pause/alpha"),
         ("delete", "/api/studio/pause/alpha"),
+        ("post", f"/api/studio/episodes/{EID}/action"),
     ):
         body = {"json": {"decision": "reject"}} if path.endswith("/g0") else {}
+        if path.endswith("/action"):
+            body = {"json": {"action": "reject"}}
         assert getattr(client, method)(path, **body).status_code == 403, path
     resp = client.put(
         f"/api/studio/episodes/{EID}/script", json={"version": "x", "script": "x"}
@@ -643,3 +646,151 @@ def test_source_index_names_the_sources_when_the_snapshot_exists(studio):
     )
     body = client.get(f"/api/studio/episodes/{EID}").json()
     assert body["sourceIndex"] == [{"n": 1, "url": "https://example.com/a"}]
+
+
+# -- v0.4.5: action.json and the lane queue ----------------------------------
+
+
+def _hold(root: Path, episode_id: str = EID) -> None:
+    """status.json names the episode's seed as still held (v0.4.5)."""
+    status = json.loads((root / "status.json").read_text(encoding="utf-8"))
+    status["lanes"][0]["heldSeeds"] = [
+        {"episodeId": episode_id, "signalId": "sig-1", "stage": "stopped", "title": "T"}
+    ]
+    status["lanes"][0]["queue"] = [
+        {
+            "signalId": "sig-2",
+            "title": "Sample queued topic",
+            "episodeClass": "sample-class",
+            "createdAt": _iso(NOW),
+            "source": "operator",
+            "waitingForPost": True,
+        }
+    ]
+    (root / "status.json").write_text(json.dumps(status), encoding="utf-8")
+
+
+def _action(client, **body):
+    return client.post(f"/api/studio/episodes/{EID}/action", json=body)
+
+
+def test_retry_writes_exactly_action_note_and_at(studio):
+    _set_stage(studio, "stopped", stoppedReason="narration failed")
+    resp = _action(_client(), action="retry", note="  try  again ")
+    assert resp.status_code == 200
+    doc = json.loads((studio / "action.json").read_text(encoding="utf-8"))
+    assert list(doc) == ["action", "note", "at"]
+    assert doc["action"] == "retry" and doc["note"] == "try again"
+    assert doc["at"].endswith("Z") and resp.json() == doc
+    assert not list(studio.glob(".action.json.*"))  # written atomically
+
+
+def test_an_empty_note_is_left_out(studio):
+    _set_stage(studio, "stopped")
+    assert _action(_client(), action="reject").status_code == 200
+    doc = json.loads((studio / "action.json").read_text(encoding="utf-8"))
+    assert list(doc) == ["action", "at"]
+
+
+@pytest.mark.parametrize(
+    "action,stage,why",
+    [
+        ("retry", "awaiting-g0", "stopped"),
+        ("retry", "rejected", "stopped"),
+        ("reject", "scanning", "reject it at G1"),
+        ("reject", "at-g1", "reject it at G1"),
+        ("reject", "publishing", "reject it at G1"),
+        ("reject", "published", "already published"),
+        ("reject", "rejected", "already rejected"),
+        ("requeue", "narrating", "rejected or stopped"),
+        ("requeue", "published", "rejected or stopped"),
+    ],
+)
+def test_the_stage_rules_refuse_an_action(studio, action, stage, why):
+    _set_stage(studio, stage)
+    _hold(studio.parent.parent)
+    resp = _action(_client(), action=action)
+    assert resp.status_code == 400 and why in resp.json()["detail"]
+    assert not (studio / "action.json").exists()
+
+
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "queued",
+        "scripting",
+        "scripted",
+        "awaiting-g0",
+        "rewrite-requested",
+        "narrating",
+        "visualizing",
+        "assembling",
+        "stopped",
+    ],
+)
+def test_reject_is_allowed_before_the_pipeline_and_when_stopped(studio, stage):
+    _set_stage(studio, stage)
+    assert _action(_client(), action="reject", note="n").status_code == 200
+
+
+def test_requeue_needs_the_seed_still_held(studio):
+    client = _client()
+    _set_stage(studio, "rejected")
+    resp = _action(client, action="requeue")
+    assert resp.status_code == 400 and "no longer holds" in resp.json()["detail"]
+    _hold(studio.parent.parent)
+    assert _action(client, action="requeue").status_code == 200
+    (studio / "action.json").unlink()
+    _set_stage(studio, "rejected", seedReleasedAt=_iso(NOW))
+    resp = _action(client, action="requeue")
+    assert resp.status_code == 400 and "already back" in resp.json()["detail"]
+
+
+def test_a_second_action_waits_for_the_first(studio):
+    client = _client()
+    _set_stage(studio, "stopped")
+    assert _action(client, action="retry").status_code == 200
+    resp = _action(client, action="reject")
+    assert resp.status_code == 409
+    assert (
+        resp.json()["detail"]
+        == "an action is already waiting for the studio's next run"
+    )
+    doc = json.loads((studio / "action.json").read_text(encoding="utf-8"))
+    assert doc["action"] == "retry"
+
+
+def test_unknown_actions_and_long_notes_are_400(studio):
+    client = _client()
+    _set_stage(studio, "stopped")
+    assert _action(client, action="pause").status_code == 400
+    assert _action(client, action="retry", note="x" * 1001).status_code == 400
+    assert not (studio / "action.json").exists()
+
+
+def test_the_summary_carries_the_pending_action_and_the_held_seed(studio):
+    client = _client()
+    _set_stage(studio, "stopped", stoppedReason="render failed")
+    row = client.get("/api/studio/episodes").json()["episodes"][0]
+    assert row["actionPending"] is None and row["seedHeld"] is False
+    _hold(studio.parent.parent)
+    _action(client, action="retry", note="again")
+    row = client.get("/api/studio/episodes").json()["episodes"][0]
+    assert row["actionPending"]["action"] == "retry"
+    assert row["actionPending"]["note"] == "again"
+    assert row["seedHeld"] is True
+    detail = client.get(f"/api/studio/episodes/{EID}").json()
+    assert detail["summary"]["actionPending"]["action"] == "retry"
+    assert detail["actionHistory"] == []
+    # The studio consumed it: renamed, and the outcome is the last stage note.
+    (studio / "action.json").rename(studio / "action.2026-01-01T00-00-00Z.json")
+    detail = client.get(f"/api/studio/episodes/{EID}").json()
+    assert detail["summary"]["actionPending"] is None
+    assert detail["actionHistory"][0]["action"] == "retry"
+
+
+def test_status_passes_the_lane_queue_and_held_seeds_through(studio):
+    _hold(studio.parent.parent)
+    lane = _client().get("/api/studio/status").json()["lanes"][0]
+    assert lane["queue"][0]["waitingForPost"] is True
+    assert lane["heldSeeds"][0]["episodeId"] == EID
