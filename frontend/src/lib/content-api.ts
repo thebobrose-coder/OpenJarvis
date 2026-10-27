@@ -191,6 +191,15 @@ export interface Proposal {
   episode_class?: string | null;
   sources?: string[] | null;
   target_minutes?: number | null;
+  /** The episode tag (foundry-seed-proposal.md v2.8): a long-form proposal's companion episode; null or absent without one. */
+  episode?: EpisodeTag | null;
+}
+
+/** A companion episode on a thesis or Expedition Debrief proposal (v2.8). */
+export interface EpisodeTag {
+  class: string;
+  /** 4-6; absent or null for the default. */
+  target_minutes?: number | null;
 }
 
 export interface ThesisPrompt {
@@ -456,6 +465,14 @@ export interface ApprovalEdits {
   motion_brief?: string;
   /** v1.14, operator-only: "" removes it (null is a 400). */
   video_asset_key?: string;
+  /** v1.17.3, the episode lane only: never the operator-only class on a Hermes proposal. */
+  episode_class?: string;
+  /** v1.17.3, the episode lane only: 1-10 https links. */
+  sources?: string[];
+  /** v1.17.3 (range v2.7.1): 4-6, or null for the intake's default. */
+  target_minutes?: number | null;
+  /** v2.8, long-form only: the companion episode tag; null removes it. */
+  episode?: EpisodeTag | null;
 }
 
 export const LIMITS = {
@@ -537,7 +554,8 @@ export interface SeedBody {
   target_minutes?: number;
 }
 
-export const EPISODE_LIMITS = { sources: 10, minMinutes: 4, maxMinutes: 12, defaultMinutes: 8 } as const;
+/** v2.7.1: an episode runs 4-6 minutes (default 5); the v2.5 range 4-12 is closed. */
+export const EPISODE_LIMITS = { sources: 10, minMinutes: 4, maxMinutes: 6, defaultMinutes: 5 } as const;
 
 export const SEED_LIMITS = { text: 6000, url: 500, title: 120 } as const;
 /** Store handles: lowercase letters, digits and hyphens, at most 120. */

@@ -18,7 +18,10 @@ three answer only requests from this machine.
 
 v1.17 (hq 0019) adds the episode lane's seed fields: `episode_class`,
 `sources` and `target_minutes`, required on that lane and refused on any other.
-The studio's own files are served by `studio_routes`.
+v1.17.3 takes the same three as approve edits (the body cap is then 12 KB),
+and foundry-seed-proposal.md v2.8 adds the episode tag (`episode`) a long-form
+proposal may carry; v2.7.1 closes `target_minutes` to 4-6. The studio's own
+files are served by `studio_routes`.
 """
 
 from __future__ import annotations
@@ -58,8 +61,8 @@ PROPOSAL_ACTIONS = frozenset({"approve", "reject"})
 PROMPT_ACTIONS = frozenset({"used", "dismissed"})
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _BODY_MAX = 2048
-# v1.14.1: the bridge reads approve bodies up to 4096 bytes.
-_APPROVE_BODY_MAX = 4096
+# v1.17.3: the bridge reads approve bodies up to 12,288 bytes (10 sources).
+_APPROVE_BODY_MAX = 12 * 1024
 # Per-field limits, as the bridge enforces them.
 _APPROVE_LIMITS = {"topic": 600, "pillar_hint": 120, "product_handle": 120, "note": 500}
 _REJECT_LIMITS = {"note": 500}
@@ -97,7 +100,8 @@ _SEED_KEYS = frozenset(
 EPISODE_TYPE = "episode"
 _EPISODE_KEYS = ("episode_class", "sources", "target_minutes")
 _SOURCES_MAX = 10
-_MINUTES = (4, 12)
+# v2.7.1: 4-6 minutes (default 5); the v2.5 range 4-12 is closed.
+_MINUTES = (4, 6)
 _SEED_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
 _HANDLE = re.compile(r"^[a-z0-9][a-z0-9-]{0,119}$")
 _URL_MAX = 500
@@ -232,21 +236,13 @@ def _motion(body: dict | None) -> dict[str, Any]:
     return out
 
 
-def _episode(body: dict, content_type: str) -> dict[str, Any]:
-    """Pop the episode fields (v1.17): on the `episode` lane all three are
-    required (a class id, 1-10 https sources, 4-12 minutes); on any other lane
-    none may be sent. Hermes checks the class against the bundle."""
-    present = [k for k in _EPISODE_KEYS if body.get(k) is not None]
-    values = {k: body.pop(k, None) for k in _EPISODE_KEYS}
-    if content_type != EPISODE_TYPE:
-        if present:
-            raise HTTPException(
-                status_code=400, detail=f"{present[0]} is only for the episode lane"
-            )
-        return {}
-    cls, sources, minutes = (values[k] for k in _EPISODE_KEYS)
+def _check_class(cls: Any, key: str = "episode_class") -> str:
     if not (isinstance(cls, str) and _SEED_ID.fullmatch(cls)):
-        raise HTTPException(status_code=400, detail="episode_class is required")
+        raise HTTPException(status_code=400, detail=f"{key} is required")
+    return cls
+
+
+def _check_sources(sources: Any) -> list[str]:
     if (
         not isinstance(sources, list)
         or not 1 <= len(sources) <= _SOURCES_MAX
@@ -262,6 +258,13 @@ def _episode(body: dict, content_type: str) -> dict[str, Any]:
             detail=f"sources: 1-{_SOURCES_MAX} https links of at most {_URL_MAX} "
             "characters",
         )
+    return [s.strip() for s in sources]
+
+
+def _check_minutes(minutes: Any, *, allow_null: bool) -> int | None:
+    """A whole number 4-6 (v2.7.1); null for the intake's default where allowed."""
+    if minutes is None and allow_null:
+        return None
     if (
         isinstance(minutes, bool)
         or not isinstance(minutes, int)
@@ -269,13 +272,68 @@ def _episode(body: dict, content_type: str) -> dict[str, Any]:
     ):
         raise HTTPException(
             status_code=400,
-            detail=f"target_minutes is a whole number {_MINUTES[0]}-{_MINUTES[1]}",
+            detail=f"target_minutes is a whole number {_MINUTES[0]}-{_MINUTES[1]}"
+            + (", or null for the default" if allow_null else ""),
         )
+    return minutes
+
+
+def _episode(body: dict, content_type: str) -> dict[str, Any]:
+    """Pop the episode fields (v1.17): on the `episode` lane all three are
+    required (a class id, 1-10 https sources, 4-6 minutes); on any other lane
+    none may be sent. Hermes checks the class against the bundle."""
+    present = [k for k in _EPISODE_KEYS if body.get(k) is not None]
+    values = {k: body.pop(k, None) for k in _EPISODE_KEYS}
+    if content_type != EPISODE_TYPE:
+        if present:
+            raise HTTPException(
+                status_code=400, detail=f"{present[0]} is only for the episode lane"
+            )
+        return {}
     return {
-        "episode_class": cls,
-        "sources": [s.strip() for s in sources],
-        "target_minutes": minutes,
+        "episode_class": _check_class(values["episode_class"]),
+        "sources": _check_sources(values["sources"]),
+        "target_minutes": _check_minutes(values["target_minutes"], allow_null=False),
     }
+
+
+def _episode_edits(body: dict | None) -> dict[str, Any]:
+    """Pop the approve body's episode edits (v1.17.3): `episode_class`,
+    `sources` (1-10 https) and `target_minutes` (4-6, or null for the
+    default) on an episode-lane proposal, and v2.8's `episode` tag on a
+    long-form one (`{class, target_minutes?}`, or null to remove it). Only
+    the shape is checked here; Hermes checks the lane and the class (never
+    the operator-only class on its own proposal)."""
+    out: dict[str, Any] = {}
+    if not body:
+        return out
+    if "episode_class" in body:
+        out["episode_class"] = _check_class(body.pop("episode_class"))
+    if "sources" in body:
+        out["sources"] = _check_sources(body.pop("sources"))
+    if "target_minutes" in body:
+        out["target_minutes"] = _check_minutes(
+            body.pop("target_minutes"), allow_null=True
+        )
+    if "episode" in body:
+        tag = body.pop("episode")
+        if tag is None:
+            out["episode"] = None
+        elif isinstance(tag, dict) and set(tag) <= {"class", "target_minutes"}:
+            kept: dict[str, Any] = {
+                "class": _check_class(tag.get("class"), "episode.class")
+            }
+            if tag.get("target_minutes") is not None:
+                kept["target_minutes"] = _check_minutes(
+                    tag["target_minutes"], allow_null=False
+                )
+            out["episode"] = kept
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="episode: {class, target_minutes?} or null",
+            )
+    return out
 
 
 def _seed_body(body: dict | None) -> dict[str, Any]:
@@ -420,7 +478,7 @@ async def decide_proposal(
         raise HTTPException(status_code=400, detail="Invalid action")
     if action == "approve":
         raw = await _json_body(request, _APPROVE_BODY_MAX)
-        extra = {**_targeting(raw), **_motion(raw)}
+        extra = {**_targeting(raw), **_motion(raw), **_episode_edits(raw)}
         body = {**(_fields(raw, _APPROVE_LIMITS) or {}), **extra} or None
     else:
         body = _fields(await _json_body(request), _REJECT_LIMITS)

@@ -520,9 +520,15 @@ def put_script(episode_id: str, body: ScriptBody, request: Request):
 class G0Body(BaseModel):
     decision: str
     note: str = ""
-    omni: bool = False
+    # v0.4: "off" turns the episode's motion shots off, "on" turns them on;
+    # None is the channel default (on). Before v0.4 this was `omni`, which the
+    # studio now reads only when true, so it is never written here.
+    motion: str | None = None
     claimsChecked: list[str] = []
     edited: bool = False
+
+
+MOTIONS = frozenset({"on", "off"})
 
 
 @studio_router.post("/episodes/{episode_id}/g0")
@@ -534,6 +540,8 @@ def post_g0(episode_id: str, body: G0Body, request: Request):
     m = _at_g0(folder)
     if body.decision not in DECISIONS:
         raise HTTPException(status_code=400, detail="approve, rewrite or reject")
+    if body.motion is not None and body.motion not in MOTIONS:
+        raise HTTPException(status_code=400, detail='motion: "on", "off" or absent')
     note = body.note.strip()
     if len(note) > G0_NOTE_MAX:
         raise HTTPException(
@@ -568,7 +576,8 @@ def post_g0(episode_id: str, body: G0Body, request: Request):
     }
     if note:
         g0["note"] = note
-    g0["omni"] = body.omni if body.decision == "approve" else False
+    if body.decision == "approve" and body.motion is not None:
+        g0["motion"] = body.motion
     g0["claimsChecked"] = checked
     g0["edited"] = body.edited or _edited(folder, m)
     _write_json(folder / "g0.json", g0)

@@ -274,25 +274,137 @@ def test_reject_never_forwards_targeting():
     assert seen == []
 
 
-def test_approve_body_over_4kb_is_rejected():
-    # v1.14.1: the bridge reads approve bodies up to 4096 bytes (was 2048).
+def test_approve_body_over_12kb_is_rejected():
+    # v1.17.3: the bridge reads approve bodies up to 12,288 bytes (was 4096),
+    # so a 10-source edit fits.
+    sources = [f"https://example.com/{i}/" + "p" * 470 for i in range(10)]
     raw = json.dumps({"topic": "é" * 590, "note": "é" * 490})
     client, patcher, seen = _client(_queued)
     with patcher:
         ok = client.post(
             f"/api/content/proposals/{UUID}/approve",
-            content=json.dumps({"topic": "x" * 600, "motion_brief": "b" * 240}),
+            content=json.dumps({"topic": "x" * 600, "sources": sources}),
             headers={"Content-Type": "application/json"},
         )
         over = client.post(
             f"/api/content/proposals/{UUID}/approve",
-            content=raw.encode() + b" " * 4096,
+            content=raw.encode() + b" " * 12288,
             headers={"Content-Type": "application/json"},
         )
 
     assert ok.status_code == 202
+    assert len(json.dumps({"topic": "x" * 600, "sources": sources})) > 4096
     assert over.status_code == 413
     assert len(seen) == 1
+
+
+# -- v1.17.3 episode edits, v2.7.1 range, v2.8 the episode tag -------------
+
+
+def test_approve_forwards_the_episode_edits():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            json={
+                "episode_class": "sample-check",
+                "sources": [" https://example.com/a ", "https://example.com/b"],
+                "target_minutes": 4,
+            },
+        )
+        client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            json={"target_minutes": 6},
+        )
+        client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            json={"target_minutes": None},
+        )
+
+    assert json.loads(seen[0].content) == {
+        "episode_class": "sample-check",
+        "sources": ["https://example.com/a", "https://example.com/b"],
+        "target_minutes": 4,
+    }
+    assert json.loads(seen[1].content) == {"target_minutes": 6}
+    # Blank sends null: the intake's default (5).
+    assert json.loads(seen[2].content) == {"target_minutes": None}
+
+
+def test_approve_forwards_the_episode_tag_and_its_removal():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            json={"episode": {"class": "sample-check", "target_minutes": 6}},
+        )
+        client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            json={"episode": {"class": "sample-check", "target_minutes": None}},
+        )
+        client.post(f"/api/content/proposals/{UUID}/approve", json={"episode": None})
+
+    assert json.loads(seen[0].content) == {
+        "episode": {"class": "sample-check", "target_minutes": 6}
+    }
+    assert json.loads(seen[1].content) == {"episode": {"class": "sample-check"}}
+    assert json.loads(seen[2].content) == {"episode": None}
+
+
+@pytest.mark.parametrize(
+    "body, detail",
+    [
+        (
+            {"target_minutes": 3},
+            "target_minutes is a whole number 4-6, or null for the default",
+        ),
+        (
+            {"target_minutes": 7},
+            "target_minutes is a whole number 4-6, or null for the default",
+        ),
+        (
+            {"target_minutes": 12},
+            "target_minutes is a whole number 4-6, or null for the default",
+        ),
+        (
+            {"target_minutes": True},
+            "target_minutes is a whole number 4-6, or null for the default",
+        ),
+        ({"episode_class": ""}, "episode_class is required"),
+        ({"episode_class": None}, "episode_class is required"),
+        ({"sources": []}, "sources: 1-10 https links of at most 500 characters"),
+        (
+            {"sources": ["http://example.com/a"]},
+            "sources: 1-10 https links of at most 500 characters",
+        ),
+        ({"episode": "x"}, "episode: {class, target_minutes?} or null"),
+        ({"episode": {"klass": "x"}}, "episode: {class, target_minutes?} or null"),
+        ({"episode": {"class": ""}}, "episode.class is required"),
+        (
+            {"episode": {"class": "sample-check", "target_minutes": 7}},
+            "target_minutes is a whole number 4-6",
+        ),
+    ],
+)
+def test_bad_episode_edits_are_400_and_never_forwarded(body, detail):
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(f"/api/content/proposals/{UUID}/approve", json=body)
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == detail
+    assert seen == []
+
+
+def test_reject_never_forwards_episode_edits():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(
+            f"/api/content/proposals/{UUID}/reject", json={"target_minutes": 5}
+        )
+
+    assert resp.status_code == 400
+    assert seen == []
 
 
 def test_reject_body_stays_at_2kb():
@@ -563,7 +675,7 @@ EPISODE = {
     "text": "Sample topic about budget rigs",
     "episode_class": "sample-class",
     "sources": [" https://example.com/a ", "https://example.com/b"],
-    "target_minutes": 8,
+    "target_minutes": 5,
 }
 
 
@@ -575,7 +687,7 @@ def test_episode_seed_carries_its_three_fields():
     sent = json.loads(seen[0].content)
     assert sent["episode_class"] == "sample-class"
     assert sent["sources"] == ["https://example.com/a", "https://example.com/b"]
-    assert sent["target_minutes"] == 8
+    assert sent["target_minutes"] == 5
 
 
 @pytest.mark.parametrize(
@@ -586,7 +698,8 @@ def test_episode_seed_carries_its_three_fields():
         {"sources": ["http://example.com/a"]},
         {"sources": [f"https://example.com/{i}" for i in range(11)]},
         {"target_minutes": 3},
-        {"target_minutes": 13},
+        {"target_minutes": 7},
+        {"target_minutes": 12},
         {"target_minutes": True},
         {"target_minutes": None},
     ],
@@ -603,7 +716,7 @@ def test_episode_seed_refuses_a_missing_or_bad_field(bad):
 def test_episode_fields_are_refused_off_the_episode_lane():
     client, patcher, seen = _client(_minted)
     with patcher:
-        resp = client.post("/api/content/seeds", json={**SEED, "target_minutes": 8})
+        resp = client.post("/api/content/seeds", json={**SEED, "target_minutes": 5})
 
     assert resp.status_code == 400
     assert "episode lane" in resp.json()["detail"]

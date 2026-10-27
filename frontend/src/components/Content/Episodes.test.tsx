@@ -4,7 +4,7 @@ import type { ContentSeedbank, Lane, ThesisPrompt } from '../../lib/content-api'
 import type { Claim, EpisodeDetail, EpisodeSummary, Manifest, StudioStatus } from '../../lib/studio-api';
 import { EpisodeDrawer, EpisodeDrawerView, type EpisodeActions } from './EpisodeDrawer';
 import { EpisodesPanel } from './EpisodesPanel';
-import { g0Notes, isEpisodeId, parseTags, publishEditable, publishProblems, scriptSections, stageNotes } from './episodes';
+import { beatMarks, beatVisual, g0Body, g0Notes, isEpisodeId, parseTags, publishEditable, publishProblems, scriptSections, stageNotes } from './episodes';
 import {
   SeedComposer,
   episodeDraftFromPrompt,
@@ -106,7 +106,7 @@ function detail(over: Partial<EpisodeDetail> = {}, m: Partial<Manifest> = {}): E
 
 const ACTIONS: EpisodeActions = {
   onSaveScript: vi.fn(async () => undefined),
-  onG0: vi.fn(async () => ({ decision: 'approve' as const, at: '', omni: false, claimsChecked: [], edited: false })),
+  onG0: vi.fn(async () => ({ decision: 'approve' as const, at: '', claimsChecked: [], edited: false })),
   onSavePublish: vi.fn(async () => undefined),
   loadMedia: vi.fn(async () => 'blob:x'),
 };
@@ -278,15 +278,52 @@ describe('the episode drawer', () => {
     expect(html).toContain('beat 1: it ran 226 words');
     expect(html).toContain('A sample still.');
     expect(html).toContain('Line one. / Line two.');
-    expect(html).toContain('Omni');
+    expect(html).toContain('Motion shots: on (channel default)');
+    expect(html).not.toContain('Omni');
     expect(html).toContain('rewrites 0 / 2');
   });
 
-  it('keeps Approve disabled until every claim is checked, and Omni off', () => {
+  it('keeps Approve disabled until every claim is checked, and motion shots on', () => {
     const html = view(detail());
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>.*?Approve/);
     expect(html).toContain('Check every claim: 2 of 2 not checked.');
-    expect(html).not.toMatch(/type="checkbox"[^>]*checked=""[^>]*\/>\s*<span>\s*Omni/);
+    expect(html).toMatch(/<input type="checkbox" aria-label="Motion shots" checked=""\/>/);
+  });
+
+  it('sends motion: "off" only for an unticked approve, and never omni (v0.4)', () => {
+    const base = { note: ' ', checked: ['c1', 'c2'], edited: false };
+    expect(g0Body('approve', { ...base, motion: false })).toEqual({ decision: 'approve', motion: 'off', claimsChecked: ['c1', 'c2'], edited: false });
+    const ticked = g0Body('approve', { ...base, motion: true });
+    expect(ticked).toEqual({ decision: 'approve', claimsChecked: ['c1', 'c2'], edited: false });
+    expect(ticked).not.toHaveProperty('motion');
+    expect(ticked).not.toHaveProperty('omni');
+    expect(g0Body('rewrite', { ...base, note: ' tighter ', motion: false })).toEqual({ decision: 'rewrite', note: 'tighter', claimsChecked: ['c1', 'c2'], edited: false });
+  });
+
+  it('renders a v0.4 scene beat beside an older still beat, with the pull quote once', () => {
+    const scene = { kind: 'scene', scene: 'A sample scene sentence.', shots: ['Wide on the rig.', 'Close on the dial.'], motion: true, overlay: { kind: 'chart' as const } };
+    expect(beatVisual({ visual: scene })).toBe('A sample scene sentence.');
+    expect(beatMarks({ visual: scene })).toEqual(['2 shots', 'motion', 'chart overlay']);
+    expect(beatMarks({ visual: { kind: 'still', prompt: 'A sample still.' } })).toEqual([]);
+    const html = view(
+      detail({
+        plan: {
+          pullQuote: { beat: 1, text: 'A sample quote.' },
+          beats: [
+            { beat: 1, heading: 'ONE', visual: scene, claimIds: ['c1'] },
+            { beat: 2, heading: 'TWO', visual: { kind: 'still', prompt: 'A sample still.' }, claimIds: ['c2'] },
+          ],
+        },
+      }),
+    );
+    expect(html).toContain('A sample scene sentence.');
+    expect(html).toContain('Wide on the rig.');
+    expect(html).toContain('>2 shots<');
+    expect(html).toContain('>motion<');
+    expect(html).toContain('chart overlay');
+    expect(html).toContain('A sample quote.');
+    expect(html).toContain('A sample still.');
+    expect(html.split('A sample quote.').length).toBe(2);
   });
 
   it('warns when the script and the plan disagree on beats', () => {
@@ -301,7 +338,7 @@ describe('the episode drawer', () => {
   });
 
   it('shows a waiting decision instead of the review', () => {
-    const html = view(detail({ g0Pending: { decision: 'approve', at: '2026-10-24T05:58:00Z', omni: false, claimsChecked: ['c1', 'c2'], edited: false } }));
+    const html = view(detail({ g0Pending: { decision: 'approve', at: '2026-10-24T05:58:00Z', claimsChecked: ['c1', 'c2'], edited: false } }));
     expect(html).toContain('the studio applies it on its next run');
     expect(html).not.toContain('0 / 2 checked');
   });
@@ -321,7 +358,7 @@ describe('the episode drawer', () => {
     expect(html).toContain('Save publish.json');
     expect(html).toContain('thumb-2.jpg');
     expect(html).toContain('8:12');
-    expect(html).toContain('Omni on');
+    expect(html).toContain('motion shots on');
     expect(html).not.toMatch(/(<button[^>]*>|<\/svg>)\s*Publish\b/);
   });
 
@@ -397,7 +434,7 @@ const form = (over: Partial<SeedForm> = {}): SeedForm => ({
   url: 'https://example.com/ignored',
   queries: ['ignored'],
   priority: 2,
-  episode: { cls: 'sample-check', sources: [' https://example.com/a '], minutes: 8 },
+  episode: { cls: 'sample-check', sources: [' https://example.com/a '], minutes: 5 },
   ...over,
 });
 
@@ -415,7 +452,7 @@ describe('the composer on the episode lane', () => {
       text: 'Sample topic',
       episode_class: 'sample-check',
       sources: ['https://example.com/a'],
-      target_minutes: 8,
+      target_minutes: 5,
       priority: 2,
     });
   });
@@ -429,9 +466,11 @@ describe('the composer on the episode lane', () => {
 
   it('checks the class, sources and minutes', () => {
     expect(seedProblems(form(), EPISODE_LANE, null)).toEqual([]);
-    const bad = seedProblems(form({ episode: { cls: '', sources: ['http://x'], minutes: 13 } }), EPISODE_LANE, null);
-    expect(bad).toEqual(['Pick the episode class.', 'Each source starts https:// and is at most 500 characters.', 'Target minutes: a whole number 4–12.']);
-    expect(seedProblems(form({ episode: { cls: 'x', sources: [], minutes: 8 } }), EPISODE_LANE, null)).toContain('Give 1–10 sources.');
+    // v2.7.1: 4-6 minutes, default 5.
+    const bad = seedProblems(form({ episode: { cls: '', sources: ['http://x'], minutes: 7 } }), EPISODE_LANE, null);
+    expect(bad).toEqual(['Pick the episode class.', 'Each source starts https:// and is at most 500 characters.', 'Target minutes: a whole number 4–6.']);
+    expect(seedProblems(form({ episode: { cls: 'x', sources: [], minutes: 6 } }), EPISODE_LANE, null)).toEqual(['Give 1–10 sources.']);
+    expect(seedProblems(form({ episode: { cls: 'x', sources: ['https://example.com/a'], minutes: 12 } }), EPISODE_LANE, null)).toEqual(['Target minutes: a whole number 4–6.']);
     expect(parseSources(' a \n\n b ')).toEqual(['a', 'b']);
   });
 
@@ -451,7 +490,7 @@ describe('the composer on the episode lane', () => {
     expect(html).toContain('Sample Briefing (yours only)');
     expect(html).toContain('operator-only');
     expect(html).toContain('Target minutes');
-    expect(html).toContain('value="8"');
+    expect(html).toContain('value="5"');
     expect(html).toContain('https://example.com/a');
     expect(html).not.toContain('Target queries');
     expect(html).not.toContain('<span class="text-[10.5px] uppercase tracking-wide" style="color:var(--color-text-tertiary)">URL</span>');

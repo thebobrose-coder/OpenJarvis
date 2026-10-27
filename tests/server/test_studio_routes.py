@@ -389,15 +389,37 @@ def test_approve_writes_g0_json(studio):
         _client(),
         decision="approve",
         claimsChecked=["c1", "c2", "zz"],
-        omni=True,
+        motion="off",
         note=" ok ",
     )
     assert resp.status_code == 200
     g0 = json.loads((studio / "g0.json").read_text())
     assert g0["decision"] == "approve"
     assert g0["claimsChecked"] == ["c1", "c2"]
-    assert g0["omni"] is True and g0["note"] == "ok" and g0["edited"] is False
+    # v0.4: an unticked switch writes motion "off" and nothing else about motion.
+    assert g0["motion"] == "off" and "omni" not in g0
+    assert g0["note"] == "ok" and g0["edited"] is False
     assert datetime.fromisoformat(g0["at"].replace("Z", "+00:00"))
+
+
+def test_a_ticked_switch_writes_no_motion_key_and_never_omni_false(studio):
+    resp = _g0(_client(), decision="approve", claimsChecked=["c1", "c2"])
+    assert resp.status_code == 200
+    g0 = json.loads((studio / "g0.json").read_text())
+    assert "motion" not in g0 and "omni" not in g0
+
+
+def test_motion_on_is_kept_and_other_values_are_refused(studio):
+    client = _client()
+    assert (
+        _g0(
+            client, decision="approve", claimsChecked=["c1", "c2"], motion="maybe"
+        ).status_code
+        == 400
+    )
+    assert not (studio / "g0.json").exists()
+    resp = _g0(client, decision="approve", claimsChecked=["c1", "c2"], motion="on")
+    assert resp.status_code == 200 and resp.json()["motion"] == "on"
 
 
 def test_an_edit_marks_the_decision_edited_even_after_a_reload(studio):
@@ -412,8 +434,8 @@ def test_rewrite_needs_a_note_and_stops_at_two(studio):
     _set_stage(studio, "awaiting-g0", rewrites=2)
     assert _g0(client, decision="rewrite", note="tighter").status_code == 409
     _set_stage(studio, "awaiting-g0", rewrites=1)
-    resp = _g0(client, decision="rewrite", note="tighter", omni=True)
-    assert resp.status_code == 200 and resp.json()["omni"] is False
+    resp = _g0(client, decision="rewrite", note="tighter", motion="off")
+    assert resp.status_code == 200 and "motion" not in resp.json()
 
 
 def test_a_waiting_decision_blocks_another_and_the_edit(studio):

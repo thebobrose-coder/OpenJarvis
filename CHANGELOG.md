@@ -516,6 +516,31 @@ as "Posts to approve (G1)", right after Trading, and open a G1 drawer.
   `/api/g1/approvals/<id>/media/<still|clip>`, and the server lists again
   and streams the file, so the CSP is unchanged. All routes are loopback only.
 
+**Content page: motion shots, the 4–6 minute episode, and the episode tag**
+(foundry-studio.md v0.4 and v0.4.3; foundry-seed-proposal.md v2.7.1 and v2.8;
+openjarvis-hermes.md v1.17.3).
+- **G0 drawer:** the Omni switch is now **Motion shots: on (channel
+  default)**. Motion shots are on per channel; unticking it sends
+  `motion: "off"` in `g0.json`, and a ticked switch sends no `motion` key.
+  `omni: false` is never written (the studio ignores it). The visual plan
+  renders a v0.4 `scene` or `motion` beat as its scene sentence, its shots, a
+  motion mark and the overlay's kind, with the pull quote once on its beat;
+  older kinds render as before. The detail's cloud line reads "motion shots
+  on" from `cloud.omniAllowed`.
+- **Approve editor, episode lane** (the 2026-10-25 brief, built here): the
+  class (never the operator-only class on a Hermes proposal), the sources
+  (1–10 https, each clickable) and the target minutes, now **4–6**, blank for
+  the intake's default (5). Only changed fields are sent; a value outside the
+  range is refused locally with the intake's wording. The approve route's
+  body cap is 12 KB.
+- **The episode tag** (v2.8): a thesis or Expedition Debrief proposal may
+  carry a companion episode. The card shows "companion episode: <class>"; the
+  editor offers the class (from the property's `episode_classes`) and its
+  minutes, or None to remove it, sending `episode: {class, target_minutes?}`
+  or `null` only when changed. A decided item shows "companion episode
+  queued" when the intake's result carries `companionSignalId`.
+- **Composer:** the episode lane's minutes are 4–6, default 5.
+
 **Content page: the studio's Episodes and G0** (hq 0019 Part B; the local
 studio's files, plus contract v1.17's episode lane). The long-form YouTube
 studio writes its status and one folder per episode on this disk; the page
@@ -530,7 +555,7 @@ reads them and writes only the operator's files.
   table with a check box per claim (`unsourced` claims flagged as needing a
   ruling; Approve stays disabled until every claim is checked and the script
   keeps one heading per planned beat), the studio's notes for G0, the visual
-  plan per beat, Omni (off by default), and Approve, Request rewrite (with a
+  plan per beat, the motion-shots switch, and Approve, Request rewrite (with a
   note, at most two) or Reject, each with a confirm step. The decision is
   `g0.json`, applied on the studio's next run. "Waiting on you" G0 rows open
   the drawer through `?focus=`.
@@ -541,7 +566,7 @@ reads them and writes only the operator's files.
   episodes unlisted) and the AI-label reminder. Media loads as blobs through
   the API, so no CSP change was needed.
 - **Composer:** the `episode` lane takes the class (with the operator-only
-  badge), 1–10 sources and the target minutes (4–12, default 8), and never
+  badge), 1–10 sources and the target minutes (4–6, default 5), and never
   target queries, a URL or the Video control. A thesis prompt whose property
   has an operator-only episode class offers "Seed as a …" beside Seed this.
 - **Server:** `server/studio_routes.py`, all loopback only and never outside

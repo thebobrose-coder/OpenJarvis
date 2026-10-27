@@ -1,6 +1,6 @@
 /** Pure helpers for the Episodes panel and drawer (foundry-studio.md). */
 import type { Tone } from '../shared/ui';
-import { PUBLISH_LIMITS, type Claim, type Manifest, type PublishFile } from '../../lib/studio-api';
+import { PUBLISH_LIMITS, type Claim, type G0Body, type Manifest, type PlanBeat, type PublishFile } from '../../lib/studio-api';
 
 export const STAGE: Record<string, { label: string; tone: Tone }> = {
   queued: { label: 'queued', tone: 'neutral' },
@@ -101,4 +101,46 @@ export function publishProblems(p: PublishFile, thumbs: string[]): string[] {
   if (p.tags.join(',').length > PUBLISH_LIMITS.tags) out.push(`Tags are at most ${PUBLISH_LIMITS.tags} characters together.`);
   if (!thumbs.includes(p.thumbnail)) out.push('Pick a thumbnail.');
   return out;
+}
+
+/**
+ * The G0 decision as the drawer sends it (foundry-studio.md v0.4). Motion
+ * shots are on by default per channel: an approve with the switch unticked
+ * sends `motion: "off"`; ticked sends no `motion` key, so the channel default
+ * applies. `omni` is never written (the studio ignores `omni: false`).
+ */
+export function g0Body(
+  decision: G0Body['decision'],
+  form: { note: string; motion: boolean; checked: Iterable<string>; edited: boolean },
+): G0Body {
+  const note = form.note.trim();
+  return {
+    decision,
+    ...(note ? { note } : {}),
+    ...(decision === 'approve' && !form.motion ? { motion: 'off' as const } : {}),
+    claimsChecked: [...form.checked],
+    edited: form.edited,
+  };
+}
+
+/** One line for what a beat shows: a v0.4 scene (its sentence) or an older kind. */
+export function beatVisual(b: Pick<PlanBeat, 'visual'>): string {
+  const v = b.visual;
+  if (!v) return '—';
+  if (v.scene) return v.scene;
+  if (v.prompt) return v.prompt;
+  if (v.lines?.length) return v.lines.join(' / ');
+  if (v.timeline?.events?.length) return v.timeline.events.map((e) => `${e.label}: ${e.text}`).join(' · ');
+  return '';
+}
+
+/** The marks beside a v0.4 beat: its shots, the motion opener, the overlay's kind. */
+export function beatMarks(b: Pick<PlanBeat, 'visual'>): string[] {
+  const v = b.visual;
+  if (!v) return [];
+  return [
+    ...(v.shots?.length ? [`${v.shots.length} shot${v.shots.length > 1 ? 's' : ''}`] : []),
+    ...(v.motion ? ['motion'] : []),
+    ...(v.overlay?.kind ? [`${v.overlay.kind} overlay`] : []),
+  ];
 }

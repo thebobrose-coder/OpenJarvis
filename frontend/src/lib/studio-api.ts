@@ -92,12 +92,26 @@ export interface Claim {
   kind: 'fact' | 'lore';
 }
 
+/** An overlay panel over a scene beat (v0.4): a chart or a timeline. */
+export interface BeatOverlay {
+  kind: 'chart' | 'timeline' | string;
+  chart?: unknown;
+  timeline?: { events: { label: string; text: string }[] };
+}
+
 export interface BeatVisual {
+  /** v0.4: "scene" or "motion"; older plans keep "still", "kinetic", "chart", "timeline", "reference". */
   kind: string;
   prompt?: string;
   lines?: string[];
   timeline?: { events: { label: string; text: string }[] };
   chart?: unknown;
+  /** v0.4: one sentence for the image model, and its 2-3 framings. */
+  scene?: string;
+  shots?: string[];
+  /** v0.4: the beat opens on a motion shot. */
+  motion?: boolean;
+  overlay?: BeatOverlay;
 }
 
 export interface PlanBeat {
@@ -113,6 +127,8 @@ export interface Plan {
   title?: string;
   shortBeat?: number;
   beats: PlanBeat[];
+  /** v0.4: the episode's one on-screen sentence, a lower-third on its beat. */
+  pullQuote?: { beat: number; text: string };
 }
 
 export interface StageEntry {
@@ -167,7 +183,10 @@ export interface G0File {
   decision: 'approve' | 'rewrite' | 'reject';
   at: string;
   note?: string;
-  omni: boolean;
+  /** Before v0.4; the studio reads only `true`. No longer written. */
+  omni?: boolean;
+  /** v0.4: "off" turns the episode's motion shots off; absent is the channel default (on). */
+  motion?: 'on' | 'off';
   claimsChecked: string[];
   edited: boolean;
 }
@@ -245,7 +264,8 @@ export async function saveScript(
 export interface G0Body {
   decision: 'approve' | 'rewrite' | 'reject';
   note?: string;
-  omni?: boolean;
+  /** v0.4: sent as "off" only when the operator unticks motion shots on an approve. */
+  motion?: 'on' | 'off';
   claimsChecked: string[];
   edited: boolean;
 }

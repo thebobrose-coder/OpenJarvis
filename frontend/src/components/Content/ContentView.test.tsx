@@ -16,7 +16,7 @@ import { ALL_PROPERTIES } from './format';
 import { sortAlerts } from './HealthStrip';
 import { socialLine } from './PerformancePanel';
 import { ThesisLane, laneQueue, queueGroups, weeksOut } from './ThesisLane';
-import { ApproveEditor, RejectConfirm, approvalEdits } from './ProposalsQueue';
+import { ApproveEditor, ProposalCard, RejectConfirm, approvalEdits, classOptions, episodeEditProblems, tagAllowed } from './ProposalsQueue';
 
 // Neutral fixtures only: this repo is public, and real proposals name the
 // operator's properties, products, pillars and topics.
@@ -334,6 +334,83 @@ describe('approve with edits', () => {
       note: 'Sample note',
     });
     expect(approvalEdits(p, { ...same, product: 'sample-other' })).toEqual({ product_handle: 'sample-other' });
+  });
+
+  // v1.17.3: the episode lane's fields; v2.7.1: 4-6 minutes; v2.8: the companion tag.
+  const CLASSES = [
+    { id: 'sample-briefing', name: 'Sample Briefing', operator_only: true },
+    { id: 'sample-check', name: 'Sample Check', operator_only: false },
+  ];
+  const episodeProposal = proposal(5, { lane: 'episode', content_type: 'episode', episode_class: 'sample-check', sources: ['https://example.com/a'], target_minutes: 5 });
+  const thesisProposal = proposal(6, { lane: 'long', content_type: 'thesis', episode: { class: 'sample-check' } });
+  const same = { topic: 'Sample topic about budget rigs 5', pillar: 'grit', product: 'sample-mount', note: '' };
+
+  it('never offers the operator-only class on a Hermes proposal', () => {
+    expect(classOptions(CLASSES, episodeProposal).map((c) => c.id)).toEqual(['sample-check']);
+    expect(classOptions(CLASSES, { proposed_by: 'operator' }).map((c) => c.id)).toEqual(['sample-briefing', 'sample-check']);
+    const html = renderToStaticMarkup(<ApproveEditor proposal={episodeProposal} pillars={['grit']} episodeClasses={CLASSES} onApprove={vi.fn()} onCancel={vi.fn()} />);
+    expect(html).toContain('aria-label="Episode"');
+    expect(html).toContain('<option value="sample-check" selected="">Sample Check</option>');
+    expect(html).not.toContain('Sample Briefing');
+    expect(html).toContain('value="5"');
+    expect(html).toContain('5 (default)');
+    expect(html).toContain('>Source 1<');
+    expect(html).toContain('https://example.com/a');
+  });
+
+  it('sends only the episode fields that changed; blank minutes send null', () => {
+    const episode = { cls: 'sample-check', sources: ['https://example.com/a'], minutes: 5 };
+    expect(approvalEdits(episodeProposal, { ...same, episode })).toEqual({});
+    expect(approvalEdits(episodeProposal, { ...same, episode: { ...episode, cls: 'sample-other' } })).toEqual({ episode_class: 'sample-other' });
+    expect(approvalEdits(episodeProposal, { ...same, episode: { ...episode, minutes: null } })).toEqual({ target_minutes: null });
+    expect(approvalEdits(episodeProposal, { ...same, episode: { ...episode, minutes: 6 } })).toEqual({ target_minutes: 6 });
+    expect(approvalEdits(episodeProposal, { ...same, episode: { ...episode, sources: [' https://example.com/a ', 'https://example.com/b'] } })).toEqual({
+      sources: ['https://example.com/a', 'https://example.com/b'],
+    });
+    // Off the lane nothing is sent.
+    expect(approvalEdits(p, { ...same, topic: p.topic })).toEqual({});
+  });
+
+  it('refuses 3, 7 and 12 minutes locally with the intake wording; 4 and 6 pass', () => {
+    const problems = (minutes: number | null) => episodeEditProblems({ episode: { cls: 'sample-check', sources: ['https://example.com/a'], minutes } });
+    expect(problems(4)).toEqual([]);
+    expect(problems(6)).toEqual([]);
+    expect(problems(null)).toEqual([]);
+    for (const m of [3, 7, 12]) expect(problems(m)).toEqual(['target_minutes is a whole number 4–6, or blank for the default (5)']);
+    expect(episodeEditProblems({ episode: { cls: '', sources: ['http://x'], minutes: 5 } })).toEqual([
+      'Pick the episode class.',
+      'sources: 1–10 https links of at most 500 characters',
+    ]);
+    expect(episodeEditProblems({ tag: { cls: 'sample-check', minutes: 7 } })).toHaveLength(1);
+    expect(episodeEditProblems({ tag: { cls: '', minutes: 7 } })).toEqual([]);
+  });
+
+  it('shows the episode tag on the card and offers it on long-form only', () => {
+    expect(tagAllowed(thesisProposal, CLASSES)).toBe(true);
+    expect(tagAllowed(p, CLASSES)).toBe(false);
+    expect(tagAllowed(episodeProposal, CLASSES)).toBe(false);
+    expect(tagAllowed(proposal(7, { lane: 'feed:sample', content_type: 'news' }), CLASSES)).toBe(false);
+    expect(tagAllowed(thesisProposal, [])).toBe(false);
+    const card = renderToStaticMarkup(
+      <ProposalCard proposal={thesisProposal} pillars={['grit']} episodeClasses={CLASSES} showProperty={false} onApprove={vi.fn()} onReject={vi.fn()} />,
+    );
+    expect(card).toContain('companion episode: Sample Check');
+    const editor = renderToStaticMarkup(<ApproveEditor proposal={thesisProposal} pillars={['grit']} episodeClasses={CLASSES} onApprove={vi.fn()} onCancel={vi.fn()} />);
+    expect(editor).toContain('aria-label="Companion episode"');
+    expect(editor).toContain('<option value="sample-check" selected="">Sample Check</option>');
+    expect(editor).not.toContain('Sample Briefing');
+    const short = renderToStaticMarkup(<ApproveEditor proposal={p} pillars={['grit']} episodeClasses={CLASSES} onApprove={vi.fn()} onCancel={vi.fn()} />);
+    expect(short).not.toContain('Companion episode');
+  });
+
+  it('sends the tag only when it changed, and null to remove it', () => {
+    const base = { ...same, topic: thesisProposal.topic };
+    expect(approvalEdits(thesisProposal, { ...base, tag: { cls: 'sample-check', minutes: null } })).toEqual({});
+    expect(approvalEdits(thesisProposal, { ...base, tag: { cls: 'sample-check', minutes: 6 } })).toEqual({ episode: { class: 'sample-check', target_minutes: 6 } });
+    expect(approvalEdits(thesisProposal, { ...base, tag: { cls: '', minutes: null } })).toEqual({ episode: null });
+    const untagged = proposal(8, { lane: 'long', content_type: 'thesis' });
+    expect(approvalEdits(untagged, { ...base, topic: untagged.topic, tag: { cls: '', minutes: null } })).toEqual({});
+    expect(approvalEdits(untagged, { ...base, topic: untagged.topic, tag: { cls: 'sample-check', minutes: null } })).toEqual({ episode: { class: 'sample-check' } });
   });
 
   it('shows the approved edits in the optimistic move', () => {

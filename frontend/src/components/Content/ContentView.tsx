@@ -1,7 +1,7 @@
 import { firstBlock } from '../../lib/voice-api';
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import type { ApprovalEdits, PromptAction, PropertyMotion, Proposal, SeedBody, VerifyResult } from '../../lib/content-api';
+import type { ApprovalEdits, EpisodeClass, PromptAction, PropertyMotion, Proposal, SeedBody, VerifyResult } from '../../lib/content-api';
 import { applyDecisions, type ContentFeedStates, type PendingDecision } from '../../hooks/useContentData';
 import type { EpisodeDetail, EpisodeSummary, StudioStatus } from '../../lib/studio-api';
 import { ContentHeader } from './ContentHeader';
@@ -128,7 +128,11 @@ export function ContentView(props: ContentViewProps) {
   }
 
   const motionByProperty: Record<string, PropertyMotion | null> = {};
-  for (const p of seedbank?.properties ?? []) motionByProperty[p.id] = p.motion ?? null;
+  const episodeClassesByProperty: Record<string, EpisodeClass[]> = {};
+  for (const p of seedbank?.properties ?? []) {
+    motionByProperty[p.id] = p.motion ?? null;
+    episodeClassesByProperty[p.id] = p.episode_classes ?? [];
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -216,6 +220,7 @@ export function ContentView(props: ContentViewProps) {
           recent={recent}
           pillarsByProperty={pillarsByProperty}
           motionByProperty={motionByProperty}
+          episodeClassesByProperty={episodeClassesByProperty}
           showProperty={showProperty}
           onApprove={props.onApprove}
           onReject={props.onReject}

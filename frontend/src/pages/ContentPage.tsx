@@ -15,7 +15,7 @@ export function proposalContext(p: Proposal): { block: string; label: string } {
   const keys = [
     'id', 'property_id', 'lane', 'content_type', 'topic', 'rationale', 'pillar_hint', 'product_handle',
     'target_queries', 'priority', 'status', 'note', 'source_links', 'created_at', 'motion', 'motion_brief',
-    'episode_class', 'target_minutes',
+    'episode_class', 'target_minutes', 'episode',
   ] as const;
   const item: Record<string, unknown> = { page: '/content', kind: 'proposal' };
   for (const k of keys) {

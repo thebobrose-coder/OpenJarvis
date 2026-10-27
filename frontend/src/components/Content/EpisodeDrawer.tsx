@@ -8,6 +8,7 @@ import {
   type EpisodeDetail,
   type G0Body,
   type G0File,
+  type Plan,
   type PlanBeat,
   type PublishFile,
   type SourceCopyHit,
@@ -15,10 +16,13 @@ import {
 import { ago } from '../../lib/waiting-api';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
 import {
+  beatMarks,
+  beatVisual,
   fmtBytes,
   fmtDuration,
   fmtMinutes,
   fmtUsd,
+  g0Body,
   g0Notes,
   needsRuling,
   parseTags,
@@ -67,15 +71,6 @@ function Problems({ items }: { items: string[] }) {
       ))}
     </ul>
   );
-}
-
-function beatVisual(b: PlanBeat): string {
-  const v = b.visual;
-  if (!v) return '—';
-  if (v.prompt) return v.prompt;
-  if (v.lines?.length) return v.lines.join(' / ');
-  if (v.timeline?.events?.length) return v.timeline.events.map((e) => `${e.label}: ${e.text}`).join(' · ');
-  return '';
 }
 
 /** The sentence with the shared words marked, when they appear in it as written. */
@@ -153,8 +148,13 @@ export function SourceCopy({
   );
 }
 
-/** The visual plan per beat: kind, what it shows, the sound line, the claims it carries. */
-export function PlanTable({ beats, copyHits }: { beats: PlanBeat[]; copyHits?: Record<number, number> }) {
+/**
+ * The visual plan per beat: kind, what it shows, the sound line, the claims it
+ * carries. A v0.4 `scene` or `motion` beat shows its scene sentence, its
+ * shots, a motion mark and the overlay's kind; the pull quote shows once, on
+ * its beat. Older kinds (still, kinetic, chart, timeline) render as before.
+ */
+export function PlanTable({ beats, copyHits, pullQuote }: { beats: PlanBeat[]; copyHits?: Record<number, number>; pullQuote?: Plan['pullQuote'] }) {
   return (
     <ol className="flex flex-col gap-1.5">
       {beats.map((b) => (
@@ -164,6 +164,11 @@ export function PlanTable({ beats, copyHits }: { beats: PlanBeat[]; copyHits?: R
               {b.beat}. {b.heading}
             </span>
             {b.visual?.kind && <Chip tone="accent">{b.visual.kind}</Chip>}
+            {beatMarks(b).map((mark) => (
+              <Chip key={mark} tone={mark === 'motion' ? 'accent' : 'muted'}>
+                {mark}
+              </Chip>
+            ))}
             {b.words != null && <Chip tone="muted">{b.words} words</Chip>}
             {b.sound && <Chip tone="muted">{b.sound}</Chip>}
             {(b.claimIds ?? []).length > 0 && <Chip tone="muted">{(b.claimIds ?? []).join(', ')}</Chip>}
@@ -172,6 +177,18 @@ export function PlanTable({ beats, copyHits }: { beats: PlanBeat[]; copyHits?: R
           {beatVisual(b) && (
             <span className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
               {beatVisual(b)}
+            </span>
+          )}
+          {(b.visual?.shots ?? []).length > 0 && (
+            <ul className="text-[11px] pl-4 list-disc" style={{ color: 'var(--color-text-tertiary)' }}>
+              {b.visual?.shots?.map((shot, i) => (
+                <li key={i}>{shot}</li>
+              ))}
+            </ul>
+          )}
+          {pullQuote && pullQuote.beat === b.beat && (
+            <span className="text-[11.5px] italic" style={{ color: 'var(--color-text)' }} title="The pull quote: on screen on this beat, said word for word">
+              “{pullQuote.text}”
             </span>
           )}
         </li>
@@ -259,7 +276,8 @@ type Arm = 'approve' | 'rewrite' | 'reject' | null;
 
 /**
  * G0 (foundry-studio.md `g0.json`): the script with inline edit, every claim
- * checked by the operator, the visual plan, Omni (default off), and Approve,
+ * checked by the operator, the visual plan, the motion-shots switch (on by
+ * default per channel, v0.4; unticked sends `motion: "off"`), and Approve,
  * Request rewrite or Reject, each with a confirm step. The decision is a file
  * the studio reads on its next run; nothing here narrates or publishes.
  */
@@ -270,7 +288,7 @@ export function G0Review({ detail, actions, now }: { detail: EpisodeDetail; acti
   const [claims, setClaims] = useState<Claim[]>(detail.claims ?? []);
   const [editing, setEditing] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [omni, setOmni] = useState(false);
+  const [motion, setMotion] = useState(true);
   const [note, setNote] = useState('');
   const [arm, setArm] = useState<Arm>(null);
   const [busy, setBusy] = useState(false);
@@ -319,15 +337,7 @@ export function G0Review({ detail, actions, now }: { detail: EpisodeDetail; acti
     setBusy(true);
     setMessage(null);
     try {
-      setSent(
-        await actions.onG0({
-          decision,
-          note: note.trim() || undefined,
-          omni: decision === 'approve' ? omni : false,
-          claimsChecked: [...checked],
-          edited: savedEdit || detail.edited,
-        }),
-      );
+      setSent(await actions.onG0(g0Body(decision, { note, motion, checked, edited: savedEdit || detail.edited })));
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
@@ -424,15 +434,16 @@ export function G0Review({ detail, actions, now }: { detail: EpisodeDetail; acti
 
       {plan.length > 0 && (
         <Section title="Visual plan">
-          <PlanTable beats={plan} copyHits={copyHits} />
+          <PlanTable beats={plan} copyHits={copyHits} pullQuote={detail.plan?.pullQuote} />
         </Section>
       )}
 
       <Section title="Decision">
         <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={omni} onChange={(e) => setOmni(e.target.checked)} />
+          <input type="checkbox" checked={motion} onChange={(e) => setMotion(e.target.checked)} aria-label="Motion shots" />
           <span>
-            Omni <span style={{ color: 'var(--color-text-tertiary)' }}>(cloud motion on beats; off by default, counts against the caps)</span>
+            Motion shots: {motion ? 'on (channel default)' : 'off for this episode'}{' '}
+            <span style={{ color: 'var(--color-text-tertiary)' }}>(a cloud motion opener on the beats the plan marks, at most 8; counts against the caps)</span>
           </span>
         </label>
         <textarea
@@ -453,7 +464,7 @@ export function G0Review({ detail, actions, now }: { detail: EpisodeDetail; acti
         {arm ? (
           <div className="flex flex-wrap items-center gap-1.5">
             <span>
-              {arm === 'approve' ? `Approve${omni ? ' with Omni' : ''} and send it to narration?` : arm === 'rewrite' ? 'Ask the studio for a rewrite?' : 'Reject this episode? It ends here.'}
+              {arm === 'approve' ? `Approve${motion ? '' : ' without motion shots'} and send it to narration?` : arm === 'rewrite' ? 'Ask the studio for a rewrite?' : 'Reject this episode? It ends here.'}
             </span>
             <SmallButton tone={arm === 'reject' ? 'error' : 'success'} onClick={() => void decide(arm)} disabled={busy}>
               Confirm {arm}
@@ -673,7 +684,7 @@ export function EpisodeInfo({ detail, actions, now }: { detail: EpisodeDetail; a
           {cloud && (
             <Chip tone="muted">
               cloud {fmtUsd(cloud.spentUsd)} / {fmtUsd(cloud.capEpisodeUsd)}
-              {cloud.omniAllowed ? ' · Omni on' : ''}
+              {cloud.omniAllowed ? ' · motion shots on' : ''}
             </Chip>
           )}
           {m.durationSeconds != null && <Chip tone="muted">{fmtDuration(m.durationSeconds)}</Chip>}
