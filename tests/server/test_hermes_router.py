@@ -805,3 +805,87 @@ def test_hermes_turn_never_carries_the_waiting_header(monkeypatch):
     assert calls == []
     sent = json.dumps([str(m) for m in fake.calls[0]["messages"]])
     assert "Waiting on you" not in sent
+
+
+# -- "what's waiting on me?": a fixed answer from the list (hq 0023 D8) -----
+
+
+def _waiting_list() -> dict:
+    return {
+        "counts": {"act": 33, "delegate": 60, "fyi": 6},
+        "items": [
+            {
+                "kind": "rec",
+                "lane": "act",
+                "title": "A sample rec",
+                "created_at": "2026-01-01T00:00:00Z",
+            },
+            {"kind": "rec", "lane": "delegate", "title": "A delegate rec"},
+        ],
+        "sources": {"approvals": {"stale": False}},
+    }
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["what's waiting on me?", "What is waiting for me", "anything waiting, Jarvis?"],
+)
+def test_waiting_question_is_answered_from_the_list_without_any_model(
+    monkeypatch, text
+):
+    from openjarvis.server import waiting_routes
+
+    async def build():
+        return _waiting_list()
+
+    monkeypatch.setattr(waiting_routes, "build_waiting", build)
+    client, fake, server_engine, agent = _briefing_app(monkeypatch, None)
+    body = _chat(client, text).json()
+
+    content = body["choices"][0]["message"]["content"]
+    assert content.startswith("**33** items waiting for you to act on.")
+    assert "**60** can be handed to Claude Code or a desk" in content
+    assert "**6** are filed" in content
+    assert "1. Store recommendation: A sample rec" in content
+    assert "A delegate rec" not in content
+    assert body["route"] == {
+        "target": "local",
+        "reason": "waiting",
+        "hint": hr.WAITING_HINT,
+    }
+    assert fake.calls == []
+    agent.run.assert_not_called()
+    server_engine.generate.assert_not_called()
+    assert hr.get_usage().count_today() == 0
+
+
+def test_waiting_answer_streams_and_survives_a_failed_list(monkeypatch):
+    from openjarvis.server import waiting_routes
+
+    async def build():
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(waiting_routes, "build_waiting", build)
+    client, fake, _, _ = _briefing_app(monkeypatch, None)
+    events = _sse_events(_chat(client, "what's waiting", stream=True).text)
+    assert json.loads(events[0][1])["reason"] == "waiting"
+    content = "".join(
+        json.loads(data)["choices"][0]["delta"].get("content", "")
+        for event, data in events
+        if event is None and data != "[DONE]"
+    )
+    assert "unavailable" in content and fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "what is waiting on me in the content queue",
+        "is the shipment waiting",
+        "Hermes, what's waiting on me?",
+    ],
+)
+def test_waiting_rule_needs_the_whole_message_and_no_prefix(text):
+    from openjarvis.server.waiting_routes import is_waiting_request
+
+    assert not (hr.parse_prefix(text)[0] is None and is_waiting_request(text))

@@ -29,6 +29,7 @@ exactly the A5 form. Every route answers only requests from this machine.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -815,7 +816,6 @@ def format_header(w: dict[str, Any] | None, now: datetime | None = None) -> str:
 async def waiting_header() -> str:
     """The header for a local turn, cached 60 s from ``build_waiting()``. A
     slow or failed list gives the manifest alone; it never fails the turn."""
-    import asyncio
     import time
 
     mono = time.monotonic()
@@ -828,3 +828,81 @@ async def waiting_header() -> str:
     text = format_header(w)
     _header_cache.update(at=mono, text=text)
     return text
+
+
+# ---------- "what's waiting on me?" in the chat: a fixed answer ----------
+
+# The whole message only, like the morning-greeting rule: a mention inside a
+# longer sentence goes to the model as usual. qwen 9B misread the header's
+# counts (33 as 3), so this one question never reaches a model.
+_WAITING_REQUEST = re.compile(
+    r"(?:"
+    r"(?:what(?:'|’)?s|what\s+is|is\s+(?:there\s+)?anything|anything)"
+    r"\s+waiting(?:\s+(?:on|for)\s+me)?"
+    r"|what\s+(?:needs|is\s+waiting\s+for)\s+me"
+    r")"
+    r"(?:\s+(?:today|now|right\s+now))?"
+    r"(?:[\s,]+(?:jarvis|sir|please))*"
+    r"[\s.!?]*"
+)
+
+
+def is_waiting_request(text: str) -> bool:
+    """True when the whole message asks what is waiting on the operator."""
+    folded = " ".join(text.strip().casefold().split())
+    return _WAITING_REQUEST.fullmatch(folded) is not None
+
+
+def _days_words(iso: Any, now: datetime) -> str:
+    at = _parse_time(iso)
+    if at is None:
+        return ""
+    days = max(0, (now - at).days)
+    if days == 0:
+        return "today"
+    return "1 day old" if days == 1 else f"{days} days old"
+
+
+def format_answer(w: dict[str, Any] | None, now: datetime | None = None) -> str:
+    """The chat's answer, built from the list itself: exact counts, the first
+    five For you rows in list order, and any source that is down or stale."""
+    now = now or datetime.now(timezone.utc)
+    if not w:
+        return (
+            "The Waiting on you list is unavailable right now;"
+            " the bell shows the last copy."
+        )
+    c = w.get("counts") or {}
+    act, delegate, fyi = c.get("act", 0), c.get("delegate", 0), c.get("fyi", 0)
+    lines = [
+        f"**{act}** item{'' if act == 1 else 's'} waiting for you to act on."
+        f" **{delegate}** can be handed to Claude Code or a desk, and **{fyi}**"
+        f" {'is' if fyi == 1 else 'are'} filed with no action needed."
+    ]
+    rows = [i for i in w.get("items") or [] if i.get("lane", "act") == "act"]
+    if rows:
+        lines += ["", "First in the list:"]
+        for n, item in enumerate(rows[:HEADER_TOP], 1):
+            kind = KIND_WORDS.get(item.get("kind"), item.get("kind") or "item")
+            age = _days_words(item.get("created_at"), now)
+            lines.append(
+                f"{n}. {kind[:1].upper()}{kind[1:]}: {_clip(item.get('title'), 140)}"
+                + (f" ({age})" if age else "")
+            )
+    down = [
+        name
+        for name, src in (w.get("sources") or {}).items()
+        if src.get("error") or src.get("stale")
+    ]
+    if down:
+        lines += ["", f"Stale or unavailable: {', '.join(down)}."]
+    lines += ["", "The bell has the full list, with Dispatch and Snooze."]
+    return "\n".join(lines)
+
+
+async def waiting_answer() -> str:
+    try:
+        w = await asyncio.wait_for(build_waiting(), HEADER_TIMEOUT_S)
+    except Exception:
+        w = None
+    return format_answer(w)

@@ -41,6 +41,7 @@ from openjarvis.agents.hermes_digest import NOT_OUT_YET, feed_time, is_briefing_
 from openjarvis.core.paths import get_config_dir
 from openjarvis.core.types import Message, Role
 from openjarvis.server.store_performance_routes import HERMES_PANELS_URL
+from openjarvis.server.waiting_routes import is_waiting_request
 
 logger = logging.getLogger("openjarvis.server.hermes_router")
 
@@ -531,7 +532,27 @@ async def briefing_response(request_body: Any) -> Any:
     """Answer a morning greeting with today's Hermes digest."""
     content, notice = await _briefing_text()
     route = RouteDecision("hermes", "briefing", hint=BRIEFING_HINT, notice=notice)
-    route = route.as_dict()
+    return _canned_response(request_body, content, route, engine="hermes")
+
+
+WAITING_HINT = "From the Waiting on you list."
+
+
+async def waiting_response(request_body: Any) -> Any:
+    """Answer "what's waiting on me?" from the list itself, no model call
+    (hq 0023 D8: the local model misread the header's counts)."""
+    from openjarvis.server.waiting_routes import waiting_answer
+
+    content = await waiting_answer()
+    route = RouteDecision("local", "waiting", hint=WAITING_HINT)
+    return _canned_response(request_body, content, route, engine="openjarvis")
+
+
+def _canned_response(
+    request_body: Any, content: str, decision: RouteDecision, *, engine: str
+) -> Any:
+    """A fixed reply in the chat's own shape, streamed or not."""
+    route = decision.as_dict()
     chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
     if request_body.stream:
@@ -540,7 +561,7 @@ async def briefing_response(request_body: Any) -> Any:
             yield _sse(route, event="route")
             yield _sse(_chunk(chunk_id, content))
             finish = _chunk(chunk_id, None, "stop")
-            finish["telemetry"] = {"engine": "hermes"}
+            finish["telemetry"] = {"engine": engine}
             finish["route"] = route
             yield _sse(finish)
             yield "data: [DONE]\n\n"
@@ -555,7 +576,7 @@ async def briefing_response(request_body: Any) -> Any:
         "id": chunk_id,
         "object": "chat.completion",
         "created": int(time.time()),
-        "model": HERMES_MODEL_ID,
+        "model": HERMES_MODEL_ID if engine == "hermes" else request_body.model,
         "choices": [
             {
                 "index": 0,
@@ -564,7 +585,7 @@ async def briefing_response(request_body: Any) -> Any:
             }
         ],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        "telemetry": {"engine": "hermes"},
+        "telemetry": {"engine": engine},
         "route": route,
     }
 
@@ -624,6 +645,9 @@ async def route_chat(
     # An explicit "Hermes," / "local," prefix is the user's override and wins.
     if parse_prefix(text)[0] is None and is_briefing_request(text):
         return await briefing_response(request_body), None
+    # "What's waiting on me?" is answered from the list itself, exactly.
+    if parse_prefix(text)[0] is None and is_waiting_request(text):
+        return await waiting_response(request_body), None
 
     model = local_model(request)
     decision, forwarded = await decide_route(
