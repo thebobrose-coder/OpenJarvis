@@ -743,6 +743,24 @@ MANIFEST = (
     " and desks. You cannot write code, send email, trade or change Shopify."
     " Hermes turns are capped and counted at GET /v1/hermes/usage."
 )
+HEADER_RULE = (
+    "When the operator asks what is waiting on them, answer from this block"
+    " only: give the three counts below as numbers, then the listed titles."
+    " Add no news, markets or advice unless asked."
+)
+KIND_WORDS = {
+    "rec": "store recommendation",
+    "proposal": "content proposal",
+    "thesis_prompt": "thesis prompt",
+    "patch": "catalog fix",
+    "patch_class": "invalid patches",
+    "follow_up": "BD follow-up",
+    "g0": "episode script (G0)",
+    "g1": "post to approve (G1)",
+    "decision": "decision box",
+    "x402": "trading alert",
+    "workorder": "work order",
+}
 _header_cache: dict[str, Any] = {"at": 0.0, "text": None}
 
 
@@ -765,15 +783,21 @@ def format_header(w: dict[str, Any] | None, now: datetime | None = None) -> str:
     if not w:
         return f"{HEADER_MARK}\nThe list is unavailable right now.\n{MANIFEST}"
     c = w.get("counts") or {}
+    # Spelled out for a small local model: a bare "dispatchable: 62" was read
+    # as "60 minutes", and without the rule it padded the answer with news.
     lines = [
         HEADER_MARK,
-        f"For you: {c.get('act', 0)}; dispatchable: {c.get('delegate', 0)};"
-        f" filed: {c.get('fyi', 0)}.",
+        HEADER_RULE,
+        f"Items waiting for the operator to act on: {c.get('act', 0)}.",
+        f"Items that can be handed to Claude Code or a desk: {c.get('delegate', 0)}.",
+        f"Items filed, no action needed: {c.get('fyi', 0)}.",
+        "The first items for the operator, in list order:",
     ]
     act = [i for i in w.get("items") or [] if i.get("lane", "act") == "act"]
     for item in act[:HEADER_TOP]:
+        kind = KIND_WORDS.get(item.get("kind"), item.get("kind"))
         lines.append(
-            f"- {item.get('kind')}: {_clip(item.get('title'), 110)}"
+            f"- {kind}: {_clip(item.get('title'), 110)}"
             f" ({_age_words(item.get('created_at'), now)})"
         )
     for name, src in (w.get("sources") or {}).items():

@@ -567,8 +567,10 @@ def test_header_counts_top_titles_stale_and_manifest(wired):
 
     text = wr.format_header(asyncio.run(wr.build_waiting()))
     assert len(text) <= wr.HEADER_MAX
-    assert "For you: 4; dispatchable: 2; filed: 2." in text
-    assert "- proposal: A sample proposal" in text
+    assert "act on: 4." in text and "Claude Code or a desk: 2." in text
+    assert "no action needed: 2." in text
+    assert "- content proposal: A sample proposal" in text
+    assert wr.HEADER_RULE in text
     assert "A sample rec" not in text  # a delegate row, not act
     assert "Source approvals: stale." in text
     assert text.endswith(wr.MANIFEST)
