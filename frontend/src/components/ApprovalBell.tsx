@@ -14,7 +14,7 @@ import { WaitingTabsView } from './Waiting/WaitingListView';
  * source was dormant here and is replaced, not stacked.
  */
 export function ApprovalBell() {
-  const { waiting, setDecisionsOpen, setG1Open, setReportOpen, bellOpen: open, setBellOpen: setOpen, rowStatus, dispatch, snooze } =
+  const { waiting, setDecisionsOpen, setG1Open, setReportOpen, bellOpen: open, setBellOpen: setOpen, rowActions } =
     useWaiting();
   const [tab, setTab] = useState<Lane>('act');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,7 +115,7 @@ export function ApprovalBell() {
               compact
               onOpen={onOpen}
               onFiled={onFiled}
-              actions={{ status: rowStatus, onDispatch: dispatch, onSnooze: snooze }}
+              actions={rowActions}
             />
           </div>
         </div>

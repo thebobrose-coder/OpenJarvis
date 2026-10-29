@@ -2,10 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useNavigate } from 'react-router';
 import { contextBlock } from './desks-api';
 import { useAppStore } from './store';
+import type { RowActions } from '../components/Waiting/WaitingListView';
 import {
   POLL_MS,
+  dismissOrder,
   dispatchRow,
   fetchWaiting,
+  fixRec,
   rowKey,
   snoozeRec,
   type RowStatus,
@@ -35,6 +38,11 @@ interface WaitingState {
   rowStatus: Record<string, RowStatus>;
   dispatch: (item: WaitingItem) => void;
   snooze: (item: WaitingItem, days: number) => void;
+  /** Fix it (0024 J1) and Dismiss (J4). */
+  fix: (item: WaitingItem) => void;
+  dismiss: (item: Pick<WaitingItem, 'kind' | 'id'>, note: string) => Promise<boolean>;
+  /** Every row action at once, for the bell and the panel. */
+  rowActions: RowActions;
 }
 
 const WaitingContext = createContext<WaitingState | null>(null);
@@ -59,8 +67,9 @@ export function rowContext(item: WaitingItem): { block: string; label: string } 
  * One poll of /api/waiting every 60 s, shared by the bell and the Dashboard's
  * "Waiting on you" panel so their counts always match (hq 0020 P1). Keeps the
  * last good copy on a failed poll. Also holds the drawers' open state, which
- * either surface can open, and the two row actions (hq 0023): Dispatch and
- * Snooze. Neither is ever retried; a row shows what came back.
+ * either surface can open, and the row actions: Dispatch and Snooze (hq 0023),
+ * Fix it and Dismiss (hq 0024). None is ever retried; a row shows what came
+ * back.
  */
 export function WaitingProvider({ children }: { children: ReactNode }) {
   const [waiting, setWaiting] = useState<Waiting | null>(null);
@@ -132,6 +141,55 @@ export function WaitingProvider({ children }: { children: ReactNode }) {
     [mark, refresh],
   );
 
+  const fix = useCallback(
+    (item: WaitingItem) => {
+      mark(item, { kind: 'busy' });
+      fixRec(item.id).then(
+        () => {
+          mark(item, { kind: 'fixed' });
+          void refresh();
+        },
+        (e) => mark(item, fail(e)),
+      );
+    },
+    [mark, refresh],
+  );
+
+  /** Resolves true once written, so the report drawer can reload. */
+  const dismiss = useCallback(
+    (item: Pick<WaitingItem, 'kind' | 'id'>, note: string) => {
+      const key = { kind: item.kind, id: item.id } as WaitingItem;
+      mark(key, { kind: 'busy' });
+      return dismissOrder(String(item.id), note).then(
+        () => {
+          mark(key, { kind: 'dismissed' });
+          void refresh();
+          return true;
+        },
+        (e) => {
+          mark(key, fail(e));
+          return false;
+        },
+      );
+    },
+    [mark, refresh],
+  );
+
+  const rowActions = useMemo<RowActions>(
+    () => ({
+      status: rowStatus,
+      onDispatch: dispatch,
+      onSnooze: snooze,
+      onFix: fix,
+      onDismiss: (item, note) => void dismiss(item, note),
+      onNavigate: (href) => {
+        setBellOpen(false);
+        navigate(href);
+      },
+    }),
+    [rowStatus, dispatch, snooze, fix, dismiss, navigate],
+  );
+
   const value = useMemo(
     () => ({
       waiting,
@@ -150,8 +208,11 @@ export function WaitingProvider({ children }: { children: ReactNode }) {
       rowStatus,
       dispatch,
       snooze,
+      fix,
+      dismiss,
+      rowActions,
     }),
-    [waiting, error, loading, receivedAt, refresh, decisionsOpen, g1Open, bellOpen, reportOpen, rowStatus, dispatch, snooze],
+    [waiting, error, loading, receivedAt, refresh, decisionsOpen, g1Open, bellOpen, reportOpen, rowStatus, dispatch, snooze, fix, dismiss, rowActions],
   );
   return <WaitingContext.Provider value={value}>{children}</WaitingContext.Provider>;
 }

@@ -71,10 +71,11 @@ export function WaitingPanelView({
 /**
  * The Dashboard's "Waiting on you" panel (hq 0020 P1, 0023 D1): the For you
  * lane only, at most ten rows, with "N more" opening the bell's full list.
- * Each row opens the page that holds its action; a rec can be snoozed here.
+ * Each row opens the page that holds its action; a rec can be snoozed or
+ * fixed here, and a work-order row dismissed.
  */
 export function WaitingPanel() {
-  const { waiting, loading, error, setDecisionsOpen, setG1Open, setReportOpen, setBellOpen, rowStatus, dispatch, snooze } = useWaiting();
+  const { waiting, loading, error, setDecisionsOpen, setG1Open, setReportOpen, setBellOpen, rowActions } = useWaiting();
   const navigate = useNavigate();
   return (
     <WaitingPanelView
@@ -84,7 +85,7 @@ export function WaitingPanel() {
       now={Date.now()}
       onDecisions={() => setDecisionsOpen(true)}
       onMore={() => setBellOpen(true)}
-      actions={{ status: rowStatus, onDispatch: dispatch, onSnooze: snooze }}
+      actions={rowActions}
       onOpen={(item) => {
         if (item.opens === 'decisions') setDecisionsOpen(true);
         else if (item.opens === 'g1') setG1Open(String(item.id));

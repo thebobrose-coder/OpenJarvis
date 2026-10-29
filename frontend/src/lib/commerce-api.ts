@@ -172,6 +172,8 @@ export interface Recommendation {
   effort?: string;
   owner?: string;
   spend?: { daily_budget_usd: number; change: string } | null;
+  /** v1.23 (hq 0024 D3): set on a rec filed as needing the theme. */
+  note?: string;
 }
 
 export interface LedgerItem {
@@ -185,6 +187,8 @@ export interface LedgerItem {
   status: RecStatus;
   decided_at: string | null;
   note: string | null;
+  /** v1.23: the newest patch addressing the rec ("patch ready"). */
+  fix_patch_id?: string | null;
 }
 
 export interface EcomRecommendations extends FeedMeta {
@@ -230,7 +234,15 @@ export interface ComplianceFindings extends FeedMeta {
 
   run_at: string;
   /** v1.4 (0011 A12): `advisory` never counts in `open`. */
-  counts: { open: number; new?: number; open_by_property?: Record<string, number>; advisory?: number };
+  counts: {
+    open: number;
+    new?: number;
+    open_by_property?: Record<string, number>;
+    advisory?: number;
+    /** v1.23 (hq 0024 D5): open findings by severity. */
+    block?: number;
+    fix?: number;
+  };
   open_findings?: ComplianceFinding[];
   /** v1.4 (A12): spec-only findings on the writer's carried-over copy. */
   advisory_findings?: AdvisoryFinding[];
@@ -248,7 +260,14 @@ export interface RuleGroup {
   open: number;
   newest_at: string | null;
   example_finding_id?: string | null;
+  /** v1.22.2: the rule's number, the grouping key with the store. */
+  rule_no?: number | null;
+  /** v1.23: `block` if any finding in the group is. */
+  severity?: Severity;
 }
+
+/** v1.23 (hq 0024 D5): `block` holds ads; `fix` feeds the catalog fixer. */
+export type Severity = 'block' | 'fix';
 
 export interface ComplianceFinding {
   id: string;
@@ -263,6 +282,8 @@ export interface ComplianceFinding {
   first_seen?: string;
   /** v1.4 (A12): a finding the judge opened on writer copy by majority. */
   readings?: { flagged: number; of: number };
+  /** v1.23: absent on an older feed. */
+  severity?: Severity;
 }
 
 export interface AdvisoryFinding extends ComplianceFinding {

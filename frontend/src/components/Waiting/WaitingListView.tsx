@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle } from 'lucide-react';
 import { Chip, SmallButton } from '../shared/ui';
 import {
+  DISMISS_NOTE_MAX,
   SNOOZE_DAYS,
   SNOOZE_DEFAULT,
   TABS,
@@ -14,6 +15,7 @@ import {
   laneCount,
   laneOf,
   linkFor,
+  patchHref,
   rowKey,
   rowStatusText,
   staleSources,
@@ -37,11 +39,59 @@ export const EMPTY_LANE: Record<Lane, string> = {
 export const isOpenable = (item: WaitingItem) =>
   item.opens === 'decisions' || item.opens === 'g1' || item.opens === 'workorder' || linkFor(item) != null;
 
-/** The two row actions (hq 0023): Dispatch on a delegate row, Snooze on a rec. */
+/** The row actions: Dispatch on a delegate row and Snooze on a rec (hq 0023);
+ * Fix it on a product-copy rec and Dismiss on a work-order row (hq 0024). */
 export interface RowActions {
   status: Record<string, RowStatus>;
   onDispatch: (item: WaitingItem) => void;
   onSnooze: (item: WaitingItem, days: number) => void;
+  onFix?: (item: WaitingItem) => void;
+  onDismiss?: (item: WaitingItem, note: string) => void;
+  /** Open a page in the app ("patch ready"). */
+  onNavigate?: (href: string) => void;
+}
+
+/** Dismiss with a one-click confirm and an optional one-line note (0024 J4).
+ * Shared by the work-order row and the report drawer. */
+export function DismissControl({ id, busy, onDismiss }: { id: string; busy?: boolean; onDismiss: (note: string) => void }) {
+  const [armed, setArmed] = useState(false);
+  const [note, setNote] = useState('');
+  if (!armed) {
+    return (
+      <span data-dismiss={id}>
+        <SmallButton disabled={busy} onClick={() => setArmed(true)} title="You've read the report: take the row off For you">
+          Dismiss
+        </SmallButton>
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <input
+        aria-label="Dismiss note (optional)"
+        data-dismiss-note
+        value={note}
+        maxLength={DISMISS_NOTE_MAX}
+        placeholder="Note (optional)"
+        onChange={(e) => setNote(e.target.value.replace(/[\r\n]+/g, ' '))}
+        className="text-[11px] rounded px-1.5 py-0.5 min-w-0 w-40"
+        style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+      />
+      <span data-confirm-dismiss={id}>
+        <SmallButton
+          tone="accent"
+          disabled={busy}
+          onClick={() => {
+            setArmed(false);
+            onDismiss(note);
+          }}
+        >
+          Confirm: Dismiss
+        </SmallButton>
+      </span>
+      <SmallButton onClick={() => setArmed(false)}>Cancel</SmallButton>
+    </span>
+  );
 }
 
 function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) {
@@ -50,14 +100,34 @@ function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) 
   const status = actions.status[rowKey(item)];
   const busy = status?.kind === 'busy';
   const lane = laneOf(item);
-  const label = lane === 'delegate' ? dispatchLabel(item.delegate) : null;
+  // A product-copy rec is fixed, never dispatched (0024 D1).
+  const fixable = item.kind === 'rec' && item.fix === true && lane !== 'fyi' && !!actions.onFix;
+  const label = fixable ? 'Fix it' : lane === 'delegate' && item.fix !== true ? dispatchLabel(item.delegate) : null;
   const snoozable = item.kind === 'rec' && lane !== 'fyi';
-  const done = status?.kind === 'dispatched' || status?.kind === 'snoozed';
-  if (!label && !snoozable) return null;
+  const dismissable = item.kind === 'workorder' && !!actions.onDismiss;
+  const patchId = item.kind === 'rec' ? item.fix_patch_id : null;
+  const done = status != null && status.kind !== 'busy' && status.kind !== 'error';
+  if (!label && !snoozable && !dismissable && !patchId) return null;
   return (
     <div className="flex flex-col gap-1 px-2 pb-1.5">
+      {patchId && (
+        <span className="flex items-center gap-1.5 text-[11px]">
+          <button
+            type="button"
+            data-patch-ready={patchId}
+            data-href={patchHref(patchId)}
+            onClick={() => actions.onNavigate?.(patchHref(patchId))}
+            className="cursor-pointer underline"
+            style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-accent)' }}
+            title="Open the patch on the Fixes tab"
+          >
+            patch ready
+          </button>
+        </span>
+      )}
       {!done && (
         <div className="flex flex-wrap items-center gap-1.5">
+          {dismissable && <DismissControl id={String(item.id)} busy={busy} onDismiss={(note) => actions.onDismiss!(item, note)} />}
           {label &&
             (armed ? (
               <>
@@ -67,7 +137,8 @@ function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) 
                     disabled={busy}
                     onClick={() => {
                       setArmed(false);
-                      actions.onDispatch(item);
+                      if (fixable) actions.onFix!(item);
+                      else actions.onDispatch(item);
                     }}
                   >
                     Confirm: {label}
@@ -76,8 +147,12 @@ function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) 
                 <SmallButton onClick={() => setArmed(false)}>Cancel</SmallButton>
               </>
             ) : (
-              <span data-dispatch={rowKey(item)}>
-                <SmallButton disabled={busy} onClick={() => setArmed(true)}>
+              <span data-dispatch={rowKey(item)} data-fix={fixable ? rowKey(item) : undefined}>
+                <SmallButton
+                  disabled={busy}
+                  onClick={() => setArmed(true)}
+                  title={fixable ? 'The catalog fixer writes the copy as a patch in Fixes; you tick it there' : undefined}
+                >
                   {label}
                 </SmallButton>
               </span>
@@ -305,6 +380,19 @@ export function FiledView({ rows, onOpen }: { rows: FiledRow[]; onOpen: (row: Fi
               {r.count}
             </span>
           </button>
+          {r.notes && r.notes.length > 0 && (
+            <ul className="flex flex-col gap-0.5 px-2 pb-1.5">
+              {r.notes.map((n) => (
+                <li key={n.id} data-filed-note={n.id} className="flex flex-col text-[11.5px]">
+                  <span style={{ color: 'var(--color-text-secondary)' }}>{n.title}</span>
+                  <span className="flex flex-wrap items-center gap-1.5 text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    {n.store && <Chip tone="muted">{n.store}</Chip>}
+                    <span>{n.note}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </li>
       ))}
     </ul>

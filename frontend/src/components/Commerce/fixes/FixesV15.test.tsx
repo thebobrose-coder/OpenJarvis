@@ -440,3 +440,12 @@ describe('Needs you / In progress / Archive views', () => {
     expect(tab(feed([patch('x1', 'verified')]))).toContain('Nothing needs you.');
   });
 });
+
+describe('retry of (v1.23, hq 0024 D4)', () => {
+  it('shows "retry of <id>" on a patch that re-proposes an invalid one', () => {
+    const html = card(patch('retry0000001', 'proposed', { retry_of: 'first0000001' }));
+    expect(html).toContain('data-retry-of="first0000001"');
+    expect(html).toContain('retry of first0000001');
+    expect(card(patch('plain0000001', 'proposed', { retry_of: null }))).not.toContain('retry of');
+  });
+});

@@ -47,6 +47,31 @@ export interface WaitingItem {
   /** `rec` only: how often the briefing proposed it again. */
   times_seen?: number | null;
   last_seen?: string | null;
+  /** v1.23 (hq 0024 D1), `rec` only: a product-copy rec the catalog fixer
+   * writes on a Fix it click. Absent reads as false. */
+  fix?: boolean;
+  /** v1.23: the newest patch addressing the rec ("patch ready"). */
+  fix_patch_id?: string | null;
+  /** v1.23, `patch_class` only: the evidence Dispatch writes into the order. */
+  examples?: PatchExample[];
+}
+
+export interface PatchExample {
+  patch_id: string;
+  check: string;
+  field: string;
+  before: string;
+  after: string;
+  quotes: string[];
+}
+
+/** A rec filed as needing the theme (0024 D3): listed under Filed, no action. */
+export interface ThemeRec {
+  id: string;
+  store: string | null;
+  title: string;
+  note: string;
+  fix_patch_id?: string | null;
 }
 
 export type Lane = 'act' | 'delegate' | 'fyi';
@@ -71,6 +96,8 @@ export interface Waiting {
   sources: Record<string, WaitingSource>;
   /** False when the workspace data folder isn't configured (no local kinds). */
   local: boolean;
+  /** v1.23: Filed rows listed with their note (Hermes counts them in fyi). */
+  filed?: { theme?: ThemeRec[] };
 }
 
 export interface DecisionBox {
@@ -341,19 +368,33 @@ export interface FiledRow {
   /** A page to open, or the work-order reports drawer. */
   href?: string;
   opens?: 'workorder';
+  /** Listed under the row with their note, no action (the theme recs). */
+  notes?: ThemeRec[];
 }
 
-/** The Filed tab: counts only, each opening where it is filed. Hermes's fyi
- * rows today are compliance recs with a fix already in hand (0023 lane rules). */
-export function filedRows(w: Pick<Waiting, 'counts'> | null): FiledRow[] {
+/** The Filed tab: counts, each opening where it is filed. Hermes's fyi rows
+ * are compliance recs with a fix already in hand (0023 lane rules) and, from
+ * v1.23, recs that need the theme, which are listed with their note. */
+export function filedRows(w: Pick<Waiting, 'counts' | 'filed'> | null): FiledRow[] {
   if (!w) return [];
   const done = w.counts.workorder_done ?? 0;
-  const hermes = Math.max(0, (w.counts.fyi ?? 0) - done);
+  const theme = w.filed?.theme ?? [];
+  const hermes = Math.max(0, (w.counts.fyi ?? 0) - done - theme.length);
   const rows: FiledRow[] = [];
   if (hermes) rows.push({ key: 'recs', label: 'Compliance recommendations with a fix in hand', count: hermes, href: '/commerce' });
+  if (theme.length) rows.push({ key: 'theme', label: 'Recommendations that need the theme', count: theme.length, href: '/commerce', notes: theme });
   if (done) rows.push({ key: 'workorders', label: `Work order${done === 1 ? '' : 's'} done`, count: done, opens: 'workorder' });
+  // Dismissed rows are in no lane; their reports still open from here (0024 J4).
+  const dismissed = w.counts.workorder_dismissed ?? 0;
+  if (dismissed) rows.push({ key: 'dismissed', label: `Work order${dismissed === 1 ? '' : 's'} dismissed`, count: dismissed, opens: 'workorder' });
   return rows;
 }
+
+/** Where "patch ready" goes: the patch's card on the Fixes tab. */
+export const patchHref = (patchId: string) => linkFor({ link: { page: '/commerce#fixes', focus: patchId } })!;
+
+export const FIX_NOTE = 'fix requested';
+export const DISMISS_NOTE_MAX = 200;
 
 /** The Dispatch button's words, by target and stage. */
 export function dispatchLabel(d: Delegate | null | undefined): string | null {
@@ -410,11 +451,34 @@ export async function snoozeRec(id: string | number, days: number): Promise<void
   if (!res.ok) throw new WaitingError(res.status, await detail(res, `Failed: ${res.status}`));
 }
 
+/** Fix it (0024 J1): the existing `accepted` decision, noted "fix requested";
+ * the catalog fixer's next run proposes the patch. */
+export async function fixRec(id: string | number): Promise<void> {
+  const res = await apiFetch(`/api/commerce/recommendations/${encodeURIComponent(String(id))}/accepted`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note: FIX_NOTE }),
+  });
+  if (!res.ok) throw new WaitingError(res.status, await detail(res, `Failed: ${res.status}`));
+}
+
+/** Dismiss (0024 J4): the operator has read the report. Not a decision. */
+export async function dismissOrder(id: string, note: string): Promise<void> {
+  const res = await apiFetch(`/api/workorders/${encodeURIComponent(id)}/dismiss`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note: note.replace(/\s+/g, ' ').trim().slice(0, DISMISS_NOTE_MAX) }),
+  });
+  if (!res.ok) throw new WaitingError(res.status, await detail(res, `Failed: ${res.status}`));
+}
+
 /** What a row says after its action: the order id, or the error. */
 export type RowStatus =
   | { kind: 'busy' }
   | { kind: 'dispatched'; orderId: string; waits: boolean; decided: boolean | null; decideError: string | null }
   | { kind: 'snoozed'; days: number }
+  | { kind: 'fixed' }
+  | { kind: 'dismissed' }
   | { kind: 'error'; message: string };
 
 export function rowStatusText(s: RowStatus): string {
@@ -430,6 +494,10 @@ export function rowStatusText(s: RowStatus): string {
     }
     case 'snoozed':
       return `Snoozed for ${s.days} day${s.days === 1 ? '' : 's'}; it leaves this list within 2 minutes`;
+    case 'fixed':
+      return 'Fix requested; the patch shows in Fixes after the fixer’s next run';
+    case 'dismissed':
+      return 'Dismissed; the report still opens from Filed';
     case 'error':
       return s.message;
   }
@@ -448,6 +516,9 @@ export interface WorkOrderReport {
   reason: string | null;
   needsHuman: string | null;
   summary: string | null;
+  /** 0024 J4: set once the operator dismissed the row. */
+  dismissedAt?: string | null;
+  dismissNote?: string | null;
 }
 
 export async function fetchReports(): Promise<WorkOrderReport[]> {

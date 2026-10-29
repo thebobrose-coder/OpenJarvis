@@ -1,5 +1,5 @@
 import { MessagesSquare, ShieldCheck } from 'lucide-react';
-import type { ComplianceFinding, ComplianceFindings, RuleGroup } from '../../lib/commerce-api';
+import type { ComplianceFinding, ComplianceFindings, RuleGroup, Severity } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { SpeakButton } from '../shared/SpeakButton';
 import { firstBlock } from '../../lib/voice-api';
@@ -13,12 +13,35 @@ const ADVISORY_WORDS: Record<string, string> = {
   spec_carried_over: 'spec carried over',
 };
 
+/** v1.23 (hq 0024 D5): a `block` finding holds ads; a `fix` one goes to the fixer. */
+const SEVERITY_TITLE: Record<Severity, string> = {
+  block: 'Blocking: holds ads until it is resolved',
+  fix: 'Fix: the catalog fixer handles it; it holds nothing',
+};
+
+export function SeverityChip({ severity }: { severity?: Severity }) {
+  if (severity !== 'block' && severity !== 'fix') return null;
+  return (
+    <span data-severity={severity}>
+      <Chip tone={severity === 'block' ? 'error' : 'muted'} title={SEVERITY_TITLE[severity]}>
+        {severity}
+      </Chip>
+    </span>
+  );
+}
+
+/** `block` groups first, otherwise as served (most first). */
+export function orderGroups(groups: RuleGroup[]): RuleGroup[] {
+  return [...groups].sort((a, b) => Number(b.severity === 'block') - Number(a.severity === 'block'));
+}
+
 /** "2 of 3 readings": a finding opened on writer copy by majority (A12). */
 export const readingsLabel = (r: NonNullable<ComplianceFinding['readings']>) => `${r.flagged} of ${r.of} readings`;
 
 function FindingLine({ f, onAskDesk }: { f: ComplianceFinding; onAskDesk?: (f: ComplianceFinding) => void }) {
   return (
     <>
+      <SeverityChip severity={f.severity} />
       <span style={{ color: 'var(--color-text-tertiary)' }}>{f.property}</span>
       <ExtLink url={f.link} title="Open">
         {f.location ?? f.id.slice(0, 8)}
@@ -45,16 +68,24 @@ function FindingLine({ f, onAskDesk }: { f: ComplianceFinding; onAskDesk?: (f: C
   );
 }
 
-/** The open findings in one (store, rule) group: same rule text, and the
- * finding's property is the store's (or the group names the property). */
+/** A rule's number as the judge writes it: "Rule 9:", "Rule #9", "R9", "9.". */
+export function ruleNo(text: string | undefined): number | null {
+  const m = /^\s*(?:rule\s*#?\s*|r)?(\d+)(?!\d)/i.exec(text ?? '');
+  return m ? Number(m[1]) : null;
+}
+
+/** The open findings in one (store, rule) group: the finding's property is
+ * the store's (or the group names the property), and its rule is the group's,
+ * by number when the group has one (v1.22.2), else by text. */
 export function groupFindings(g: RuleGroup, f: ComplianceFindings): ComplianceFinding[] {
   const property = f.store_properties?.[g.store] ?? g.store;
-  return (f.open_findings ?? []).filter((x) => x.rule === g.rule && (x.property === property || x.property === g.store));
+  const sameRule = (x: ComplianceFinding) => x.rule === g.rule || (g.rule_no != null && ruleNo(x.rule) === g.rule_no);
+  return (f.open_findings ?? []).filter((x) => sameRule(x) && (x.property === property || x.property === g.store));
 }
 
 /** v1.22 roll-up: one collapsed line per (store, rule), as served (no merging). */
 function RuleGroups({ findings, onAskDesk }: { findings: ComplianceFindings; onAskDesk?: (f: ComplianceFinding) => void }) {
-  const groups = findings.by_rule ?? [];
+  const groups = orderGroups(findings.by_rule ?? []);
   if (groups.length === 0) return null;
   const now = Date.now();
   return (
@@ -65,9 +96,10 @@ function RuleGroups({ findings, onAskDesk }: { findings: ComplianceFindings; onA
       {groups.map((g) => {
         const rows = groupFindings(g, findings);
         return (
-          <details key={`${g.store}|${g.rule}`} data-rule-group={g.store}>
+          <details key={`${g.store}|${g.rule_no ?? g.rule}`} data-rule-group={g.store}>
             <summary className="cursor-pointer flex-wrap gap-1.5" style={{ color: 'var(--color-text)' }}>
               <span className="inline-flex flex-wrap items-center gap-1.5">
+                <SeverityChip severity={g.severity} />
                 <Chip tone="muted">{g.store}</Chip>
                 <span>{g.rule}</span>
                 <Chip tone="warning">{num(g.open)}</Chip>
@@ -148,6 +180,13 @@ export function CompliancePanel({
               {num(findings.counts.open)} open finding{findings.counts.open === 1 ? '' : 's'}
               {findings.counts.new ? ` · ${num(findings.counts.new)} new` : ''}
             </span>
+            {(findings.counts.block != null || findings.counts.fix != null) && (
+              <span className="text-[11.5px]" data-severity-counts style={{ color: 'var(--color-text-secondary)' }}>
+                <span style={{ color: findings.counts.block ? 'var(--color-error)' : undefined }}>{num(findings.counts.block ?? 0)} block</span>
+                {' · '}
+                {num(findings.counts.fix ?? 0)} fix
+              </span>
+            )}
             {byProperty.map(([property, n]) => (
               <Chip key={property} tone={n ? 'warning' : 'success'}>
                 {property} · {num(n)}

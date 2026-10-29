@@ -250,7 +250,10 @@ describe('Compliance by rule (v1.22)', () => {
   } as ComplianceFindings;
 
   it('renders each group as served, collapsed, expanding to its findings', () => {
+    // The panel dates groups from the clock; pin it to the fixtures' NOW.
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
     const html = renderToStaticMarkup(<CompliancePanel findings={findings} />);
+    vi.useRealTimers();
     expect(html).toContain('data-by-rule');
     expect((html.match(/<details data-rule-group="store-a"/g) ?? []).length).toBe(2);
     expect(html).toContain('Rule 9: Sample claims');

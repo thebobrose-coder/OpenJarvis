@@ -419,6 +419,13 @@ export function PatchCard({
             auto candidate
           </Chip>
         )}
+        {patch.retry_of && (
+          <span data-retry-of={patch.retry_of}>
+            <Chip tone="neutral" title="Re-proposed once with the failing check as feedback (hq 0024 D4)">
+              retry of {patch.retry_of}
+            </Chip>
+          </span>
+        )}
         {patch.applied?.read_back_mismatch && (
           <Chip tone="warning" title="The writer changed the product, but its read-back didn’t equal this fix’s text">
             read-back differs

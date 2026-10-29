@@ -230,6 +230,7 @@ export function CommerceView({
               productTitles={productTitles}
               onDecide={onDecide}
               onAskDesk={onAskDesk?.rec}
+              onOpenFix={fixes ? openFix : undefined}
               loading={feeds.ecom_recommendations.loading}
               error={feeds.ecom_recommendations.error}
             />

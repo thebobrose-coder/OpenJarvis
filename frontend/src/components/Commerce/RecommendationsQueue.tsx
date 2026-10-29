@@ -94,12 +94,33 @@ function DecisionControls({
   );
 }
 
+/** "patch ready" (v1.23): the catalog fixer has a patch for this rec. */
+function PatchReady({ id, onOpenFix }: { id?: string | null; onOpenFix?: (patchId: string) => void }) {
+  if (!id) return null;
+  return onOpenFix ? (
+    <button
+      onClick={() => onOpenFix(id)}
+      data-patch-ready={id}
+      title="Open the patch on the Fixes tab"
+      className="cursor-pointer underline text-[11px]"
+      style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-accent)' }}
+    >
+      patch ready
+    </button>
+  ) : (
+    <span data-patch-ready={id}>
+      <Chip tone="accent">patch ready</Chip>
+    </span>
+  );
+}
+
 export function RecommendationCard({
   item,
   storeName,
   productTitles,
   onDecide,
   onAskDesk,
+  onOpenFix,
 }: {
   item: LedgerItem;
   storeName: string;
@@ -108,6 +129,8 @@ export function RecommendationCard({
   onDecide: (d: Decision, note: string) => void;
   /** "Ask the desk" (0020 P3): a Commerce desk thread with this card as context. */
   onAskDesk?: () => void;
+  /** Show a patch's card on the Fixes tab ("patch ready", v1.23). */
+  onOpenFix?: (patchId: string) => void;
 }) {
   const r = item.detail;
   const p = PRIORITY[item.priority] ?? PRIORITY[3];
@@ -126,6 +149,14 @@ export function RecommendationCard({
         <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
           {storeName} · {shortDateTime(item.created_at)}
         </span>
+        {r.note && (
+          <span data-rec-note>
+            <Chip tone="muted" title="Filed: no action here">
+              {r.note}
+            </Chip>
+          </span>
+        )}
+        <PatchReady id={item.fix_patch_id} onOpenFix={onOpenFix} />
         {onAskDesk && (
           <span className="ml-auto">
             <SmallButton onClick={onAskDesk} title="Open a Commerce desk thread with this recommendation as context">
@@ -193,10 +224,12 @@ function RecentlyDecided({
   items,
   storeNames,
   onDecide,
+  onOpenFix,
 }: {
   items: LedgerItem[];
   storeNames: Record<string, string>;
   onDecide: (id: string, d: Decision, note: string) => void;
+  onOpenFix?: (patchId: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   return (
@@ -221,6 +254,7 @@ function RecentlyDecided({
                   <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
                     {storeNames[i.store] ?? i.store} · {shortDateTime(i.decided_at)}
                   </span>
+                  <PatchReady id={i.fix_patch_id} onOpenFix={onOpenFix} />
                 </div>
                 <span style={{ color: 'var(--color-text)' }}>{i.title}</span>
                 {i.note && <span className="italic">“{i.note}”</span>}
@@ -245,6 +279,7 @@ export function RecommendationsQueue({
   productTitles,
   onDecide,
   onAskDesk,
+  onOpenFix,
   loading,
   error,
 }: {
@@ -257,6 +292,7 @@ export function RecommendationsQueue({
   productTitles: Record<string, string>;
   onDecide: (id: string, d: Decision, note: string) => void;
   onAskDesk?: (item: LedgerItem) => void;
+  onOpenFix?: (patchId: string) => void;
   loading?: boolean;
   error?: string | null;
 }) {
@@ -322,6 +358,7 @@ export function RecommendationsQueue({
                     productTitles={productTitles}
                     onDecide={(d, note) => onDecide(item.id, d, note)}
                     onAskDesk={onAskDesk ? () => onAskDesk(item) : undefined}
+                    onOpenFix={onOpenFix}
                   />
                 ))}
               </div>
@@ -336,7 +373,7 @@ export function RecommendationsQueue({
         ) : (
           <div className="flex flex-col gap-3">
             <LedgerStats ledger={ledger} />
-            <RecentlyDecided items={recentVisible} storeNames={storeNames} onDecide={onDecide} />
+            <RecentlyDecided items={recentVisible} storeNames={storeNames} onDecide={onDecide} onOpenFix={onOpenFix} />
           </div>
         )}
       </DashboardPanel>

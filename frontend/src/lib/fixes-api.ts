@@ -138,6 +138,10 @@ export interface Patch {
   /** A17: on an `image.alt` patch, the images it writes. Its one change holds
    * the whole alt map as JSON; the card renders this list instead. */
   images?: AltImage[];
+  /** v1.23 (hq 0024 D4): the invalid patch this one re-proposes. */
+  retry_of?: string | null;
+  /** v1.23: on the first patch, once retried (`patch_id` null: nothing proposed). */
+  retried?: { at: string; patch_id: string | null } | null;
 }
 
 export interface ClassStats extends FixClass {
