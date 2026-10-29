@@ -145,7 +145,7 @@ describe('WaitingListView', () => {
 });
 
 describe('WaitingPanelView', () => {
-  it('shows the same total as the counts, and a stale source', () => {
+  it('shows the For you count (an older feed: every row is act), and a stale source', () => {
     const w = waiting({
       sources: { approvals: { generated_at: iso(45), age_seconds: 2700, stale: false } },
     });
@@ -153,7 +153,7 @@ describe('WaitingPanelView', () => {
       <WaitingPanelView waiting={w} loading={false} error={null} now={NOW} onOpen={noop} onDecisions={noop} />,
     );
     expect(html).toContain('Waiting on you');
-    expect(html).toContain('6 waiting');
+    expect(html).toContain('6 for you');
     expect(html).toContain('Hermes index: 45m old');
     expect(html).toContain('Hermes index 45m old');
   });

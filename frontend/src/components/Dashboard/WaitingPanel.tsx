@@ -2,9 +2,12 @@ import { useNavigate } from 'react-router';
 import { Inbox } from 'lucide-react';
 import { DashboardPanel } from './DashboardPanel';
 import { SmallButton } from '../shared/ui';
-import { WaitingListView } from '../Waiting/WaitingListView';
+import { WaitingListView, type RowActions } from '../Waiting/WaitingListView';
 import { useWaiting } from '../../lib/WaitingContext';
-import { fmtAge, groupItems, linkFor, sourceAges, staleSources, type Waiting, type WaitingItem } from '../../lib/waiting-api';
+import { bellCount, fmtAge, groupItems, linkFor, sourceAges, staleSources, type Waiting, type WaitingItem } from '../../lib/waiting-api';
+
+/** The Dashboard shows this many "For you" rows; the rest are in the bell. */
+export const PANEL_ROWS = 10;
 
 /** Pure: the panel's body for a given poll (see WaitingPanel). */
 export function WaitingPanelView({
@@ -14,6 +17,8 @@ export function WaitingPanelView({
   now,
   onOpen,
   onDecisions,
+  onMore = () => {},
+  actions,
 }: {
   waiting: Waiting | null;
   loading: boolean;
@@ -21,15 +26,18 @@ export function WaitingPanelView({
   now: number;
   onOpen: (item: WaitingItem) => void;
   onDecisions: () => void;
+  /** "N more": the full list (the bell's dropdown). */
+  onMore?: () => void;
+  actions?: RowActions;
 }) {
-  const total = waiting?.counts.total ?? 0;
+  const act = bellCount(waiting);
   return (
     <DashboardPanel
       icon={Inbox}
       title="Waiting on you"
-      tag={waiting ? `${total} waiting` : undefined}
+      tag={waiting ? `${act} for you` : undefined}
       size="full"
-      priority={total > 0}
+      priority={act > 0}
       loading={loading && !waiting}
       error={!waiting ? error : null}
       actions={
@@ -39,7 +47,15 @@ export function WaitingPanelView({
       }
     >
       <div className="max-h-[26rem] overflow-y-auto pr-1">
-        <WaitingListView groups={groupItems(waiting)} stale={staleSources(waiting)} now={now} perGroup={8} onOpen={onOpen} />
+        <WaitingListView
+          groups={groupItems(waiting, 'act')}
+          stale={staleSources(waiting)}
+          now={now}
+          limit={PANEL_ROWS}
+          onMore={onMore}
+          onOpen={onOpen}
+          actions={actions}
+        />
       </div>
       {waiting && (
         <p className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }} data-ages>
@@ -53,12 +69,12 @@ export function WaitingPanelView({
 }
 
 /**
- * The Dashboard's "Waiting on you" panel (hq 0020 P1): the bell's list,
- * grouped, with ages and due dates. Each row opens the page that holds its
- * action; the panel itself never acts.
+ * The Dashboard's "Waiting on you" panel (hq 0020 P1, 0023 D1): the For you
+ * lane only, at most ten rows, with "N more" opening the bell's full list.
+ * Each row opens the page that holds its action; a rec can be snoozed here.
  */
 export function WaitingPanel() {
-  const { waiting, loading, error, setDecisionsOpen, setG1Open } = useWaiting();
+  const { waiting, loading, error, setDecisionsOpen, setG1Open, setReportOpen, setBellOpen, rowStatus, dispatch, snooze } = useWaiting();
   const navigate = useNavigate();
   return (
     <WaitingPanelView
@@ -67,9 +83,12 @@ export function WaitingPanel() {
       error={error}
       now={Date.now()}
       onDecisions={() => setDecisionsOpen(true)}
+      onMore={() => setBellOpen(true)}
+      actions={{ status: rowStatus, onDispatch: dispatch, onSnooze: snooze }}
       onOpen={(item) => {
         if (item.opens === 'decisions') setDecisionsOpen(true);
         else if (item.opens === 'g1') setG1Open(String(item.id));
+        else if (item.opens === 'workorder') setReportOpen(String(item.id));
         else {
           const href = linkFor(item);
           if (href) navigate(href);

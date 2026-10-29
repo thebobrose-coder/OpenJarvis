@@ -5,6 +5,16 @@ import { isOpenable } from './WaitingListView';
 import { decideG1, type G1Item, type G1Outcome } from '../../lib/g1-api';
 import { KIND_LABEL, groupItems, type WaitingItem } from '../../lib/waiting-api';
 
+// The app store (via WaitingContext) reads localStorage when it loads; node has none.
+vi.hoisted(() => {
+  const store = new Map<string, string>();
+  (globalThis as unknown as { localStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> }).localStorage ??= {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, String(v)),
+    removeItem: (k: string) => void store.delete(k),
+  };
+});
+
 // Neutral fixtures only: this repo is public.
 const NOW = Date.parse('2026-10-24T08:00:00Z');
 

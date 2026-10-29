@@ -7,6 +7,11 @@
  * an index: every row links to the page that already holds the action.
  * /api/decisions and its tick are the Decisions drawer (0020 A5). Pure
  * helpers live here so they test without a DOM.
+ *
+ * v1.22 (hq 0023): every row has a lane. "For you" (`act`) is what only the
+ * operator can do and what the bell counts; "Dispatch" (`delegate`) can be
+ * handed to Claude Code or the Commerce desk in one click; "Filed" (`fyi`)
+ * is counted, never listed.
  */
 import { apiFetch } from './api';
 
@@ -14,6 +19,7 @@ export type WaitingKind =
   | 'proposal'
   | 'thesis_prompt'
   | 'patch'
+  | 'patch_class'
   | 'follow_up'
   | 'rec'
   | 'g0'
@@ -34,8 +40,20 @@ export interface WaitingItem {
   priority: number | null;
   link: { page: string; focus: string | number | null } | null;
   /** Local rows that open a drawer here instead of a page. */
-  opens?: 'decisions' | 'g1';
+  opens?: 'decisions' | 'g1' | 'workorder';
+  /** v1.22; absent on an older feed, which reads as `act`. */
+  lane?: Lane;
+  delegate?: Delegate | null;
+  /** `rec` only: how often the briefing proposed it again. */
+  times_seen?: number | null;
+  last_seen?: string | null;
 }
+
+export type Lane = 'act' | 'delegate' | 'fyi';
+
+export type Delegate =
+  | { target: 'workorder'; repo: string; scope: 'read-only' | 'edit' }
+  | { target: 'desk'; desk: string };
 
 export interface WaitingSource {
   generated_at: string | null;
@@ -94,6 +112,7 @@ export const KIND_ORDER: WaitingKind[] = [
   'thesis_prompt',
   'follow_up',
   'patch',
+  'patch_class',
   'rec',
   'workorder',
 ];
@@ -107,6 +126,7 @@ export const KIND_LABEL: Record<string, string> = {
   thesis_prompt: 'Thesis prompts',
   follow_up: 'BD follow-ups',
   patch: 'Catalog fixes',
+  patch_class: 'Invalid patches, by class',
   rec: 'Store recommendations',
   workorder: 'Work orders',
 };
@@ -169,11 +189,16 @@ export interface WaitingGroup {
   items: WaitingItem[];
 }
 
-/** Rows grouped by kind in KIND_ORDER (unknown kinds last); empty groups dropped. */
-export function groupItems(w: Pick<Waiting, 'items' | 'counts'> | null): WaitingGroup[] {
+export const laneOf = (item: Pick<WaitingItem, 'lane'>): Lane => item.lane ?? 'act';
+
+/** Rows grouped by kind in KIND_ORDER (unknown kinds last); empty groups
+ * dropped. With a lane, only that lane's rows, counted as listed: a kind's
+ * uncapped count spans lanes, so it only applies to the whole list. */
+export function groupItems(w: Pick<Waiting, 'items' | 'counts'> | null, lane?: Lane): WaitingGroup[] {
   if (!w) return [];
   const byKind = new Map<string, WaitingItem[]>();
   for (const item of w.items) {
+    if (lane && laneOf(item) !== lane) continue;
     const list = byKind.get(item.kind) ?? [];
     list.push(item);
     byKind.set(item.kind, list);
@@ -182,7 +207,8 @@ export function groupItems(w: Pick<Waiting, 'items' | 'counts'> | null): Waiting
   return kinds
     .map((kind) => {
       const items = byKind.get(kind) ?? [];
-      return { kind, label: KIND_LABEL[kind] ?? kind, count: Math.max(w.counts[kind] ?? 0, items.length), items };
+      const count = lane ? items.length : Math.max(w.counts[kind] ?? 0, items.length);
+      return { kind, label: KIND_LABEL[kind] ?? kind, count, items };
     })
     .filter((g) => g.count > 0);
 }
@@ -288,4 +314,144 @@ export function scrollToWhenReady(ids: string[], timeoutMs = 8000): () => void {
   };
   attempt();
   return () => window.clearTimeout(timer);
+}
+
+// -- lanes, Dispatch and Snooze (v1.22, hq 0023) ------------------------------
+
+export const TABS: { lane: Lane; label: string }[] = [
+  { lane: 'act', label: 'For you' },
+  { lane: 'delegate', label: 'Dispatch' },
+  { lane: 'fyi', label: 'Filed' },
+];
+
+/** A lane's count: the server's (uncapped) when present, else the listed rows. */
+export function laneCount(w: Pick<Waiting, 'items' | 'counts'> | null, lane: Lane): number {
+  if (!w) return 0;
+  const n = w.counts[lane];
+  return typeof n === 'number' ? n : w.items.filter((i) => laneOf(i) === lane).length;
+}
+
+/** The bell's number: what only the operator can do. */
+export const bellCount = (w: Pick<Waiting, 'items' | 'counts'> | null) => laneCount(w, 'act');
+
+export interface FiledRow {
+  key: string;
+  label: string;
+  count: number;
+  /** A page to open, or the work-order reports drawer. */
+  href?: string;
+  opens?: 'workorder';
+}
+
+/** The Filed tab: counts only, each opening where it is filed. Hermes's fyi
+ * rows today are compliance recs with a fix already in hand (0023 lane rules). */
+export function filedRows(w: Pick<Waiting, 'counts'> | null): FiledRow[] {
+  if (!w) return [];
+  const done = w.counts.workorder_done ?? 0;
+  const hermes = Math.max(0, (w.counts.fyi ?? 0) - done);
+  const rows: FiledRow[] = [];
+  if (hermes) rows.push({ key: 'recs', label: 'Compliance recommendations with a fix in hand', count: hermes, href: '/commerce' });
+  if (done) rows.push({ key: 'workorders', label: `Work order${done === 1 ? '' : 's'} done`, count: done, opens: 'workorder' });
+  return rows;
+}
+
+/** The Dispatch button's words, by target and stage. */
+export function dispatchLabel(d: Delegate | null | undefined): string | null {
+  if (!d) return null;
+  if (d.target === 'desk') return 'Ask the Commerce desk';
+  return `Dispatch to Claude Code (${d.scope === 'edit' ? 'edit' : 'read-only'})`;
+}
+
+export const SNOOZE_DAYS = [1, 3, 7, 14, 30] as const;
+export const SNOOZE_DEFAULT = 7;
+
+/** The snooze note the bridge takes: "" for the 7-day default, else the days. */
+export const snoozeNote = (days: number) => (days === SNOOZE_DEFAULT ? '' : String(days));
+
+export const rowKey = (item: Pick<WaitingItem, 'kind' | 'id'>) => `${item.kind}:${item.id}`;
+
+export interface DispatchResult {
+  order_id: string;
+  path: string;
+  scope: string;
+  repo: string;
+  waits_for_tomorrow: boolean;
+  decided: boolean | null;
+  decide_error: string | null;
+}
+
+/** One click on a work-order row (0023 D2); the server re-reads the row. */
+export async function dispatchRow(item: WaitingItem): Promise<DispatchResult> {
+  const res = await apiFetch('/api/dispatch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      kind: item.kind,
+      id: String(item.id),
+      source_feed: item.source_feed,
+      title: item.title,
+      detail: item.detail,
+      scope: item.scope,
+      delegate: item.delegate,
+      link: item.link,
+    }),
+  });
+  if (!res.ok) throw new WaitingError(res.status, await detail(res, `Failed: ${res.status}`));
+  return res.json();
+}
+
+/** Snooze one rec. A 400 from the bridge is shown, never retried. */
+export async function snoozeRec(id: string | number, days: number): Promise<void> {
+  const res = await apiFetch(`/api/commerce/recommendations/${encodeURIComponent(String(id))}/snoozed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note: snoozeNote(days) }),
+  });
+  if (!res.ok) throw new WaitingError(res.status, await detail(res, `Failed: ${res.status}`));
+}
+
+/** What a row says after its action: the order id, or the error. */
+export type RowStatus =
+  | { kind: 'busy' }
+  | { kind: 'dispatched'; orderId: string; waits: boolean; decided: boolean | null; decideError: string | null }
+  | { kind: 'snoozed'; days: number }
+  | { kind: 'error'; message: string };
+
+export function rowStatusText(s: RowStatus): string {
+  switch (s.kind) {
+    case 'busy':
+      return 'Working…';
+    case 'dispatched': {
+      const parts = [`Dispatched as ${s.orderId}`];
+      if (s.waits) parts.push("today's dispatch cap is reached, so it runs tomorrow");
+      if (s.decided === false) parts.push(`the rec wasn't marked accepted (${s.decideError ?? 'bridge error'})`);
+      else if (s.decided) parts.push('it leaves this list within 2 minutes');
+      return parts.join('; ');
+    }
+    case 'snoozed':
+      return `Snoozed for ${s.days} day${s.days === 1 ? '' : 's'}; it leaves this list within 2 minutes`;
+    case 'error':
+      return s.message;
+  }
+}
+
+// -- work-order reports (O4) --------------------------------------------------
+
+export interface WorkOrderReport {
+  id: string;
+  status: 'done' | 'failed' | 'blocked' | 'rejected' | (string & {});
+  repo: string | null;
+  scope: string | null;
+  branch: string | null;
+  costUsd: number | null;
+  finishedAt: string;
+  reason: string | null;
+  needsHuman: string | null;
+  summary: string | null;
+}
+
+export async function fetchReports(): Promise<WorkOrderReport[]> {
+  const res = await apiFetch('/api/workorders/reports');
+  if (!res.ok) throw new WaitingError(res.status, await detail(res, `Failed: ${res.status}`));
+  return (await res.json()).reports ?? [];
 }

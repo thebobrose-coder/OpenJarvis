@@ -1,25 +1,145 @@
+import { useState } from 'react';
 import { CheckCircle } from 'lucide-react';
-import { Chip } from '../shared/ui';
+import { Chip, SmallButton } from '../shared/ui';
 import {
+  SNOOZE_DAYS,
+  SNOOZE_DEFAULT,
+  TABS,
   ago,
+  dispatchLabel,
   dueLabel,
+  filedRows,
   fmtAge,
+  groupItems,
+  laneCount,
+  laneOf,
   linkFor,
+  rowKey,
+  rowStatusText,
+  staleSources,
+  type FiledRow,
+  type Lane,
+  type RowStatus,
   type StaleNote,
+  type Waiting,
   type WaitingGroup,
   type WaitingItem,
 } from '../../lib/waiting-api';
 
 export const EMPTY = 'Nothing waiting on you';
+export const EMPTY_LANE: Record<Lane, string> = {
+  act: EMPTY,
+  delegate: 'Nothing to dispatch',
+  fyi: 'Nothing filed',
+};
 
 /** Whether a row does anything when clicked: a page link or a drawer here. */
-export const isOpenable = (item: WaitingItem) => item.opens === 'decisions' || item.opens === 'g1' || linkFor(item) != null;
+export const isOpenable = (item: WaitingItem) =>
+  item.opens === 'decisions' || item.opens === 'g1' || item.opens === 'workorder' || linkFor(item) != null;
 
-function Row({ item, now, compact, onOpen }: { item: WaitingItem; now: number; compact: boolean; onOpen: (item: WaitingItem) => void }) {
+/** The two row actions (hq 0023): Dispatch on a delegate row, Snooze on a rec. */
+export interface RowActions {
+  status: Record<string, RowStatus>;
+  onDispatch: (item: WaitingItem) => void;
+  onSnooze: (item: WaitingItem, days: number) => void;
+}
+
+function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) {
+  const [armed, setArmed] = useState(false);
+  const [days, setDays] = useState<number>(SNOOZE_DEFAULT);
+  const status = actions.status[rowKey(item)];
+  const busy = status?.kind === 'busy';
+  const lane = laneOf(item);
+  const label = lane === 'delegate' ? dispatchLabel(item.delegate) : null;
+  const snoozable = item.kind === 'rec' && lane !== 'fyi';
+  const done = status?.kind === 'dispatched' || status?.kind === 'snoozed';
+  if (!label && !snoozable) return null;
+  return (
+    <div className="flex flex-col gap-1 px-2 pb-1.5">
+      {!done && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {label &&
+            (armed ? (
+              <>
+                <span data-confirm-dispatch={rowKey(item)}>
+                  <SmallButton
+                    tone="accent"
+                    disabled={busy}
+                    onClick={() => {
+                      setArmed(false);
+                      actions.onDispatch(item);
+                    }}
+                  >
+                    Confirm: {label}
+                  </SmallButton>
+                </span>
+                <SmallButton onClick={() => setArmed(false)}>Cancel</SmallButton>
+              </>
+            ) : (
+              <span data-dispatch={rowKey(item)}>
+                <SmallButton disabled={busy} onClick={() => setArmed(true)}>
+                  {label}
+                </SmallButton>
+              </span>
+            ))}
+          {snoozable && !armed && (
+            <span className="flex items-center gap-1">
+              <select
+                aria-label="Snooze for"
+                data-snooze-days
+                value={days}
+                disabled={busy}
+                onChange={(e) => setDays(Number(e.target.value))}
+                className="text-[11px] rounded px-1 py-0.5"
+                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+              >
+                {SNOOZE_DAYS.map((d) => (
+                  <option key={d} value={d}>
+                    {d} day{d === 1 ? '' : 's'}
+                  </option>
+                ))}
+              </select>
+              <span data-snooze={rowKey(item)}>
+                <SmallButton disabled={busy} onClick={() => actions.onSnooze(item, days)}>
+                  Snooze
+                </SmallButton>
+              </span>
+            </span>
+          )}
+        </div>
+      )}
+      {status && (
+        <span
+          className="text-[11px]"
+          data-row-status={status.kind}
+          style={{ color: status.kind === 'error' ? 'var(--color-error)' : 'var(--color-text-secondary)' }}
+        >
+          {rowStatusText(status)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Row({
+  item,
+  now,
+  compact,
+  onOpen,
+  actions,
+}: {
+  item: WaitingItem;
+  now: number;
+  compact: boolean;
+  onOpen: (item: WaitingItem) => void;
+  actions?: RowActions;
+}) {
   const due = dueLabel(item.due, now);
   const overdue = due?.endsWith('overdue') ?? false;
   const openable = isOpenable(item);
   const href = linkFor(item);
+  const seen = item.times_seen ?? 0;
+  const age = item.last_seen ?? item.created_at;
   return (
     <li>
       <button
@@ -30,7 +150,15 @@ function Row({ item, now, compact, onOpen }: { item: WaitingItem; now: number; c
         data-kind={item.kind}
         className="w-full text-left flex flex-col gap-0.5 rounded-md px-2 py-1.5 cursor-pointer disabled:cursor-default"
         style={{ background: 'transparent', border: 'none' }}
-        title={openable ? (item.opens === 'decisions' ? 'Open the Decisions drawer' : `Open ${href}`) : undefined}
+        title={
+          openable
+            ? item.opens === 'decisions'
+              ? 'Open the Decisions drawer'
+              : item.opens === 'workorder'
+              ? 'Open the report'
+              : `Open ${href}`
+            : undefined
+        }
       >
         <span className="flex items-center gap-1.5 min-w-0">
           <span className="text-[12.5px] truncate" style={{ color: 'var(--color-text)' }}>
@@ -40,7 +168,12 @@ function Row({ item, now, compact, onOpen }: { item: WaitingItem; now: number; c
         <span className="flex flex-wrap items-center gap-1.5 text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
           {item.scope && <Chip tone="muted">{item.scope}</Chip>}
           {due && <Chip tone={overdue ? 'error' : 'warning'}>{due}</Chip>}
-          {item.created_at && <span>{ago(item.created_at, now)}</span>}
+          {seen >= 2 && (
+            <Chip tone="accent" title="The briefing proposed this again">
+              seen {seen} times
+            </Chip>
+          )}
+          {age && <span>{ago(age, now)}</span>}
         </span>
         {!compact && item.detail && (
           <span className="text-[11.5px] line-clamp-2" style={{ color: 'var(--color-text-secondary)' }}>
@@ -48,15 +181,16 @@ function Row({ item, now, compact, onOpen }: { item: WaitingItem; now: number; c
           </span>
         )}
       </button>
+      {actions && <Actions item={item} actions={actions} />}
     </li>
   );
 }
 
 /**
- * The merged list, grouped by kind with each group's uncapped count. Rows
- * link to the page holding the action (or open the Decisions drawer); the
- * list itself never acts. Pure: the bell and the Dashboard panel pass the
- * shared poll in.
+ * The merged list, grouped by kind with each group's count. Rows link to the
+ * page holding the action (or open a drawer here); the list itself acts only
+ * through the two row actions, when they are passed. Pure: the bell and the
+ * Dashboard panel pass the shared poll in.
  */
 export function WaitingListView({
   groups,
@@ -64,7 +198,11 @@ export function WaitingListView({
   now,
   compact = false,
   perGroup,
+  limit,
+  onMore,
+  empty = EMPTY,
   onOpen,
+  actions,
 }: {
   groups: WaitingGroup[];
   stale?: StaleNote[];
@@ -72,8 +210,17 @@ export function WaitingListView({
   compact?: boolean;
   /** Rows shown per group before "+ n more" (the count stays whole). */
   perGroup?: number;
+  /** Rows shown in all, across groups, before "N more" (the Dashboard's 10). */
+  limit?: number;
+  /** Where "N more" goes: the full list. */
+  onMore?: () => void;
+  empty?: string;
   onOpen: (item: WaitingItem) => void;
+  actions?: RowActions;
 }) {
+  let left = limit ?? Infinity;
+  const total = groups.reduce((n, g) => n + g.count, 0);
+  let shownAll = 0;
   return (
     <div className="flex flex-col gap-3">
       {stale.length > 0 && (
@@ -84,11 +231,14 @@ export function WaitingListView({
       {groups.length === 0 ? (
         <div className="flex items-center gap-2 py-4 text-[12.5px]" style={{ color: 'var(--color-text-secondary)' }}>
           <CheckCircle size={15} style={{ opacity: 0.5 }} />
-          {EMPTY}
+          {empty}
         </div>
       ) : (
         groups.map((g) => {
-          const shown = perGroup ? g.items.slice(0, perGroup) : g.items;
+          if (left <= 0) return null;
+          const shown = g.items.slice(0, Math.min(perGroup ?? Infinity, left));
+          left -= shown.length;
+          shownAll += shown.length;
           const more = g.count - shown.length;
           return (
             <section key={g.kind} data-group={g.kind}>
@@ -101,10 +251,10 @@ export function WaitingListView({
               </h3>
               <ul className="flex flex-col">
                 {shown.map((item) => (
-                  <Row key={`${item.kind}:${item.id}`} item={item} now={now} compact={compact} onOpen={onOpen} />
+                  <Row key={rowKey(item)} item={item} now={now} compact={compact} onOpen={onOpen} actions={actions} />
                 ))}
               </ul>
-              {more > 0 && (
+              {more > 0 && limit == null && (
                 <p className="text-[10.5px] px-2" style={{ color: 'var(--color-text-tertiary)' }}>
                   + {more} more on the page
                 </p>
@@ -112,6 +262,112 @@ export function WaitingListView({
             </section>
           );
         })
+      )}
+      {limit != null && total > shownAll && (
+        <button
+          type="button"
+          data-more
+          onClick={onMore}
+          className="self-start text-[11px] px-2 cursor-pointer"
+          style={{ background: 'transparent', border: 'none', color: 'var(--color-accent)' }}
+        >
+          {total - shownAll} more
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Filed (`fyi`): counts only, each opening the page or drawer it is filed in. */
+export function FiledView({ rows, onOpen }: { rows: FiledRow[]; onOpen: (row: FiledRow) => void }) {
+  if (rows.length === 0) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-[12.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+        <CheckCircle size={15} style={{ opacity: 0.5 }} />
+        {EMPTY_LANE.fyi}
+      </div>
+    );
+  }
+  return (
+    <ul className="flex flex-col">
+      {rows.map((r) => (
+        <li key={r.key}>
+          <button
+            type="button"
+            data-filed={r.key}
+            data-href={r.href}
+            onClick={() => onOpen(r)}
+            className="w-full text-left flex items-center justify-between gap-2 rounded-md px-2 py-1.5 cursor-pointer text-[12.5px]"
+            style={{ background: 'transparent', border: 'none', color: 'var(--color-text)' }}
+          >
+            <span>{r.label}</span>
+            <span data-count style={{ color: 'var(--color-text-tertiary)' }}>
+              {r.count}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The three tabs over one poll: For you, Dispatch, Filed (hq 0023 D1). */
+export function WaitingTabsView({
+  waiting,
+  tab,
+  onTab,
+  now,
+  compact = false,
+  perGroup,
+  onOpen,
+  onFiled,
+  actions,
+}: {
+  waiting: Waiting | null;
+  tab: Lane;
+  onTab: (lane: Lane) => void;
+  now: number;
+  compact?: boolean;
+  perGroup?: number;
+  onOpen: (item: WaitingItem) => void;
+  onFiled: (row: FiledRow) => void;
+  actions?: RowActions;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div role="tablist" className="flex gap-1 px-1">
+        {TABS.map((t) => (
+          <button
+            key={t.lane}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.lane}
+            data-tab={t.lane}
+            onClick={() => onTab(t.lane)}
+            className="text-[11.5px] rounded-md px-2 py-1 cursor-pointer"
+            style={{
+              background: tab === t.lane ? 'var(--color-bg-tertiary)' : 'transparent',
+              color: tab === t.lane ? 'var(--color-text)' : 'var(--color-text-secondary)',
+              border: 'none',
+            }}
+          >
+            {t.label} <span data-tab-count>{laneCount(waiting, t.lane)}</span>
+          </button>
+        ))}
+      </div>
+      {tab === 'fyi' ? (
+        <FiledView rows={filedRows(waiting)} onOpen={onFiled} />
+      ) : (
+        <WaitingListView
+          groups={groupItems(waiting, tab)}
+          stale={tab === 'act' ? staleSources(waiting) : []}
+          now={now}
+          compact={compact}
+          perGroup={perGroup}
+          empty={EMPTY_LANE[tab]}
+          onOpen={onOpen}
+          actions={actions}
+        />
       )}
     </div>
   );

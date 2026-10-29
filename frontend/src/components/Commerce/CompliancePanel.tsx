@@ -1,10 +1,11 @@
 import { MessagesSquare, ShieldCheck } from 'lucide-react';
-import type { ComplianceFinding, ComplianceFindings } from '../../lib/commerce-api';
+import type { ComplianceFinding, ComplianceFindings, RuleGroup } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { SpeakButton } from '../shared/SpeakButton';
 import { firstBlock } from '../../lib/voice-api';
 import { num } from './format';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
+import { ago } from '../../lib/waiting-api';
 import { PrecheckWidget, type PrecheckProps } from './PrecheckWidget';
 
 /** The advisory reasons (v1.4, 0011 A12) in words; an unknown one shows as is. */
@@ -41,6 +42,53 @@ function FindingLine({ f, onAskDesk }: { f: ComplianceFinding; onAskDesk?: (f: C
         </button>
       )}
     </>
+  );
+}
+
+/** The open findings in one (store, rule) group: same rule text, and the
+ * finding's property is the store's (or the group names the property). */
+export function groupFindings(g: RuleGroup, f: ComplianceFindings): ComplianceFinding[] {
+  const property = f.store_properties?.[g.store] ?? g.store;
+  return (f.open_findings ?? []).filter((x) => x.rule === g.rule && (x.property === property || x.property === g.store));
+}
+
+/** v1.22 roll-up: one collapsed line per (store, rule), as served (no merging). */
+function RuleGroups({ findings, onAskDesk }: { findings: ComplianceFindings; onAskDesk?: (f: ComplianceFinding) => void }) {
+  const groups = findings.by_rule ?? [];
+  if (groups.length === 0) return null;
+  const now = Date.now();
+  return (
+    <div className="flex flex-col gap-1 text-[11.5px]" data-by-rule style={{ color: 'var(--color-text-secondary)' }}>
+      <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+        By rule
+      </span>
+      {groups.map((g) => {
+        const rows = groupFindings(g, findings);
+        return (
+          <details key={`${g.store}|${g.rule}`} data-rule-group={g.store}>
+            <summary className="cursor-pointer flex-wrap gap-1.5" style={{ color: 'var(--color-text)' }}>
+              <span className="inline-flex flex-wrap items-center gap-1.5">
+                <Chip tone="muted">{g.store}</Chip>
+                <span>{g.rule}</span>
+                <Chip tone="warning">{num(g.open)}</Chip>
+                {g.newest_at && <span style={{ color: 'var(--color-text-tertiary)' }}>newest {ago(g.newest_at, now)}</span>}
+              </span>
+            </summary>
+            <ul className="flex flex-col gap-1 mt-1 ml-3">
+              {rows.length === 0 ? (
+                <li style={{ color: 'var(--color-text-tertiary)' }}>The findings aren't in this copy of the feed.</li>
+              ) : (
+                rows.map((f) => (
+                  <li key={f.id} className="flex flex-wrap items-center gap-1.5">
+                    <FindingLine f={f} onAskDesk={onAskDesk} />
+                  </li>
+                ))
+              )}
+            </ul>
+          </details>
+        );
+      })}
+    </div>
   );
 }
 
@@ -106,6 +154,7 @@ export function CompliancePanel({
               </Chip>
             ))}
           </div>
+          <RuleGroups findings={findings} onAskDesk={onAskDesk} />
           {majority.length > 0 && (
             <details className="text-[11.5px]" data-majority style={{ color: 'var(--color-text-secondary)' }}>
               <summary className="cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}>

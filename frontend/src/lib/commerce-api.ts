@@ -234,6 +234,20 @@ export interface ComplianceFindings extends FeedMeta {
   open_findings?: ComplianceFinding[];
   /** v1.4 (A12): spec-only findings on the writer's carried-over copy. */
   advisory_findings?: AdvisoryFinding[];
+  /** v1.22: open findings per (store, rule), most first; sums to counts.open. */
+  by_rule?: RuleGroup[];
+  /** Store slug to the sentinel's property id. */
+  store_properties?: Record<string, string>;
+}
+
+export interface RuleGroup {
+  /** The store slug, or the property id for a property with no store. */
+  store: string;
+  /** The judge's rule text as written: one rule can show as two groups. */
+  rule: string;
+  open: number;
+  newest_at: string | null;
+  example_finding_id?: string | null;
 }
 
 export interface ComplianceFinding {
