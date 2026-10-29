@@ -148,6 +148,11 @@ def wired(monkeypatch, data):
         return None, None  # the G1 mirror has its own tests
 
     monkeypatch.setattr(wr, "_g1", no_g1)
+
+    async def recs():
+        return state.get("recs")
+
+    monkeypatch.setattr(wr, "_recs", recs)
     return state
 
 
@@ -543,6 +548,124 @@ def test_reports_route_is_read_only_and_recent(wired, data):
     first = body["reports"][0]
     assert first["summary"] == "summary of wo-a" and first["costUsd"] == 0.42
     assert _client("10.0.0.5").get("/api/workorders/reports").status_code == 403
+
+
+# ---------- Dismiss a work-order row (hq 0024 J4) ----------
+
+WO_BLOCKED = "wo-20260101-sample-blocked-order-a1b2c3"
+WO_DONE = "wo-20260101-sample-done-order-d4e5f6"
+
+
+def _snapshot(root: Path) -> dict[str, bytes]:
+    return {
+        str(p.relative_to(root)): p.read_bytes()
+        for folder in ("blocked", "done", "approvals")
+        if (root / folder).is_dir()
+        for p in (root / folder).rglob("*")
+        if p.is_file()
+    }
+
+
+def test_dismiss_writes_once_then_409(wired, data):
+    _report(data, "blocked", WO_BLOCKED, "blocked")
+    root = data / "workorders"
+    (root / "approvals").mkdir()
+    (root / "approvals" / "sample.json").write_text("{}", encoding="utf-8")
+    before = _snapshot(root)
+    r = _client().post(
+        f"/api/workorders/{WO_BLOCKED}/dismiss", json={"note": "read it"}
+    )
+    assert r.status_code == 200, r.text
+    doc = json.loads(
+        (root / "dismissed" / f"{WO_BLOCKED}.json").read_text(encoding="utf-8")
+    )
+    assert doc["id"] == WO_BLOCKED and doc["note"] == "read it"
+    assert doc["dismissedAt"] == r.json()["dismissedAt"]
+    assert [p.name for p in (root / "dismissed").iterdir()] == [f"{WO_BLOCKED}.json"]
+    again = _client().post(f"/api/workorders/{WO_BLOCKED}/dismiss")
+    assert again.status_code == 409
+    # Nothing under blocked/, done/ or approvals/ changed.
+    assert _snapshot(root) == before
+
+
+def test_dismiss_refuses_a_bad_id_note_or_missing_report(wired, data):
+    _report(data, "done", WO_DONE, "done")
+    c = _client()
+    for bad in ("wo-1", "..%2Fetc", "wo-20260101-x-zzzzzz", "WO-20260101-a-a1b2c3"):
+        assert c.post(f"/api/workorders/{bad}/dismiss").status_code in (400, 404)
+    missing = "wo-20260101-not-here-000000"
+    assert c.post(f"/api/workorders/{missing}/dismiss").status_code == 400
+    assert (
+        c.post(
+            f"/api/workorders/{WO_DONE}/dismiss", json={"note": "two\nlines"}
+        ).status_code
+        == 400
+    )
+    assert (
+        c.post(
+            f"/api/workorders/{WO_DONE}/dismiss", json={"note": "x" * 201}
+        ).status_code
+        == 400
+    )
+    assert not (data / "workorders" / "dismissed" / f"{WO_DONE}.json").exists()
+    assert (
+        _client("10.0.0.5").post(f"/api/workorders/{WO_DONE}/dismiss").status_code
+        == 403
+    )
+    # A done report can be dismissed too.
+    assert c.post(f"/api/workorders/{WO_DONE}/dismiss").status_code == 200
+
+
+def test_a_dismissed_blocked_row_leaves_for_you_and_stays_in_reports(wired, data):
+    _report(data, "blocked", WO_BLOCKED, "blocked")
+    _report(data, "done", WO_DONE, "done")
+    body = _client().get("/api/waiting").json()
+    act_before = body["counts"]["act"]
+    assert [i["id"] for i in body["items"] if i["kind"] == "workorder"] == [WO_BLOCKED]
+    _client().post(f"/api/workorders/{WO_BLOCKED}/dismiss", json={"note": "moot"})
+    body = _client().get("/api/waiting").json()
+    assert [i for i in body["items"] if i["kind"] == "workorder"] == []
+    assert body["counts"]["act"] == act_before - 1
+    assert body["counts"]["workorder"] == 0 and body["counts"]["workorder_done"] == 1
+    assert body["counts"]["workorder_dismissed"] == 1
+    reports = _client().get("/api/workorders/reports").json()["reports"]
+    gone = next(r for r in reports if r["id"] == WO_BLOCKED)
+    assert gone["dismissedAt"] and gone["dismissNote"] == "moot"
+    kept = next(r for r in reports if r["id"] == WO_DONE)
+    assert kept["dismissedAt"] is None
+
+
+# ---------- Filed: recs that need the theme (hq 0024 J1) ----------
+
+
+def test_theme_recs_are_filed_with_their_note(wired):
+    note = "needs the theme (hq 0024 D3)"
+    wired["recs"] = {
+        "open": [
+            {
+                "id": "aaa111aaa111",
+                "store": "store-a",
+                "title": "Add structured data to the sample product",
+                "detail": {"category": "seo_technical", "note": note},
+            },
+            {"id": "bbb222bbb222", "store": "store-a", "title": "x", "detail": {}},
+            {"id": "ccc333ccc333", "title": "y", "detail": "not a dict"},
+        ]
+    }
+    body = _client().get("/api/waiting").json()
+    assert body["filed"]["theme"] == [
+        {
+            "id": "aaa111aaa111",
+            "store": "store-a",
+            "title": "Add structured data to the sample product",
+            "note": note,
+            "fix_patch_id": None,
+        }
+    ]
+    # The list itself is unchanged: a theme rec is fyi, never a row.
+    assert all(i["id"] != "aaa111aaa111" for i in body["items"])
+    wired["recs"] = None
+    assert _client().get("/api/waiting").json()["filed"]["theme"] == []
 
 
 # ---------- the local chat header (0023 D8) ----------

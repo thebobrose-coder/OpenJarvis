@@ -23,8 +23,10 @@ The local folders come from one setting, the private workspace's data root
 are simply absent. A missing or broken source never fails the list: its
 entry in ``sources`` carries the error instead.
 
-``POST /api/decisions/tick`` is the one write: it ticks one decision box in
-exactly the A5 form. Every route answers only requests from this machine.
+Two writes: ``POST /api/decisions/tick`` ticks one decision box in exactly the
+A5 form, and ``POST /api/workorders/<id>/dismiss`` records that the operator
+has read a work-order report (hq 0024 J4). Every route answers only requests
+from this machine.
 """
 
 from __future__ import annotations
@@ -64,6 +66,11 @@ LOCAL_SOURCES = ("trading_status", "inbox", "studio", "workorders", "g1_mirror")
 # status. No match is ``act``: a missing rule never hides a decision.
 LOCAL_LANES = {"g0": "act", "g1": "act", "decision": "act", "x402": "act"}
 WORKORDER_LANES = {"blocked": "act", "rejected": "act", "failed": "act", "done": "fyi"}
+# The order-id form both issuers use (``wo-<yyyymmdd>-<slug>-<hex6>``).
+ORDER_ID = re.compile(r"^wo-\d{8}-[a-z0-9-]{1,40}-[0-9a-f]{6}$")
+DISMISS_NOTE_MAX = 200
+THEME_NOTE = "needs the theme"
+THEME_MAX = 50
 
 
 def _data_dir() -> Path | None:
@@ -367,6 +374,7 @@ def read_reports(
     root = data / "workorders"
     reports, newest = [], None
     cutoff = now - timedelta(days=WORKORDER_DAYS)
+    dismissed = read_dismissed(data)
     for folder, wanted in (
         ("blocked", {"blocked", "rejected"}),
         ("done", {"done", "failed"}),
@@ -388,9 +396,11 @@ def read_reports(
             ):
                 continue
             claude = doc.get("claude") if isinstance(doc.get("claude"), dict) else {}
+            rid = str(doc.get("id") or report.name.split(".")[0])
+            gone = dismissed.get(rid) or {}
             reports.append(
                 {
-                    "id": str(doc.get("id") or report.name.split(".")[0]),
+                    "id": rid,
                     "status": doc.get("status"),
                     "repo": doc.get("repo") or None,
                     "scope": doc.get("scope") or None,
@@ -400,20 +410,77 @@ def read_reports(
                     "reason": _clip(doc.get("reason"), 1000) or None,
                     "needsHuman": _clip(claude.get("needsHuman"), 1000) or None,
                     "summary": _clip(claude.get("summary"), 2000) or None,
+                    "dismissedAt": gone.get("dismissedAt") or None,
+                    "dismissNote": gone.get("note") or None,
                 }
             )
     reports.sort(key=lambda r: r["finishedAt"], reverse=True)
     return reports, newest
 
 
+def read_dismissed(data: Path) -> dict[str, dict[str, Any]]:
+    """The operator's dismissals (hq 0024 J4), by order id. Only this app
+    reads ``workorders/dismissed/``; the dispatcher and Hermes never do."""
+    folder = data / "workorders" / "dismissed"
+    out: dict[str, dict[str, Any]] = {}
+    for f in folder.glob("wo-*.json") if folder.is_dir() else []:
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict):
+            out[f.stem] = doc
+    return out
+
+
+def dismiss_order(data: Path, order_id: str, note: str, now: datetime) -> dict:
+    """Write ``workorders/dismissed/<id>.json`` once: atomic, never
+    overwriting (a second dismiss is 409). It names a report in ``blocked/``
+    or ``done/``, and touches no order, report or ``approvals/`` file."""
+    if not ORDER_ID.fullmatch(order_id):
+        raise HTTPException(status_code=400, detail="Invalid work-order id")
+    root = data / "workorders"
+    if not any(
+        (root / folder / f"{order_id}.report.json").is_file()
+        for folder in ("blocked", "done")
+    ):
+        raise HTTPException(status_code=400, detail="No report for that work order")
+    folder = root / "dismissed"
+    folder.mkdir(exist_ok=True)
+    target = folder / f"{order_id}.json"
+    if target.exists():
+        raise HTTPException(status_code=409, detail="Already dismissed")
+    doc = {"id": order_id, "dismissedAt": _iso(now), "note": note}
+    tmp = folder / f".{order_id}.tmp"
+    tmp.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    try:
+        try:
+            os.link(tmp, target)  # fails if the target exists
+        except FileExistsError:
+            raise HTTPException(status_code=409, detail="Already dismissed")
+        except OSError:
+            if target.exists():
+                raise HTTPException(status_code=409, detail="Already dismissed")
+            os.replace(tmp, target)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    return doc
+
+
 def _workorder_items(
     data: Path, now: datetime
-) -> tuple[list[dict[str, Any]], int, datetime | None]:
-    """Rows for blocked, rejected and failed orders (``act``), and the count
-    of done ones (``fyi``: counted, not listed). Every row opens the report."""
+) -> tuple[list[dict[str, Any]], int, int, datetime | None]:
+    """Rows for blocked, rejected and failed orders (``act``), the count of
+    done ones (``fyi``: counted, not listed) and of dismissed ones (in no lane,
+    counted apart so Filed can still open the report). Every row opens the
+    report."""
     reports, newest = read_reports(data, now)
-    items, filed = [], 0
+    items, filed, dismissed = [], 0, 0
     for r in reports:
+        if r.get("dismissedAt"):
+            dismissed += 1
+            continue
         lane = WORKORDER_LANES.get(r["status"], "act")
         if lane == "fyi":
             filed += 1
@@ -436,7 +503,7 @@ def _workorder_items(
                 "delegate": None,
             }
         )
-    return items, filed, newest
+    return items, filed, dismissed, newest
 
 
 def x402_items(status: dict[str, Any] | None, now: datetime) -> list[dict[str, Any]]:
@@ -536,6 +603,37 @@ async def _hermes() -> tuple[dict[str, Any] | None, str | None]:
         return None, str(exc.detail)
 
 
+async def _recs() -> dict[str, Any] | None:
+    from openjarvis.server.commerce_routes import get_feed
+
+    try:
+        return await get_feed("ecom_recommendations")
+    except HTTPException:
+        return None
+
+
+def theme_recs(feed: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Open recs filed as needing the theme (hq 0024 D3): ``fyi``, so not in
+    ``approvals``; their note is on the ledger item's ``detail.note``."""
+    rows = []
+    for item in (feed or {}).get("open") or []:
+        if not isinstance(item, dict):
+            continue
+        detail = item.get("detail") if isinstance(item.get("detail"), dict) else {}
+        note = detail.get("note")
+        if isinstance(note, str) and note.startswith(THEME_NOTE):
+            rows.append(
+                {
+                    "id": item.get("id"),
+                    "store": item.get("store"),
+                    "title": _clip(item.get("title"), 140),
+                    "note": _clip(note, 200),
+                    "fix_patch_id": item.get("fix_patch_id"),
+                }
+            )
+    return rows[:THEME_MAX]
+
+
 async def _trading() -> tuple[dict[str, Any] | None, str | None]:
     from openjarvis.server.trading_routes import get_feed
 
@@ -611,6 +709,7 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
             "stale": True,
             "error": error,
         }
+    theme = theme_recs(await _recs())
 
     trading, error = await _trading()
     x402 = _local_lane(x402_items(trading, now))
@@ -645,9 +744,10 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
         except OSError as exc:
             sources["studio"] = {"generated_at": None, "error": type(exc).__name__}
         try:
-            rows, filed, newest = _workorder_items(data, now)
+            rows, filed, dismissed, newest = _workorder_items(data, now)
             counts["workorder"] = len(rows)
             counts["workorder_done"] = filed
+            counts["workorder_dismissed"] = dismissed
             lanes["fyi"] += filed
             items += rows
             sources["workorders"] = _source(newest, now)
@@ -680,6 +780,8 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
         "items": items,
         "sources": sources,
         "local": data is not None,
+        # Filed rows with a note and no action (0024 J1); in Hermes's fyi count.
+        "filed": {"theme": theme},
     }
 
 
@@ -700,6 +802,28 @@ def get_reports(request: Request):
         )
     reports, _ = read_reports(data, datetime.now(timezone.utc))
     return {"reports": reports}
+
+
+class DismissBody(BaseModel):
+    note: str = ""
+
+
+@waiting_router.post("/workorders/{order_id}/dismiss")
+def post_dismiss(order_id: str, request: Request, body: DismissBody | None = None):
+    """The operator has read a report (hq 0024 J4): its row leaves For you.
+    Not a decision: nothing is re-issued and Dispatch is not blocked."""
+    _local_only(request)
+    note = (body.note if body else "").strip()
+    if "\n" in note or "\r" in note or len(note) > DISMISS_NOTE_MAX:
+        raise HTTPException(
+            status_code=400, detail="The note is one line of at most 200 characters"
+        )
+    data = _data_dir()
+    if data is None:
+        raise HTTPException(
+            status_code=404, detail="Workspace data folder not configured"
+        )
+    return dismiss_order(data, order_id, note, datetime.now(timezone.utc))
 
 
 @waiting_router.get("/decisions")

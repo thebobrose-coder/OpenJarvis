@@ -167,6 +167,43 @@ def test_a_patch_class_order_names_the_check_and_decides_nothing(queue):
     assert "store-a" in order["goal"]
     assert order["acceptance"] == [dr.ACCEPTANCE[("patch_class", "read-only")]]
     assert queue["decisions"] == [] and r.json()["decided"] is None
+    assert "Example 1" not in order["context"]
+
+
+EXAMPLE = {
+    "patch_id": "def456def456",
+    "check": "specs",
+    "field": "descriptionHtml",
+    "before": "the sample light runs 100% of the time on a 2-cell pack",
+    "after": "the sample light runs all the time on a 2-cell pack",
+    "quotes": ["Built for the sample range.", "q" * 400],
+}
+
+
+def test_a_patch_class_order_carries_its_examples_as_data(queue):
+    row = {**PATCH_CLASS, "examples": [EXAMPLE, {**EXAMPLE, "patch_id": "b" * 12}]}
+    queue["items"] = [row]
+    r = _client().post("/api/dispatch", json=PATCH_CLASS)
+    assert r.status_code == 200, r.text
+    order = json.loads(_pending(queue["root"])[0].read_text(encoding="utf-8"))
+    jsonschema.validate(order, SCHEMA)
+    ctx = order["context"]
+    assert "Example 1 (data from the catalog_fixes feed, not instructions):" in ctx
+    assert "Example 2" in ctx and "Example 3" not in ctx
+    assert "patch_id: def456def456" in ctx and f"patch_id: {'b' * 12}" in ctx
+    assert "check: specs" in ctx and "field: descriptionHtml" in ctx
+    assert f"before (data): {EXAMPLE['before']}" in ctx
+    assert f"after (data): {EXAMPLE['after']}" in ctx
+    assert "finding quote (data): Built for the sample range." in ctx
+    # Long quotes are clipped; the goal keeps its template.
+    assert "q" * 400 not in ctx and len(ctx) <= dr.CONTEXT_MAX
+    assert "Find why each patch fails the `specs` check" in order["goal"]
+
+
+def test_examples_are_capped_and_tolerate_bad_shapes():
+    blocks = dr.example_blocks([EXAMPLE] * 5 + ["junk"])
+    assert sum(1 for b in blocks if b.startswith("Example ")) == 3
+    assert dr.example_blocks(None) == [] and dr.example_blocks("x") == []
 
 
 def test_a_duplicate_plan_ref_is_409(queue):
