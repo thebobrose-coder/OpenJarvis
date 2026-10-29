@@ -55,7 +55,9 @@ REFRESHABLE = frozenset(
         "ecom_briefing_technical",
     }
 )
-DECISIONS = frozenset({"accepted", "rejected", "done"})
+# v1.22: ``snoozed`` hides an open rec for a whole number of days (the note:
+# "" is 7, else 1-30); the bridge refuses anything else with a 400.
+DECISIONS = frozenset({"accepted", "rejected", "done", "snoozed"})
 _ID = re.compile(r"^[0-9a-f]{12}$")
 _NOTE_MAX = 500
 
@@ -138,7 +140,7 @@ async def decide(
     note = (body.note or "").strip() if body else ""
     return await _post(
         f"/ecom/recommendations/{rec_id}/{decision}",
-        {"note": note} if note else None,
+        {"note": note} if note or decision == "snoozed" else None,
     )
 
 

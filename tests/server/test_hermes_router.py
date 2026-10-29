@@ -781,3 +781,27 @@ def test_mid_sentence_greeting_is_a_normal_turn(monkeypatch):
 
     assert body["choices"][0]["message"]["content"] == "Nice!"
     assert body["route"]["reason"] == "classifier"
+
+
+def test_hermes_turn_never_carries_the_waiting_header(monkeypatch):
+    """hq 0023 D8: the header is local-only; a Hermes turn never builds it."""
+    from openjarvis.server import waiting_routes
+
+    calls: list = []
+
+    async def header() -> str:
+        calls.append(1)
+        return "[Waiting on you]\nFor you: 9"
+
+    monkeypatch.setattr(waiting_routes, "waiting_header", header)
+    _store_key()
+    fake = _FakeHermesEngine("two stores")
+    client, *_ = _app(monkeypatch, fake)
+    resp = client.post(
+        "/v1/chat/completions",
+        json={"model": hr.HERMES_MODEL_ID, "messages": _CONVERSATION},
+    )
+    assert resp.json()["route"]["target"] == "hermes"
+    assert calls == []
+    sent = json.dumps([str(m) for m in fake.calls[0]["messages"]])
+    assert "Waiting on you" not in sent

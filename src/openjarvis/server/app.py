@@ -25,6 +25,7 @@ from openjarvis.server.dashboard import dashboard_router
 from openjarvis.server.day_ahead_routes import day_ahead_router
 from openjarvis.server.desks import desks_router
 from openjarvis.server.digest_routes import create_digest_router
+from openjarvis.server.dispatch_routes import dispatch_router
 from openjarvis.server.fixes_routes import fixes_router
 from openjarvis.server.g1_routes import g1_router
 from openjarvis.server.hermes_router import hermes_usage_router
@@ -563,6 +564,7 @@ def create_app(
     app.include_router(trading_router)
     app.include_router(stack_router)
     app.include_router(waiting_router)
+    app.include_router(dispatch_router)
     app.include_router(studio_router)
     app.include_router(g1_router)
     app.include_router(desks_router)

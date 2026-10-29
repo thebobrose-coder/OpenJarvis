@@ -205,6 +205,34 @@ def test_decision_without_a_note_sends_no_body():
     assert seen[0].content == b""
 
 
+@pytest.mark.parametrize("note,sent", [(None, ""), ("14", "14")])
+def test_snooze_always_sends_its_note(note, sent):
+    """v1.22: "" is the 7-day default, else a whole number of days."""
+    client, patcher, seen = _client(lambda r: httpx.Response(202, json={}))
+    with patcher:
+        resp = client.post(
+            f"/api/commerce/recommendations/{_ID}/snoozed",
+            json={"note": note} if note else None,
+        )
+
+    assert resp.status_code == 202
+    assert seen[0].url.path == f"/ecom/recommendations/{_ID}/snoozed"
+    assert json.loads(seen[0].content) == {"note": sent}
+
+
+def test_a_snooze_400_from_the_bridge_is_shown():
+    client, patcher, _seen = _client(
+        lambda r: httpx.Response(400, json={"detail": "days must be 1-30"})
+    )
+    with patcher:
+        resp = client.post(
+            f"/api/commerce/recommendations/{_ID}/snoozed", json={"note": "45"}
+        )
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "days must be 1-30"
+
+
 @pytest.mark.parametrize(
     "rec_id",
     ["0123456789AB", "0123456789a", "0123456789abc", "zzzzzzzzzzzz", "..%2f..%2fx"],

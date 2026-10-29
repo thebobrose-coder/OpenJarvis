@@ -1751,3 +1751,113 @@ class TestTraceRecording:
         assert trace.query == "stream please"
         # _make_engine streams "Hello", " ", "world".
         assert trace.result == "Hello world"
+
+
+class TestWaitingHeader:
+    """hq 0023 D8: the "Waiting on you" header rides on local turns only,
+    after the identity, and never when the caller brought a system prompt."""
+
+    HEADER = "[Waiting on you]\nFor you: 3; dispatchable: 1; filed: 0."
+
+    def _patch(self, monkeypatch, calls=None):
+        from openjarvis.server import waiting_routes
+
+        async def header() -> str:
+            if calls is not None:
+                calls.append(1)
+            return self.HEADER
+
+        monkeypatch.setattr(waiting_routes, "waiting_header", header)
+
+    def test_local_stream_turn_carries_it_once_after_identity(self, monkeypatch):
+        self._patch(monkeypatch)
+        captured: list = []
+        engine = _make_capturing_engine(captured)
+        client = TestClient(create_app(engine, "test-model", config=_identity_config()))
+        resp = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "what is waiting on me?"}],
+                "stream": True,
+            },
+        )
+        _ = resp.text
+        msgs = captured[-1]
+        system = [m for m in msgs if m.role.value == "system"]
+        assert len(system) == 1 and msgs[0] is system[0]
+        text = system[0].content
+        assert text.count("[Waiting on you]") == 1
+        assert text.index("OpenJarvis") < text.index("[Waiting on you]")
+
+    def test_local_direct_turn_carries_it(self, monkeypatch):
+        self._patch(monkeypatch)
+        engine = _make_capturing_engine([])
+        client = TestClient(create_app(engine, "test-model", config=_identity_config()))
+        client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        msgs = engine.generate.call_args.args[0]
+        assert "[Waiting on you]" in msgs[0].content
+
+    def test_absent_when_the_caller_supplies_a_system_prompt(self, monkeypatch):
+        calls: list = []
+        self._patch(monkeypatch, calls)
+        engine = _make_capturing_engine([])
+        client = TestClient(create_app(engine, "test-model", config=_identity_config()))
+        client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "test-model",
+                "messages": [
+                    {"role": "system", "content": "Be terse."},
+                    {"role": "user", "content": "hi"},
+                ],
+            },
+        )
+        msgs = engine.generate.call_args.args[0]
+        assert msgs[0].content == "Be terse."
+        assert calls == []
+
+    def test_absent_on_a_desk_turn(self, monkeypatch):
+        from fastapi.responses import JSONResponse
+
+        from openjarvis.server import hermes_router
+
+        calls: list = []
+        self._patch(monkeypatch, calls)
+
+        async def desk(body, request):
+            return JSONResponse({"desk": body.desk})
+
+        monkeypatch.setattr(hermes_router, "route_desk", desk)
+        engine = _make_capturing_engine([])
+        client = TestClient(create_app(engine, "test-model", config=_identity_config()))
+        resp = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "auto",
+                "desk": "ops",
+                "desk_session": "s-1",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        assert resp.json() == {"desk": "ops"}
+        assert calls == [] and not engine.generate.called
+
+    def test_empty_header_injects_nothing(self, monkeypatch):
+        # The suite-wide stub (tests/conftest.py) returns "".
+        engine = _make_capturing_engine([])
+        client = TestClient(create_app(engine, "test-model", config=_identity_config()))
+        client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        assert "[Waiting on you]" not in engine.generate.call_args.args[0][0].content

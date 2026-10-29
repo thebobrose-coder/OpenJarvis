@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 import threading
 import uuid
@@ -58,7 +59,17 @@ def _to_messages(chat_messages) -> list[Message]:
     return messages
 
 
-def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message]:
+# The "Waiting on you" header (hq 0023 D8) for this turn. Set only by
+# ``_chat_completions_local``, so Hermes pass-through and desk turns, which
+# return before it, never carry it.
+_waiting_header: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "waiting_header", default=None
+)
+
+
+def _ensure_identity_prompt(
+    messages: list[Message], app_config, *, waiting: bool = True
+) -> list[Message]:
     """Return one leading system message, adding identity when needed.
 
     The desktop UI's chat backend posts only user/assistant turns to
@@ -125,6 +136,10 @@ def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message
     if prompt:
         system_parts.append(prompt)
     system_parts.extend(message.text for message in system_messages if message.text)
+    # After the identity and any memory context, once per turn.
+    header = _waiting_header.get() if waiting else None
+    if header and not any(header in part for part in system_parts):
+        system_parts.append(header)
     non_system_messages = [
         message for message in messages if message.role != Role.SYSTEM
     ]
@@ -148,8 +163,8 @@ def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message
     else:
         combined_system = Message(
             role=Role.SYSTEM,
-            content=prompt,
-            metadata={"openjarvis_identity_prompt": True},
+            content="\n\n".join(system_parts),
+            metadata={"openjarvis_identity_prompt": bool(prompt)},
         )
 
     return [combined_system, *non_system_messages]
@@ -182,6 +197,15 @@ async def _chat_completions_local(
     request_body: ChatCompletionRequest, request: Request
 ):
     """The normal (non-Hermes) chat path."""
+    if not any(m.role == "system" for m in request_body.messages):
+        from openjarvis.server.waiting_routes import waiting_header
+
+        try:
+            _waiting_header.set(await waiting_header())
+        except Exception:
+            logging.getLogger("openjarvis.server").debug(
+                "Waiting header failed", exc_info=True
+            )
     engine = request.app.state.engine
     agent = getattr(request.app.state, "agent", None)
     model = request_body.model
@@ -219,7 +243,8 @@ async def _chat_completions_local(
                 # Agent paths build that same identity in BaseAgent; injecting
                 # it at both layers duplicates the prompt around memory.
                 if not use_server_agent:
-                    messages = _ensure_identity_prompt(messages, config)
+                    # The header waits for the handler's pass, after memory.
+                    messages = _ensure_identity_prompt(messages, config, waiting=False)
                 ctx_cfg = ContextConfig(
                     top_k=config.memory.context_top_k,
                     min_score=config.memory.context_min_score,

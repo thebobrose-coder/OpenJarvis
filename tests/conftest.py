@@ -123,6 +123,26 @@ def _isolated_openjarvis_home(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_waiting_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep local chat turns off the live "Waiting on you" list (hq 0023 D8).
+
+    ``_chat_completions_local`` asks ``waiting_header()`` for its grounding
+    block, which reads the Hermes bridge. An empty header injects nothing, so
+    every chat test sees the prompt it always did; the header's own tests put
+    a real one back.
+    """
+    try:
+        from openjarvis.server import waiting_routes
+    except ImportError:  # no server extra
+        return
+
+    async def _empty() -> str:
+        return ""
+
+    monkeypatch.setattr(waiting_routes, "waiting_header", _empty)
+
+
+@pytest.fixture(autouse=True)
 def _clean_registries() -> None:
     """Ensure each test starts with empty registries and a fresh event bus."""
     ModelRegistry.clear()

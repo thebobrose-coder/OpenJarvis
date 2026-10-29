@@ -13,6 +13,11 @@ Sources, merged per request (the page polls every 60 s):
 - G1 and G2 rows from Foundry's G1 mirror (foundry-g1-mirror.md), when its URL
   and AWS profile are configured (``g1_routes``); they open the G1 drawer.
 
+Every row carries a lane (hq 0023, contract v1.22): ``act`` (only the operator
+can), ``delegate`` (the Dispatch action can hand it off) or ``fyi`` (counted
+and filed, never listed). Hermes assigns its own; the local kinds take theirs
+from ``LOCAL_LANES``. A Hermes item without a lane (an older feed) is ``act``.
+
 The local folders come from one setting, the private workspace's data root
 (credentials.toml ``[desks] WORKSPACE_DATA_DIR``). Without it the local kinds
 are simply absent. A missing or broken source never fails the list: its
@@ -52,6 +57,12 @@ DECIDED_MAX = 30
 NOTE_MAX = 500
 HERMES_KINDS = ("proposal", "thesis_prompt", "patch", "follow_up", "rec")
 LOCAL_KINDS = ("g0", "decision", "x402", "workorder", "g1")
+LANES = ("act", "delegate", "fyi")
+LOCAL_SOURCES = ("trading_status", "inbox", "studio", "workorders", "g1_mirror")
+# hq 0023 "Lane rules" for the local kinds; a work order goes by its report's
+# status. No match is ``act``: a missing rule never hides a decision.
+LOCAL_LANES = {"g0": "act", "g1": "act", "decision": "act", "x402": "act"}
+WORKORDER_LANES = {"blocked": "act", "rejected": "act", "failed": "act", "done": "fyi"}
 
 
 def _data_dir() -> Path | None:
@@ -346,13 +357,19 @@ def _g0_items(data: Path) -> tuple[list[dict[str, Any]], datetime | None]:
     return items, newest
 
 
-def _workorder_items(
+def read_reports(
     data: Path, now: datetime
 ) -> tuple[list[dict[str, Any]], datetime | None]:
+    """The dispatcher's reports from the last 7 days, newest first: blocked and
+    rejected (``blocked/``), done and failed (``done/``). Each is the drawer's
+    read-only view: no links, no actions."""
     root = data / "workorders"
-    items, newest = [], None
+    reports, newest = [], None
     cutoff = now - timedelta(days=WORKORDER_DAYS)
-    for folder, wanted in (("blocked", {"blocked", "rejected"}), ("done", {"failed"})):
+    for folder, wanted in (
+        ("blocked", {"blocked", "rejected"}),
+        ("done", {"done", "failed"}),
+    ):
         for report in (
             (root / folder).glob("*.report.json") if (root / folder).is_dir() else []
         ):
@@ -370,26 +387,55 @@ def _workorder_items(
             ):
                 continue
             claude = doc.get("claude") if isinstance(doc.get("claude"), dict) else {}
-            detail = (
-                claude.get("needsHuman") or doc.get("reason") or claude.get("summary")
-            )
-            items.append(
+            reports.append(
                 {
-                    "kind": "workorder",
                     "id": str(doc.get("id") or report.name.split(".")[0]),
-                    "source_feed": "workorders",
-                    "scope": doc.get("repo") or None,
-                    "title": _clip(
-                        f"Work order {doc.get('id')}: {doc.get('status')}", 140
-                    ),
-                    "detail": _clip(detail, 280) or None,
-                    "created_at": _iso(at),
-                    "due": None,
-                    "priority": None,
-                    "link": None,
+                    "status": doc.get("status"),
+                    "repo": doc.get("repo") or None,
+                    "scope": doc.get("scope") or None,
+                    "branch": doc.get("branch") or None,
+                    "costUsd": doc.get("costUsd"),
+                    "finishedAt": _iso(at),
+                    "reason": _clip(doc.get("reason"), 1000) or None,
+                    "needsHuman": _clip(claude.get("needsHuman"), 1000) or None,
+                    "summary": _clip(claude.get("summary"), 2000) or None,
                 }
             )
-    return items, newest
+    reports.sort(key=lambda r: r["finishedAt"], reverse=True)
+    return reports, newest
+
+
+def _workorder_items(
+    data: Path, now: datetime
+) -> tuple[list[dict[str, Any]], int, datetime | None]:
+    """Rows for blocked, rejected and failed orders (``act``), and the count
+    of done ones (``fyi``: counted, not listed). Every row opens the report."""
+    reports, newest = read_reports(data, now)
+    items, filed = [], 0
+    for r in reports:
+        lane = WORKORDER_LANES.get(r["status"], "act")
+        if lane == "fyi":
+            filed += 1
+            continue
+        items.append(
+            {
+                "kind": "workorder",
+                "id": r["id"],
+                "source_feed": "workorders",
+                "scope": r["repo"],
+                "title": _clip(f"Work order {r['id']}: {r['status']}", 140),
+                "detail": _clip(r["needsHuman"] or r["reason"] or r["summary"], 280)
+                or None,
+                "created_at": r["finishedAt"],
+                "due": None,
+                "priority": None,
+                "link": None,
+                "opens": "workorder",
+                "lane": lane,
+                "delegate": None,
+            }
+        )
+    return items, filed, newest
 
 
 def x402_items(status: dict[str, Any] | None, now: datetime) -> list[dict[str, Any]]:
@@ -498,18 +544,59 @@ async def _trading() -> tuple[dict[str, Any] | None, str | None]:
         return None, str(exc.detail)
 
 
+def _hermes_lanes(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Hermes's items with the v1.22 fields always present: an item from an
+    older feed (no ``lane``) is ``act``, with no delegate."""
+    out = []
+    for item in items:
+        lane = item.get("lane") if item.get("lane") in LANES else "act"
+        out.append(
+            {
+                **item,
+                "lane": lane,
+                "delegate": item.get("delegate") if lane == "delegate" else None,
+                "times_seen": item.get("times_seen"),
+                "last_seen": item.get("last_seen"),
+            }
+        )
+    return out
+
+
+def _local_lane(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            **r,
+            "lane": r.get("lane") or LOCAL_LANES.get(r["kind"], "act"),
+            "delegate": r.get("delegate"),
+        }
+        for r in rows
+    ]
+
+
 async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     counts = {k: 0 for k in (*HERMES_KINDS, *LOCAL_KINDS)}
+    lanes = {k: 0 for k in LANES}
     items: list[dict[str, Any]] = []
     sources: dict[str, Any] = {}
+    hermes_total = None
 
     hermes, error = await _hermes()
     if hermes:
         hc = hermes.get("counts") if isinstance(hermes.get("counts"), dict) else {}
         for k in HERMES_KINDS:
             counts[k] = int(hc.get(k) or 0)
-        items += [i for i in hermes.get("items") or [] if isinstance(i, dict)]
+        counts["patch_class"] = int(hc.get("patch_class") or 0)
+        rows = _hermes_lanes(
+            [i for i in hermes.get("items") or [] if isinstance(i, dict)]
+        )
+        items += rows
+        if all(isinstance(hc.get(k), int) for k in LANES):
+            for k in LANES:
+                lanes[k] = hc[k]
+            hermes_total = hc.get("total") if isinstance(hc.get("total"), int) else None
+        else:  # an older feed: every listed item is act
+            lanes["act"] = len(rows)
         sources["approvals"] = {
             "generated_at": hermes.get("generated_at"),
             "age_seconds": hermes.get("age_seconds"),
@@ -525,7 +612,7 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
         }
 
     trading, error = await _trading()
-    x402 = x402_items(trading, now)
+    x402 = _local_lane(x402_items(trading, now))
     counts["x402"] = len(x402)
     items += x402
     sources["trading_status"] = (
@@ -542,28 +629,33 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
     if data is not None:
         try:
             decisions = read_decisions(data, now)
-            rows = _decision_items(decisions)
+            rows = _local_lane(_decision_items(decisions))
             counts["decision"] = len(rows)
             items += rows
             sources["inbox"] = _source(now, now)
         except OSError as exc:
             sources["inbox"] = {"generated_at": None, "error": type(exc).__name__}
-        for kind, fn in (
-            ("g0", lambda: _g0_items(data)),
-            ("workorder", lambda: _workorder_items(data, now)),
-        ):
-            name = "studio" if kind == "g0" else "workorders"
-            try:
-                rows, newest = fn()
-                counts[kind] = len(rows)
-                items += rows
-                sources[name] = _source(newest, now)
-            except OSError as exc:
-                sources[name] = {"generated_at": None, "error": type(exc).__name__}
+        try:
+            rows, newest = _g0_items(data)
+            rows = _local_lane(rows)
+            counts["g0"] = len(rows)
+            items += rows
+            sources["studio"] = _source(newest, now)
+        except OSError as exc:
+            sources["studio"] = {"generated_at": None, "error": type(exc).__name__}
+        try:
+            rows, filed, newest = _workorder_items(data, now)
+            counts["workorder"] = len(rows)
+            counts["workorder_done"] = filed
+            lanes["fyi"] += filed
+            items += rows
+            sources["workorders"] = _source(newest, now)
+        except OSError as exc:
+            sources["workorders"] = {"generated_at": None, "error": type(exc).__name__}
 
     g1, error = await _g1()
     if g1 is not None:
-        rows = g1_items(g1)
+        rows = _local_lane(g1_items(g1))
         counts["g1"] = len(rows)
         items += rows
         at = _parse_time(g1.get("generatedAt"))
@@ -571,7 +663,16 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
     elif error:
         sources["g1_mirror"] = {"generated_at": None, "error": error}
 
-    counts["total"] = sum(counts[k] for k in (*HERMES_KINDS, *LOCAL_KINDS))
+    local = sum(counts[k] for k in LOCAL_KINDS)
+    for row in items:
+        if row.get("source_feed") in LOCAL_SOURCES:
+            lanes[row["lane"]] += 1
+    counts.update(lanes)
+    # Hermes's total is every item its index knows (fyi included, v1.22).
+    hermes_sum = sum(counts[k] for k in HERMES_KINDS)
+    counts["total"] = (hermes_total if hermes_total is not None else hermes_sum) + (
+        local + counts.get("workorder_done", 0)
+    )
     return {
         "generated_at": _iso(now),
         "counts": counts,
@@ -585,6 +686,19 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
 async def get_waiting(request: Request):
     _local_only(request)
     return await build_waiting()
+
+
+@waiting_router.get("/workorders/reports")
+def get_reports(request: Request):
+    """The dispatcher's reports from the last 7 days, read-only (0023 O4)."""
+    _local_only(request)
+    data = _data_dir()
+    if data is None:
+        raise HTTPException(
+            status_code=404, detail="Workspace data folder not configured"
+        )
+    reports, _ = read_reports(data, datetime.now(timezone.utc))
+    return {"reports": reports}
 
 
 @waiting_router.get("/decisions")
@@ -615,3 +729,78 @@ def post_tick(body: TickBody, request: Request):
         )
     today = datetime.now().astimezone().strftime("%Y-%m-%d")
     return tick_box(data, body.file, body.line, body.hash, body.note, today)
+
+
+# ---------- the local chat's grounding header (0023 D8) ----------
+
+HEADER_MAX = 1200
+HEADER_TTL_S = 60
+HEADER_TIMEOUT_S = 3.0
+HEADER_TOP = 5
+HEADER_MARK = "[Waiting on you]"
+MANIFEST = (
+    "What you can do here: read the dashboard panels and this list; open pages"
+    " and desks. You cannot write code, send email, trade or change Shopify."
+    " Hermes turns are capped and counted at GET /v1/hermes/usage."
+)
+_header_cache: dict[str, Any] = {"at": 0.0, "text": None}
+
+
+def _age_words(iso: Any, now: datetime) -> str:
+    at = _parse_time(iso)
+    if at is None:
+        return "age unknown"
+    m = max(0, int((now - at).total_seconds() // 60))
+    if m < 60:
+        return f"{m}m old"
+    h = m // 60
+    return f"{h}h old" if h < 48 else f"{h // 24}d old"
+
+
+def format_header(w: dict[str, Any] | None, now: datetime | None = None) -> str:
+    """A plain-text block of at most 1,200 characters: the lane counts, the
+    top five ``act`` titles, one line per stale source, and the manifest. With
+    no list, the manifest alone."""
+    now = now or datetime.now(timezone.utc)
+    if not w:
+        return f"{HEADER_MARK}\nThe list is unavailable right now.\n{MANIFEST}"
+    c = w.get("counts") or {}
+    lines = [
+        HEADER_MARK,
+        f"For you: {c.get('act', 0)}; dispatchable: {c.get('delegate', 0)};"
+        f" filed: {c.get('fyi', 0)}.",
+    ]
+    act = [i for i in w.get("items") or [] if i.get("lane", "act") == "act"]
+    for item in act[:HEADER_TOP]:
+        lines.append(
+            f"- {item.get('kind')}: {_clip(item.get('title'), 110)}"
+            f" ({_age_words(item.get('created_at'), now)})"
+        )
+    for name, src in (w.get("sources") or {}).items():
+        if src.get("error"):
+            lines.append(f"Source {name}: unavailable.")
+        elif src.get("stale"):
+            lines.append(f"Source {name}: stale.")
+    tail = "\n" + MANIFEST
+    text = "\n".join(lines)
+    if len(text) + len(tail) > HEADER_MAX:
+        text = text[: HEADER_MAX - len(tail) - 1].rstrip() + "…"
+    return text + tail
+
+
+async def waiting_header() -> str:
+    """The header for a local turn, cached 60 s from ``build_waiting()``. A
+    slow or failed list gives the manifest alone; it never fails the turn."""
+    import asyncio
+    import time
+
+    mono = time.monotonic()
+    if _header_cache["text"] and mono - _header_cache["at"] < HEADER_TTL_S:
+        return _header_cache["text"]
+    try:
+        w = await asyncio.wait_for(build_waiting(), HEADER_TIMEOUT_S)
+    except Exception:
+        w = None
+    text = format_header(w)
+    _header_cache.update(at=mono, text=text)
+    return text

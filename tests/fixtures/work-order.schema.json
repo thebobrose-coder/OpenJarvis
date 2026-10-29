@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hq/contracts/work-order.schema.json",
+  "title": "Work order",
+  "description": "A single unit of code/file/system work that Hermes, or the operator through OpenJarvis's Dispatch action (hq 0023), asks Claude Code to perform. Written to _data/workorders/pending/<id>.json. One-way: the issuer never receives anything back except the report.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "createdAt", "issuedBy", "planRef", "repo", "scope", "priority", "goal", "acceptance"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^wo-[a-z0-9][a-z0-9-]{2,62}$",
+      "description": "Unique for all time. The dispatcher rejects any id it has already reported on."
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "issuedBy": {
+      "enum": ["hermes", "operator"],
+      "description": "hermes: written by Hermes's submit_work_order tool. operator: written by OpenJarvis as the operator's own click on a delegate row (hq 0023 D2)."
+    },
+    "planRef": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Where this order came from, for tracing: a Hermes plan or task, or approvals:<kind>:<id> for an operator dispatch from the waiting list (hq 0023)."
+    },
+    "repo": {
+      "enum": ["foundry", "openjarvis", "hermes", "x402", "hq"],
+      "description": "Key into the dispatcher's repo map. Never a raw path."
+    },
+    "scope": {
+      "enum": ["read-only", "edit"],
+      "description": "read-only: investigate and report, no changes. edit: changes are made on a new branch in a separate worktree and left for human review. Nothing is ever pushed, merged, or deployed by a work order."
+    },
+    "priority": { "enum": ["low", "normal", "high"] },
+    "goal": { "type": "string", "minLength": 10, "maxLength": 4000 },
+    "acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": { "type": "string", "maxLength": 500 },
+      "description": "Checkable statements that define done."
+    },
+    "context": {
+      "type": "string",
+      "maxLength": 8000,
+      "description": "Optional background: data Hermes observed, the waiting row's source feed and scope, links, prior report ids."
+    },
+    "supersedes": {
+      "type": "string",
+      "pattern": "^wo-[a-z0-9][a-z0-9-]{2,62}$",
+      "description": "Id of an earlier order this one retries. If that order did not finish as done, the operator must have approved the retry in workorders/approvals/<this id>.ok."
+    }
+  }
+}

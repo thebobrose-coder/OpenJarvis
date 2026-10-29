@@ -417,3 +417,178 @@ def test_tick_box_without_config_is_404(monkeypatch):
     assert r.status_code == 404
     with pytest.raises(HTTPException):
         wr.tick_box(Path("."), "a/../b.md", 1, "h", "", "2026-01-01")
+
+
+# ---------- lanes (hq 0023, v1.22) ----------
+
+
+def _laned() -> dict:
+    """A v1.22 index: lanes on every item, lane counts, a patch_class row."""
+    a = _approvals()
+    a["counts"].update(
+        {"total": 6, "act": 2, "delegate": 2, "fyi": 2, "patch_class": 1}
+    )
+    a["items"][0].update(lane="act", delegate=None)
+    a["items"][2].update(
+        lane="delegate",
+        delegate={"target": "desk", "desk": "commerce"},
+        times_seen=3,
+        last_seen=_iso(NOW),
+    )
+    a["items"][1].update(lane="act", delegate=None)
+    a["items"].append(
+        {
+            "kind": "patch_class",
+            "id": "store-a:seo:foundry",
+            "source_feed": "catalog_fixes",
+            "scope": "store-a",
+            "title": "3 invalid seo:foundry patches on store-a",
+            "detail": "specs: seo.description: sample",
+            "created_at": _iso(NOW),
+            "due": None,
+            "priority": None,
+            "link": {"page": "/commerce#fixes", "focus": "abcdef654321"},
+            "lane": "delegate",
+            "delegate": {
+                "target": "workorder",
+                "repo": "foundry",
+                "scope": "read-only",
+            },
+            "times_seen": None,
+            "last_seen": None,
+        }
+    )
+    return a
+
+
+def test_local_kinds_lane_table():
+    assert wr.LOCAL_LANES == {
+        "g0": "act",
+        "g1": "act",
+        "decision": "act",
+        "x402": "act",
+    }
+    assert wr.WORKORDER_LANES == {
+        "blocked": "act",
+        "rejected": "act",
+        "failed": "act",
+        "done": "fyi",
+    }
+
+
+def test_lane_counts_add_the_local_rows(wired):
+    wired["approvals"] = _laned()
+    body = _client().get("/api/waiting").json()
+    c = body["counts"]
+    # Hermes's act 2 plus the two open decision boxes.
+    assert (c["act"], c["delegate"], c["fyi"]) == (4, 2, 2)
+    assert c["patch_class"] == 1
+    assert c["total"] == 6 + 2
+    rec = next(i for i in body["items"] if i["kind"] == "rec")
+    assert rec["lane"] == "delegate" and rec["times_seen"] == 3
+    assert rec["delegate"] == {"target": "desk", "desk": "commerce"}
+    assert all(i["lane"] == "act" for i in body["items"] if i["kind"] == "decision")
+
+
+def test_an_older_feed_without_lanes_is_act(wired):
+    body = _client().get("/api/waiting").json()
+    c = body["counts"]
+    assert (c["act"], c["delegate"], c["fyi"]) == (3 + 2, 0, 0)
+    hermes = [i for i in body["items"] if i["source_feed"] != "inbox"]
+    assert all(i["lane"] == "act" and i["delegate"] is None for i in hermes)
+    assert all(i["times_seen"] is None for i in hermes)
+
+
+def _report(data: Path, folder: str, name: str, status: str, days: float = 1):
+    d = data / "workorders" / folder
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{name}.report.json").write_text(
+        json.dumps(
+            {
+                "id": name,
+                "status": status,
+                "dispatchedAt": _iso(NOW),
+                "finishedAt": _iso(NOW - timedelta(days=days)),
+                "repo": "hermes",
+                "scope": "read-only",
+                "branch": None,
+                "costUsd": 0.42,
+                "claude": {"status": status, "summary": f"summary of {name}"},
+            }
+        )
+    )
+
+
+def test_done_reports_are_counted_as_fyi_and_not_listed(wired, data):
+    _report(data, "done", "wo-a", "done")
+    _report(data, "done", "wo-b", "done")
+    _report(data, "done", "wo-c", "failed")
+    _report(data, "blocked", "wo-d", "rejected")
+    _report(data, "done", "wo-old", "done", days=30)
+    body = _client().get("/api/waiting").json()
+    rows = [i for i in body["items"] if i["kind"] == "workorder"]
+    assert sorted(r["id"] for r in rows) == ["wo-c", "wo-d"]
+    assert all(r["lane"] == "act" and r["opens"] == "workorder" for r in rows)
+    c = body["counts"]
+    assert c["workorder"] == 2 and c["workorder_done"] == 2
+    assert c["fyi"] == 2 and c["act"] == 3 + 2 + 2
+
+
+def test_reports_route_is_read_only_and_recent(wired, data):
+    _report(data, "done", "wo-a", "done")
+    _report(data, "blocked", "wo-d", "blocked", days=2)
+    _report(data, "done", "wo-old", "done", days=30)
+    body = _client().get("/api/workorders/reports").json()
+    assert [r["id"] for r in body["reports"]] == ["wo-a", "wo-d"]
+    first = body["reports"][0]
+    assert first["summary"] == "summary of wo-a" and first["costUsd"] == 0.42
+    assert _client("10.0.0.5").get("/api/workorders/reports").status_code == 403
+
+
+# ---------- the local chat header (0023 D8) ----------
+
+
+@pytest.fixture
+def real_header(monkeypatch):
+    """Undo the suite-wide stub (tests/conftest.py) and the 60 s cache."""
+    monkeypatch.setattr(wr, "waiting_header", REAL_HEADER)
+    wr._header_cache.update(at=0.0, text=None)
+    yield
+    wr._header_cache.update(at=0.0, text=None)
+
+
+REAL_HEADER = wr.waiting_header
+
+
+def test_header_counts_top_titles_stale_and_manifest(wired):
+    wired["approvals"] = _laned()
+    wired["approvals"]["stale"] = True
+    import asyncio
+
+    text = wr.format_header(asyncio.run(wr.build_waiting()))
+    assert len(text) <= wr.HEADER_MAX
+    assert "For you: 4; dispatchable: 2; filed: 2." in text
+    assert "- proposal: A sample proposal" in text
+    assert "A sample rec" not in text  # a delegate row, not act
+    assert "Source approvals: stale." in text
+    assert text.endswith(wr.MANIFEST)
+
+
+def test_header_stays_under_the_cap():
+    items = [
+        {"kind": "rec", "lane": "act", "title": "x" * 300, "created_at": None}
+    ] * 10
+    sources = {f"source-{n}-" + "y" * 40: {"error": "down"} for n in range(30)}
+    text = wr.format_header({"counts": {"act": 10}, "items": items, "sources": sources})
+    assert len(text) <= wr.HEADER_MAX and text.endswith(wr.MANIFEST)
+
+
+def test_header_is_the_manifest_alone_when_the_list_fails(monkeypatch, real_header):
+    import asyncio
+
+    async def boom():
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(wr, "build_waiting", boom)
+    text = asyncio.run(wr.waiting_header())
+    assert wr.MANIFEST in text and "For you" not in text
