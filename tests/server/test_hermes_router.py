@@ -889,3 +889,33 @@ def test_waiting_rule_needs_the_whole_message_and_no_prefix(text):
     from openjarvis.server.waiting_routes import is_waiting_request
 
     assert not (hr.parse_prefix(text)[0] is None and is_waiting_request(text))
+
+
+def test_waiting_rule_also_runs_on_a_directly_picked_local_model(monkeypatch):
+    from openjarvis.server import waiting_routes
+
+    async def build():
+        return _waiting_list()
+
+    monkeypatch.setattr(waiting_routes, "build_waiting", build)
+    client, fake, server_engine, agent = _briefing_app(monkeypatch, None)
+    body = _chat(client, "what's waiting on me?", model="qwen3.5:9b").json()
+    assert body["route"]["reason"] == "waiting"
+    assert body["choices"][0]["message"]["content"].startswith("**33** items")
+    server_engine.generate.assert_not_called()
+    agent.run.assert_not_called()
+
+
+def test_an_explicit_hermes_turn_skips_the_waiting_rule(monkeypatch):
+    from openjarvis.server import waiting_routes
+
+    async def build():
+        raise AssertionError("the waiting list was read for a Hermes turn")
+
+    monkeypatch.setattr(waiting_routes, "build_waiting", build)
+    _store_key()
+    fake = _FakeHermesEngine("from hermes")
+    client, *_ = _app(monkeypatch, fake)
+    body = _chat(client, "what's waiting on me?", model=hr.HERMES_MODEL_ID).json()
+    assert body["route"]["target"] == "hermes"
+    assert len(fake.calls) == 1

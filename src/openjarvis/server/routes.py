@@ -183,6 +183,12 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
 
     if request_body.desk:
         return await hermes_router.route_desk(request_body, request)
+    # "What's waiting on me?" is answered from the list on any local model,
+    # not only on Auto; an explicit Hermes turn still goes to Hermes.
+    if request_body.model != hermes_router.HERMES_MODEL_ID:
+        waiting = await hermes_router.waiting_rule(request_body)
+        if waiting is not None:
+            return waiting
     if request_body.model in hermes_router.ROUTED_MODEL_IDS:
         response, decision = await hermes_router.route_chat(request_body, request)
         if response is not None:

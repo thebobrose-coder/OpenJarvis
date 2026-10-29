@@ -548,6 +548,16 @@ async def waiting_response(request_body: Any) -> Any:
     return _canned_response(request_body, content, route, engine="openjarvis")
 
 
+async def waiting_rule(request_body: Any) -> Any | None:
+    """The fixed answer when the last user message is only the waiting
+    question with no "Hermes," / "local," prefix; else None. Runs before
+    routing, on Auto and on a directly picked local model alike."""
+    text = _last_user_text(request_body.messages)
+    if parse_prefix(text)[0] is None and is_waiting_request(text):
+        return await waiting_response(request_body)
+    return None
+
+
 def _canned_response(
     request_body: Any, content: str, decision: RouteDecision, *, engine: str
 ) -> Any:
@@ -645,9 +655,6 @@ async def route_chat(
     # An explicit "Hermes," / "local," prefix is the user's override and wins.
     if parse_prefix(text)[0] is None and is_briefing_request(text):
         return await briefing_response(request_body), None
-    # "What's waiting on me?" is answered from the list itself, exactly.
-    if parse_prefix(text)[0] is None and is_waiting_request(text):
-        return await waiting_response(request_body), None
 
     model = local_model(request)
     decision, forwarded = await decide_route(

@@ -1778,7 +1778,7 @@ class TestWaitingHeader:
             "/v1/chat/completions",
             json={
                 "model": "test-model",
-                "messages": [{"role": "user", "content": "what is waiting on me?"}],
+                "messages": [{"role": "user", "content": "plan my afternoon"}],
                 "stream": True,
             },
         )
