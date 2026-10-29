@@ -304,7 +304,8 @@ export interface Measurement {
   /** "early" or "traffic": how scores are weighted. */
   regime?: string | null;
   gsc_clicks_28d?: number | null;
-  purchases_28d?: number | null;
+  /** {organic, paid} since v1.21; a plain number in older rows. */
+  purchases_28d?: number | { organic?: number | null; paid?: number | null } | null;
   purchases_verified?: boolean | null;
   sources?: { gsc?: boolean; ga4?: boolean } | null;
   /** Null for a property without a sign-up join. */

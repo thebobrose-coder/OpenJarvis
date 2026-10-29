@@ -116,13 +116,17 @@ export function TargetsHitLine({ post }: { post: Pick<Post, 'target_queries' | '
 
 /** The property's measurement at a glance (tiles beside the G1 rate). */
 export function MeasurementTiles({ m }: { m: Measurement }) {
+  const purchases = purchaseSplit(m.purchases_28d);
   return (
     <>
       <Tile label="Search clicks (28 days)" value={num(m.gsc_clicks_28d)} sub={m.regime ? `${m.regime} scoring` : undefined} />
       <Tile
         label="Purchases (28 days)"
-        value={num(m.purchases_28d)}
-        sub={m.purchases_verified === false ? 'unverified' : 'from content landings'}
+        value={num(purchases.total)}
+        sub={[
+          purchases.paid ? `organic ${num(purchases.organic)}, paid ${num(purchases.paid)}` : null,
+          m.purchases_verified === false ? 'unverified' : purchases.paid ? null : 'from content landings',
+        ].filter(Boolean).join(' · ')}
         subTone={m.purchases_verified === false ? 'warning' : 'muted'}
       />
       {m.signup_sessions_28d != null && <Tile label="Sign-up sessions (28 days)" value={num(m.signup_sessions_28d)} />}
@@ -133,6 +137,15 @@ export function MeasurementTiles({ m }: { m: Measurement }) {
       />
     </>
   );
+}
+
+/** v1.21 reports purchases as {organic, paid}; older rows carry a plain number. */
+export function purchaseSplit(value: Measurement['purchases_28d']): { total: number | null; organic: number | null; paid: number | null } {
+  if (value == null) return { total: null, organic: null, paid: null };
+  if (typeof value === 'number') return { total: value, organic: value, paid: null };
+  const organic = typeof value.organic === 'number' ? value.organic : null;
+  const paid = typeof value.paid === 'number' ? value.paid : null;
+  return { total: organic == null && paid == null ? null : (organic ?? 0) + (paid ?? 0), organic, paid };
 }
 
 function sourceGap(m: Measurement): string {

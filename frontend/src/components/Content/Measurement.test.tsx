@@ -4,7 +4,7 @@ import type { ContentPerformance, ContentProposals, ContentWinners, HealthAlert,
 import { reconcileDecisions } from '../../hooks/useContentData';
 import { badPages } from './HealthStrip';
 import { HealthStrip } from './HealthStrip';
-import { latestCheck, sortPosts } from './Measurement';
+import { MeasurementTiles, latestCheck, purchaseSplit, sortPosts } from './Measurement';
 import { PerformancePanel } from './PerformancePanel';
 import { ApproveEditor, ProposalCard, QueryChips, approvalEdits, cleanQueries, queriesEditable } from './ProposalsQueue';
 import { ALL_PROPERTIES } from './format';
@@ -89,6 +89,30 @@ const OLD_POST: Post = {
   site: { clicks: 1, impressions: 5 },
   utm: { sessions: 7 },
 };
+
+describe('purchases tile (v1.21 split)', () => {
+  it('reads a plain number from an older row', () => {
+    expect(purchaseSplit(6)).toEqual({ total: 6, organic: 6, paid: null });
+    const html = renderToStaticMarkup(<MeasurementTiles m={{ purchases_28d: 6 }} />);
+    expect(html).toContain('>6<');
+    expect(html).toContain('from content landings');
+    expect(html).not.toContain('[object Object]');
+  });
+
+  it('sums organic and paid, with the split as the sub-line when paid is non-zero', () => {
+    expect(purchaseSplit({ organic: 4, paid: 2 })).toEqual({ total: 6, organic: 4, paid: 2 });
+    const html = renderToStaticMarkup(<MeasurementTiles m={{ purchases_28d: { organic: 4, paid: 2 } }} />);
+    expect(html).toContain('>6<');
+    expect(html).toContain('organic 4, paid 2');
+    expect(html).not.toContain('[object Object]');
+  });
+
+  it('shows no split when paid is zero', () => {
+    const html = renderToStaticMarkup(<MeasurementTiles m={{ purchases_28d: { organic: 3, paid: 0 } }} />);
+    expect(html).toContain('>3<');
+    expect(html).not.toContain('paid');
+  });
+});
 
 describe('performance by page (v1.9)', () => {
   it('shows the long-form table, lane pages, measurement tiles and unverified purchases', () => {
