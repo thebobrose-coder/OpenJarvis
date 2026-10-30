@@ -32,7 +32,7 @@ export const PRESETS: Record<OrbMood, OrbPreset> = {
   thinking: { hue: 'purple', glow: 0.55, period: 2.2, swell: 0.07, drift: 3, alpha: 1 },
   speaking: { hue: 'accent', glow: 0.8, period: 0.4, swell: 0.1, drift: 1.2, alpha: 1 },
   muted: { hue: 'muted', glow: 0, period: 0, swell: 0, drift: 0, alpha: 0.7, bar: true },
-  // The GPU lease is held: idle's drawing with a purple sweep round the rim.
+  // A voice render is running: idle's drawing with a purple sweep round the rim.
   rendering: { ...IDLE, sweep: true },
 };
 

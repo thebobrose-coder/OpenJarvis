@@ -16,12 +16,12 @@ export const ACTIVE = new Set<VoiceStateName>(['listening', 'transcribing', 'thi
 export const OFFLINE_TITLE = 'Voice worker not running';
 
 /** The orb's mood. A voice state above idle always wins; then a streaming
- * chat turn (thinking); then a render holding the GPU lease. */
+ * chat turn (thinking); then any voice render (the GPU lease, or a fast render). */
 export function orbMood(state: VoiceState | null, streaming = false): OrbMood {
   if (!state) return 'offline';
   if (state.state !== 'idle') return state.state;
   if (streaming) return 'thinking';
-  if (state.lease_held) return 'rendering';
+  if (state.lease_held || state.rendering) return 'rendering';
   return 'idle';
 }
 

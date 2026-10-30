@@ -134,6 +134,8 @@ export interface VoiceState {
   turns: VoiceTurn[];
   /** The worker holds the GPU lease (a render); optional for an older worker. */
   lease_held?: boolean;
+  /** Any voice render is running, on any lane; optional for an older worker. */
+  rendering?: boolean;
 }
 
 export async function fetchVoiceState(): Promise<VoiceState> {

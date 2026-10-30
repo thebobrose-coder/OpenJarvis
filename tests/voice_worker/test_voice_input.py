@@ -125,6 +125,17 @@ def test_state_carries_lease_held(vi):
     assert v.state()["lease_held"] is True
 
 
+def test_state_carries_rendering(vi):
+    assert vi.state()["rendering"] is False
+    v = VoiceInput(
+        lambda on_change: None,
+        duplex="full",
+        device="Sample Headset",
+        rendering=lambda: True,
+    )
+    assert v.state()["rendering"] is True
+
+
 def test_lease_edges_reach_subscribers(tmp_path):
     from openjarvis.voice_worker.core import GpuLease
 

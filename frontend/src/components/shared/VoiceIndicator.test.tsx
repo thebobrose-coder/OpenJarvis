@@ -88,6 +88,8 @@ describe('voice indicator', () => {
     expect(orbMood({ ...base, lease_held: true }, true)).toBe('thinking');
     expect(orbMood({ ...base, state: 'muted', lease_held: true })).toBe('muted');
     expect(orbMood({ ...base, lease_held: undefined })).toBe('idle'); // an older worker
+    expect(orbMood({ ...base, rendering: true })).toBe('rendering'); // a fast render, no lease
+    expect(orbMood({ ...base, state: 'speaking', rendering: true })).toBe('speaking');
   });
 });
 

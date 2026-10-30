@@ -380,3 +380,54 @@ def test_a_failing_lease_listener_never_breaks_the_lease(rig):
     assert lease.acquire("x") and lease.held
     lease.release()
     assert not lease.held and not lease.path.exists()
+
+
+# ---------- renders in flight ----------
+
+
+def test_rendering_fires_on_busy_and_idle_edges_only():
+    from openjarvis.voice_worker.core import Rendering
+
+    r = Rendering()
+    seen: list[bool] = []
+    r.on_change = lambda: seen.append(r.active)
+    inner = r.track(lambda: r.track(lambda: "done")())  # nested: one busy span
+    assert inner() == "done"
+    assert seen == [True, False] and not r.active
+
+
+def test_rendering_ends_when_a_render_fails():
+    from openjarvis.voice_worker.core import Rendering
+
+    r = Rendering()
+
+    def boom():
+        raise RuntimeError("render failed")
+
+    with pytest.raises(RuntimeError):
+        r.track(boom)()
+    assert not r.active
+
+
+def test_tracked_fast_counts_renders_and_passes_the_rest_through():
+    from openjarvis.voice_worker.core import Rendering, TrackedFast
+
+    r = Rendering()
+    during: list[bool] = []
+
+    class Engine:
+        name = "sample-fast"
+
+        def render(self, text):
+            during.append(r.active)
+            return b"pcm", 24000
+
+        def render_voice(self, text, voice, pace):
+            during.append(r.active)
+            return b"pcm", 24000
+
+    fast = TrackedFast(Engine(), r)
+    assert fast.name == "sample-fast"
+    assert fast.render("hi") == (b"pcm", 24000)
+    fast.render_voice("hi", "v", 1.0)
+    assert during == [True, True] and not r.active

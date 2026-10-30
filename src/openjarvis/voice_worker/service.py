@@ -20,7 +20,16 @@ from logging.handlers import RotatingFileHandler
 from typing import Any
 
 from . import paths
-from .core import BLOCK_TEXT_MAX, SPEAK_TEXT_MAX, AudioCache, GpuLease, Walker, utcnow
+from .core import (
+    BLOCK_TEXT_MAX,
+    SPEAK_TEXT_MAX,
+    AudioCache,
+    GpuLease,
+    Rendering,
+    TrackedFast,
+    Walker,
+    utcnow,
+)
 
 logger = logging.getLogger("openjarvis.voice_worker")
 
@@ -163,7 +172,10 @@ class Worker:
         )
         from .longform import LongForm
 
-        self.fast = KokoroFast()
+        # Every fast render is counted, so the orb sweeps on any render, not
+        # only on the GPU lease the expressive lane takes.
+        self.rendering = Rendering()
+        self.fast = TrackedFast(KokoroFast(), self.rendering)
         self.reference_rendered = ensure_reference(self.fast, paths.reference_path())
         self.expressive = Instrumented(
             ChatterboxExpressive(paths.reference_path(), device=device)
@@ -281,9 +293,12 @@ class Worker:
             duplex,
             out_name,
             lease_held=lambda: self.lease.held,
+            rendering=lambda: self.rendering.active,
         )
-        # The orb's rim sweep: publish when a render takes or drops the lease.
+        # The orb's rim sweep: publish when a render takes or drops the lease,
+        # and when any render starts or the last one ends.
         self.lease.on_change = self.voice._publish
+        self.rendering.on_change = self.voice._publish
         Hotkeys(
             {
                 str(cfg.get("hotkey_talk", "ctrl+alt+space")): self.voice.toggle,

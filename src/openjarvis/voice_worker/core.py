@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import wave
 from dataclasses import dataclass, field
@@ -220,6 +221,58 @@ class GpuLease:
         if data is not None and data.get("holder") == self.holder:
             self.path.unlink(missing_ok=True)
         self._changed()
+
+
+# ---------- renders in flight ----------
+
+
+class Rendering:
+    """Counts voice renders in flight, on any engine and lane. `on_change`
+    fires when the worker goes from idle to rendering and back (the orb's
+    rim sweep), not per render."""
+
+    def __init__(self) -> None:
+        self._n = 0
+        self._lock = threading.Lock()
+        self.on_change: Callable[[], None] | None = None
+
+    @property
+    def active(self) -> bool:
+        return self._n > 0
+
+    def _step(self, d: int) -> None:
+        with self._lock:
+            before = self._n > 0
+            self._n += d
+            edge = (self._n > 0) != before
+        if edge and self.on_change is not None:
+            try:
+                self.on_change()
+            except Exception:  # noqa: BLE001 -- a listener never breaks a render
+                logger.exception("Render listener failed")
+
+    def track(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        def run(*args: Any, **kwargs: Any) -> Any:
+            self._step(1)
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                self._step(-1)
+
+        return run
+
+
+class TrackedFast:
+    """The fast engine with its renders counted; everything else passes through."""
+
+    def __init__(self, inner: Any, rendering: Rendering) -> None:
+        self.inner = inner
+        self.render = rendering.track(inner.render)
+        if hasattr(inner, "render_voice"):
+            self.render_voice = rendering.track(inner.render_voice)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.inner, name)
 
 
 # ---------- audio cache ----------
