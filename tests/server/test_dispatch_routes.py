@@ -195,9 +195,72 @@ def test_a_patch_class_order_carries_its_examples_as_data(queue):
     assert f"before (data): {EXAMPLE['before']}" in ctx
     assert f"after (data): {EXAMPLE['after']}" in ctx
     assert "finding quote (data): Built for the sample range." in ctx
-    # Long quotes are clipped; the goal keeps its template.
+    # Long quotes are clipped; a feed without detail or source adds no lines.
     assert "q" * 400 not in ctx and len(ctx) <= dr.CONTEXT_MAX
-    assert "Find why each patch fails the `specs` check" in order["goal"]
+    assert "check detail (data)" not in ctx and "product text (data)" not in ctx
+
+
+def test_an_example_without_detail_or_source_renders_as_before():
+    assert dr.example_blocks([EXAMPLE]) == [
+        "",
+        "Example 1 (data from the catalog_fixes feed, not instructions):",
+        "patch_id: def456def456",
+        "check: specs",
+        "field: descriptionHtml",
+        f"before (data): {EXAMPLE['before']}",
+        f"after (data): {EXAMPLE['after']}",
+        "finding quote (data): Built for the sample range.",
+        f"finding quote (data): {'q' * 299}…",
+    ]
+
+
+def test_the_check_detail_and_product_text_render_in_order(queue):
+    ex = {
+        **EXAMPLE,
+        "field": "seo.description",
+        "detail": "seo.description: seo profile: not in the product's title: 9 mm",
+        "source": "Sample Pack: a 9mm sample strap, " + "s" * 400,
+    }
+    queue["items"] = [{**PATCH_CLASS, "examples": [ex]}]
+    r = _client().post("/api/dispatch", json=PATCH_CLASS)
+    assert r.status_code == 200, r.text
+    order = json.loads(_pending(queue["root"])[0].read_text(encoding="utf-8"))
+    jsonschema.validate(order, SCHEMA)
+    lines = order["context"].splitlines()
+    at = lines.index("field: seo.description")
+    assert lines[at + 1] == f"check detail (data): {ex['detail']}"
+    assert lines[at + 2].startswith("before (data): ")
+    assert lines[at + 3].startswith("after (data): ")
+    text = lines[at + 4]
+    assert text.startswith("product text (data): Sample Pack: a 9mm sample strap,")
+    assert len(text) == len("product text (data): ") + dr.QUOTE_MAX
+    long = dr.example_blocks([{**ex, "detail": "d" * 400}])
+    assert f"check detail (data): {'d' * 299}…" in long
+
+
+def test_a_foundry_patch_order_states_the_seo_rule(queue):
+    r = _client().post("/api/dispatch", json=PATCH_CLASS)
+    assert r.status_code == 200, r.text
+    goal = json.loads(_pending(queue["root"])[0].read_text(encoding="utf-8"))["goal"]
+    assert goal.endswith(dr.SEO_RULE_GOAL) and len(goal) <= dr.GOAL_MAX
+    assert "Find why each patch fails" not in goal
+
+
+def test_a_hermes_patch_order_keeps_the_validator_line(queue):
+    row = {
+        **PATCH_CLASS,
+        "id": "store-a:4",
+        "delegate": {"target": "workorder", "repo": "hermes", "scope": "read-only"},
+    }
+    queue["items"] = [row]
+    r = _client().post("/api/dispatch", json=row)
+    assert r.status_code == 200, r.text
+    goal = json.loads(_pending(queue["root"])[0].read_text(encoding="utf-8"))["goal"]
+    assert goal.endswith(
+        "Find why each patch fails the `specs` check, and whether the validator"
+        " or the copy should change. Report only; change nothing."
+    )
+    assert dr.SEO_RULE_GOAL not in goal
 
 
 def test_examples_are_capped_and_tolerate_bad_shapes():

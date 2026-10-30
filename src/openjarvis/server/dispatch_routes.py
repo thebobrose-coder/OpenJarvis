@@ -156,13 +156,21 @@ def _clip(text: Any, n: int) -> str:
 EXAMPLES_MAX = 3
 QUOTE_MAX = 300
 QUOTES_MAX = 4
+SEO_RULE_GOAL = (
+    "The check is Hermes's catalog fixer (seo profile): every figure and number"
+    " in the meta must appear in the product's title or description as written."
+    " Name the failing figures from each example's check detail and product"
+    " text, and say how the copy should change. Report only; change nothing."
+)
 
 
 def example_blocks(examples: Any) -> list[str]:
     """A ``patch_class`` row's ``examples`` as plain-text blocks for the
     order's ``context`` (hq 0024 D4): the evidence the run needs, each value
     labelled as data. Hermes caps ``before`` and ``after`` at 300 characters;
-    the quotes are clipped here."""
+    the quotes are clipped here. v1.23.6: the failing check's ``detail`` and,
+    on the seo profile, the product text it is checked against (``source``),
+    each only when the feed carries it."""
     if not isinstance(examples, list):
         return []
     out: list[str] = []
@@ -175,9 +183,15 @@ def example_blocks(examples: Any) -> list[str]:
             f"patch_id: {ex.get('patch_id')}",
             f"check: {ex.get('check')}",
             f"field: {ex.get('field')}",
+        ]
+        if ex.get("detail"):
+            out.append(f"check detail (data): {_clip(ex['detail'], QUOTE_MAX)}")
+        out += [
             f"before (data): {_clip(ex.get('before'), QUOTE_MAX)}",
             f"after (data): {_clip(ex.get('after'), QUOTE_MAX)}",
         ]
+        if ex.get("source"):
+            out.append(f"product text (data): {_clip(ex['source'], QUOTE_MAX)}")
         quotes = ex.get("quotes") if isinstance(ex.get("quotes"), list) else []
         out += [
             f"finding quote (data): {_clip(q, QUOTE_MAX)}" for q in quotes[:QUOTES_MAX]
@@ -238,6 +252,10 @@ def build_order(
             if scope == "read-only"
             else "Fix the cause on the branch.",
         ]
+        # The copy lives in Foundry, the validator in Hermes (0023 A2): a
+        # Foundry run gets the rule in one line (v1.23.6, P2).
+        if repo == "foundry" and scope == "read-only":
+            parts[-1] = SEO_RULE_GOAL
     else:
         raise HTTPException(status_code=400, detail=f"Kind {kind} can't be dispatched")
 
