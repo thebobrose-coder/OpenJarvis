@@ -160,7 +160,8 @@ SEO_RULE_GOAL = (
     "The check is Hermes's catalog fixer (seo profile): every figure and number"
     " in the meta must appear in the product's title or description as written."
     " Name the failing figures from each example's check detail and product"
-    " text, and say how the copy should change. Report only; change nothing."
+    " text, and say whether the copy or the validator should change. Report"
+    " only; change nothing."
 )
 
 
