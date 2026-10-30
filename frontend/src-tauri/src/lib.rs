@@ -3360,8 +3360,26 @@ async fn hide_overlay() -> Result<(), String> {
 // App entry point
 // ---------------------------------------------------------------------------
 
+/// WebView2's HTTP cache for the embedded frontend. After a rebuild it can
+/// hand back the previous `index.html`, which names the previous bundle, so
+/// the first boot shows the old UI until a reload. Only this cache goes:
+/// localStorage, IndexedDB and cookies live elsewhere under EBWebView.
+#[cfg(windows)]
+fn clear_webview_http_cache() {
+    let Ok(local) = std::env::var("LOCALAPPDATA") else {
+        return;
+    };
+    let cache = std::path::PathBuf::from(local).join("com.openjarvis.desktop").join("EBWebView").join("Default").join("Cache");
+    if cache.is_dir() {
+        // Locked by a running instance: leave it, that copy is in use.
+        let _ = std::fs::remove_dir_all(&cache);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    clear_webview_http_cache();
     let backend: SharedBackend = Arc::new(Mutex::new(BackendManager::default()));
     // Guards the ExitRequested handler below against itself: AppHandle::exit()
     // tears down every window, and closing the last one re-emits
