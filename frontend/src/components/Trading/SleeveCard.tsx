@@ -16,8 +16,11 @@ import {
   orderLimit,
   orderProduct,
   orderSize,
+  rollFolded,
+  rollTone,
   sleeveLabel,
   type Position,
+  type Roll,
   type Sleeve,
   type TickToday,
 } from '../../lib/trading-api';
@@ -56,6 +59,49 @@ function TickTimeline({ ticks }: { ticks: TickToday[] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** The futures roll (v1.23.4): what the box did, never a control. One line
+ * for the roll, a row per leg under it; a done roll over 7 days old folds to
+ * one muted line. Nothing for a null or absent roll. */
+export function RollBlock({ roll, now }: { roll: Roll | null | undefined; now: number }) {
+  if (!roll || typeof roll !== 'object') return null;
+  const source = roll.source === 'manual' || roll.source === 'auto' ? roll.source : 'roll';
+  const when = shortDateTime(roll.requested_at);
+  if (rollFolded(roll, now)) {
+    return (
+      <p className="text-[11px]" data-roll="folded" style={{ color: 'var(--color-text-tertiary)' }}>
+        Last roll ({source}) done, requested {when}
+      </p>
+    );
+  }
+  const legs = roll.legs ?? [];
+  return (
+    <div className="flex flex-col gap-1" data-roll={roll.state}>
+      <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]" style={{ color: 'var(--color-text)' }}>
+        <span>Roll ({source}),</span>
+        <Chip tone={rollTone(roll.state)}>{roll.state}</Chip>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>, requested {when}</span>
+      </div>
+      {legs.length > 0 && (
+        <ul className="flex flex-col gap-0.5 pl-2 text-[11.5px] tabular-nums" data-roll-legs>
+          {legs.map((l, i) => (
+            <li key={`${l.from}-${i}`} className="flex flex-wrap items-baseline gap-1.5" data-roll-leg={l.state}>
+              <span style={{ color: 'var(--color-text)' }}>
+                {l.from} → {l.to ?? 'none'}
+              </span>
+              <Chip tone={rollTone(l.state)}>{l.state}</Chip>
+              {l.reason && (
+                <span className="min-w-0 break-words" data-roll-reason style={{ color: 'var(--color-text-secondary)' }}>
+                  {l.reason}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -137,6 +183,8 @@ export function SleeveCard({
               </Chip>
             ))}
           </div>
+
+          <RollBlock roll={sleeve.roll} now={now} />
 
           <div className="grid grid-cols-2 @md:grid-cols-4 gap-2">
             <Tile

@@ -7,7 +7,8 @@ import { Chip, Quiet, Segmented, type Tone } from '../shared/ui';
 import { SleeveName } from './TradingHeader';
 
 /** Event types as chip tones: the two halt states a human must act on in
- * the status palette, the rest neutral. */
+ * the status palette, the rest neutral. A refused roll is a warning; the
+ * other ROLL_* types and any type not listed here take the default. */
 export function eventTone(type: string): Tone {
   switch (type) {
     case 'KILL':
@@ -15,6 +16,7 @@ export function eventTone(type: string): Tone {
     case 'DEGRADED':
     case 'ALERT':
     case 'RECONCILE_DIFF':
+    case 'ROLL_REFUSED':
       return 'warning';
     case 'DEGRADED_CLEARED':
     case 'FILL':

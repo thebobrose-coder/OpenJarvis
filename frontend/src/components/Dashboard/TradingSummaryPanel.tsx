@@ -14,6 +14,8 @@ import {
   sleeveNames,
   spendTone,
   staleness,
+  stopDistancePct,
+  stopTone,
   type TradingStatus,
 } from '../../lib/trading-api';
 import { firstBlock } from '../../lib/voice-api';
@@ -26,6 +28,19 @@ import { DashboardPanel } from './DashboardPanel';
 import { FeedFreshness } from './FeedFreshness';
 
 const REFRESH_MS = 60 * 1000;
+
+/** How far the mark is from the stop (either side: a short's stop is above
+ * its mark), amber under 2 %, red once through it. */
+function StopDistance({ p }: { p: Parameters<typeof stopDistancePct>[0] }) {
+  const pct = stopDistancePct(p);
+  if (pct == null) return null;
+  const tone = stopTone(pct);
+  return (
+    <span data-summary-stop-distance={pct.toFixed(2)} style={{ color: tone ? `var(--color-${tone})` : 'var(--color-text-tertiary)' }}>
+      {pct <= 0 ? ' (past the stop)' : ` (${pct.toFixed(1)}% away)`}
+    </span>
+  );
+}
 const STALE_AFTER_S = 15 * 60;
 
 /** Event types that describe order activity: the trader's proposals, the
@@ -124,6 +139,7 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
               <li key={`${p.sleeve}-${p.product}-${i}`}>
                 {p.side} {String(p.size)} {p.product} @ {fmtMoney(p.entry)}
                 {p.stop ? ` · stop ${fmtMoney(p.stop)}` : ''}
+                <StopDistance p={p} />
                 {p.held_days != null ? ` · ${p.held_days} d` : ''}
                 <span style={{ color: 'var(--color-text-tertiary)' }}> · {sleeveLabel(p.sleeve)}</span>
               </li>

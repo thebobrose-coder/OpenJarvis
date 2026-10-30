@@ -13,6 +13,7 @@ export type HaltState = 'NORMAL' | 'DEGRADED' | 'KILL' | (string & {});
 
 export interface Position {
   product: string;
+  /** "LONG" or "SHORT" (v1.23.4); a short's stop sits above its mark. */
   side: string;
   size: string | number;
   entry: string;
@@ -77,6 +78,25 @@ export interface Alert {
   message: string;
 }
 
+/** One underlying's leg of a futures roll (v1.23.4): the contract left and
+ * the one entered (`to` null when there is no next one). */
+export interface RollLeg {
+  from: string;
+  to: string | null;
+  state: 'exiting' | 'entering' | 'done' | 'refused' | 'skipped' | (string & {});
+  /** The trader's own text for a refused or skipped leg. */
+  reason?: string | null;
+}
+
+/** The latest futures roll, manual or automatic, as the box ran it. */
+export interface Roll {
+  id?: string;
+  source: 'manual' | 'auto' | (string & {});
+  requested_at: string;
+  state: 'pending' | 'exiting' | 'entering' | 'done' | 'refused' | (string & {});
+  legs?: RollLeg[];
+}
+
 export interface Sleeve {
   halt_state: HaltState;
   day?: { date?: string; start_equity?: string; entries_halted?: boolean; paused?: string[] };
@@ -92,6 +112,8 @@ export interface Sleeve {
   last_tick?: { at?: string | null; kind?: string; submitted?: number; duration_s?: number } | null;
   /** The last 20 non-TICK events. */
   recent_events?: TradeEvent[];
+  /** Futures only: the latest roll, or null when there has been none. */
+  roll?: Roll | null;
 }
 
 export interface TradingStatus extends FeedMeta {
@@ -387,6 +409,30 @@ export function stopDistancePct(p: Pick<Position, 'side' | 'mark' | 'stop'>): nu
   if (mark == null || stop == null || mark === 0) return null;
   const short = /^(short|sell)$/i.test(String(p.side));
   return ((short ? stop - mark : mark - stop) / mark) * 100;
+}
+
+/** A roll's or a leg's state as a tone: in flight is info, refused a
+ * warning (a refused second leg leaves the underlying flat), done and
+ * skipped muted. */
+export function rollTone(state: string): Tone {
+  switch (state) {
+    case 'pending':
+    case 'exiting':
+    case 'entering':
+      return 'accent';
+    case 'refused':
+      return 'warning';
+    default:
+      return 'muted';
+  }
+}
+
+/** A done roll older than this (by `requested_at`) folds to one muted line. */
+export const ROLL_FOLD_DAYS = 7;
+
+export function rollFolded(roll: Roll, nowMs: number): boolean {
+  const t = Date.parse(roll.requested_at);
+  return roll.state === 'done' && !Number.isNaN(t) && nowMs - t > ROLL_FOLD_DAYS * 86_400_000;
 }
 
 export function stopTone(pct: number | null): 'error' | 'warning' | null {
