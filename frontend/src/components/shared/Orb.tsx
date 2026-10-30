@@ -11,7 +11,7 @@ export interface OrbPreset {
   glow: number;
   /** Seconds per breath or pulse; 0 is still. */
   period: number;
-  /** How far the pulse swells the halo and sphere. */
+  /** How far the pulse swells the sphere, as a fraction of its radius. */
   swell: number;
   /** Blob orbit speed, radians a second. */
   drift: number;
@@ -22,15 +22,15 @@ export interface OrbPreset {
   sweep?: boolean;
 }
 
-const IDLE: OrbPreset = { hue: 'accent', glow: 0.35, period: 6, swell: 0.25, drift: 0.15, alpha: 0.85 };
+const IDLE: OrbPreset = { hue: 'accent', glow: 0.45, period: 6, swell: 0.08, drift: 0.6, alpha: 0.9 };
 
 export const PRESETS: Record<OrbMood, OrbPreset> = {
   offline: { hue: 'muted', glow: 0, period: 0, swell: 0, drift: 0, alpha: 0.4 },
   idle: IDLE,
-  listening: { hue: 'accent', glow: 0.7, period: 0, swell: 0, drift: 0.4, alpha: 1, ripple: true },
-  transcribing: { hue: 'purple', glow: 0.55, period: 0.9, swell: 0.2, drift: 2.4, alpha: 1 },
-  thinking: { hue: 'purple', glow: 0.55, period: 2.2, swell: 0.35, drift: 2.4, alpha: 1 },
-  speaking: { hue: 'accent', glow: 0.8, period: 0.4, swell: 0.5, drift: 0.8, alpha: 1 },
+  listening: { hue: 'accent', glow: 0.7, period: 0, swell: 0, drift: 1, alpha: 1, ripple: true },
+  transcribing: { hue: 'purple', glow: 0.55, period: 0.9, swell: 0.04, drift: 3, alpha: 1 },
+  thinking: { hue: 'purple', glow: 0.55, period: 2.2, swell: 0.07, drift: 3, alpha: 1 },
+  speaking: { hue: 'accent', glow: 0.8, period: 0.4, swell: 0.1, drift: 1.2, alpha: 1 },
   muted: { hue: 'muted', glow: 0, period: 0, swell: 0, drift: 0, alpha: 0.7, bar: true },
   // The GPU lease is held: idle's drawing with a purple sweep round the rim.
   rendering: { ...IDLE, sweep: true },
@@ -85,14 +85,16 @@ export function drawOrb(ctx: CanvasRenderingContext2D, mood: OrbMood, pal: Palet
   const p = PRESETS[mood];
   const base = pal[p.hue];
   const beat = p.period > 0 ? 0.5 + 0.5 * Math.sin((TAU * t) / p.period) : 0;
-  const r = R * (1 + 0.06 * p.swell * beat);
+  const r = R * (1 + p.swell * (beat - 0.5));
+  // The breath also brightens and dims the sphere and its halo.
+  const lift = p.period > 0 ? 0.7 + 0.3 * beat : 1;
   ctx.clearRect(0, 0, SIZE, SIZE);
 
   if (p.glow > 0) {
     const halo = p.hue === 'accent' ? pal.glow : withAlpha(base, 0.3);
-    const reach = r + 3 + 4 * p.glow * (0.6 + 0.4 * (p.period > 0 ? beat : 1));
+    const reach = r + 2 + 5 * p.glow * (p.period > 0 ? 0.4 + 0.6 * beat : 1);
     const g = ctx.createRadialGradient(C, C, r * 0.8, C, C, reach);
-    g.addColorStop(0, withAlpha(halo, Math.min(1, 0.6 + p.glow * 0.4)));
+    g.addColorStop(0, withAlpha(halo, Math.min(1, (0.6 + p.glow * 0.4) * lift)));
     g.addColorStop(1, withAlpha(halo, 0));
     ctx.fillStyle = g;
     ctx.beginPath();
@@ -102,8 +104,8 @@ export function drawOrb(ctx: CanvasRenderingContext2D, mood: OrbMood, pal: Palet
 
   // The sphere: lit from the upper left.
   const body = ctx.createRadialGradient(C - r * 0.35, C - r * 0.4, r * 0.1, C, C, r);
-  body.addColorStop(0, withAlpha(base, 0.55 * p.alpha));
-  body.addColorStop(1, withAlpha(base, 0.2 * p.alpha));
+  body.addColorStop(0, withAlpha(base, 0.75 * p.alpha * lift));
+  body.addColorStop(1, withAlpha(base, 0.3 * p.alpha * lift));
   ctx.fillStyle = body;
   ctx.beginPath();
   ctx.arc(C, C, r, 0, TAU);
@@ -117,7 +119,7 @@ export function drawOrb(ctx: CanvasRenderingContext2D, mood: OrbMood, pal: Palet
   for (let i = 0; i < 3; i++) {
     const a = t * p.drift * (i % 2 ? -1 : 1) + (i * TAU) / 3;
     const orbit = r * (0.35 + 0.1 * i);
-    ctx.fillStyle = withAlpha(base, 0.28 * p.alpha);
+    ctx.fillStyle = withAlpha(base, 0.35 * p.alpha);
     ctx.beginPath();
     ctx.arc(C + Math.cos(a) * orbit, C + Math.sin(a) * orbit, r * 0.5, 0, TAU);
     ctx.fill();
@@ -263,13 +265,17 @@ export function Orb({ mood }: { mood: OrbMood }) {
     scheme.addEventListener('change', repaint);
     const onMotion = () => (reduce.matches ? loop.start() : (loop.stop(), loop.start()));
     reduce.addEventListener('change', onMotion);
+    // Asleep only after a real blur event: WebView2 can report no focus at
+    // load while the window has it, and then no focus event ever comes.
+    // Any pointer or key input in the window wakes it as well.
     const onVisible = () => !document.hidden && loop.start();
     const onBlur = () => loop.blur();
     const onFocus = () => loop.focus();
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('blur', onBlur);
     window.addEventListener('focus', onFocus);
-    if (!document.hasFocus()) loop.blur();
+    window.addEventListener('pointerdown', onFocus);
+    window.addEventListener('keydown', onFocus);
     loop.start();
     return () => {
       loop.stop();
@@ -280,6 +286,8 @@ export function Orb({ mood }: { mood: OrbMood }) {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('blur', onBlur);
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener('pointerdown', onFocus);
+      window.removeEventListener('keydown', onFocus);
     };
   }, []);
 
