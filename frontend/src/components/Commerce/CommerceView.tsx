@@ -62,6 +62,8 @@ export interface CommerceViewProps {
   };
   /** The paste-and-check widget in the compliance panel. */
   precheck?: PrecheckProps;
+  /** Rec ids that get Fix it, from the waiting feed (0024 J1). */
+  fixRecs?: ReadonlySet<string>;
 }
 
 /**
@@ -85,6 +87,7 @@ export function CommerceView({
   focus = null,
   onAskDesk,
   precheck,
+  fixRecs,
 }: CommerceViewProps) {
   const [tab, setTab] = useState<CommerceTab>(fixes ? initialTab : 'overview');
   // A fix another panel linked to: the Fixes tab opens on its view.
@@ -231,6 +234,7 @@ export function CommerceView({
               onDecide={onDecide}
               onAskDesk={onAskDesk?.rec}
               onOpenFix={fixes ? openFix : undefined}
+              fixRecs={fixRecs}
               loading={feeds.ecom_recommendations.loading}
               error={feeds.ecom_recommendations.error}
             />

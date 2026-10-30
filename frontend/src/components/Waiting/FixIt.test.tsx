@@ -149,6 +149,28 @@ describe('Fix it (hq 0024 J1)', () => {
     expect(html).toContain('data-patch-ready="cdcdcdcdcdcd"');
     expect(html).toContain('needs the theme (sample)');
   });
+
+  it('a fix rec card shows Fix it in place of Accept', () => {
+    const rec: LedgerItem = {
+      id: 'bbb222bbb222',
+      created_at: iso(600),
+      store: 'store-a',
+      category: 'content',
+      priority: 2,
+      title: 'A sample rec',
+      detail: { id: 'bbb222bbb222', store: 'store-a', category: 'content', priority: 2, title: 'A sample rec' },
+      status: 'open',
+      decided_at: null,
+      note: null,
+    };
+    const card = (fix: boolean) =>
+      renderToStaticMarkup(<RecommendationCard item={rec} storeName="Store A" productTitles={{}} onDecide={noop} fix={fix} />);
+    expect(card(true)).toContain('data-fix');
+    expect(card(true)).toContain('Fix it');
+    expect(card(true)).not.toContain('Accept');
+    expect(card(false)).not.toContain('data-fix');
+    expect(card(false)).toContain('Accept');
+  });
 });
 
 describe('Filed (hq 0024 J1, J4)', () => {

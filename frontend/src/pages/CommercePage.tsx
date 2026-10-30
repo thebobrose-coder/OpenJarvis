@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { CommerceView } from '../components/Commerce/CommerceView';
 import { ALL_STORES } from '../components/Commerce/format';
@@ -7,6 +7,7 @@ import { useCommerceData } from '../hooks/useCommerceData';
 import type { ComplianceFinding, DailyStore, LedgerItem } from '../lib/commerce-api';
 import { contextBlock, fetchPrecheckProperties, runPrecheck, type PrecheckResult } from '../lib/desks-api';
 import { useAppStore } from '../lib/store';
+import { useWaiting } from '../lib/WaitingContext';
 
 const short = (s: string, n = 40) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
@@ -58,6 +59,12 @@ export function precheckContext(
 export function CommercePage() {
   const { feeds, pending, refreshStatus, refresh, decide, notice, clearNotice } = useCommerceData();
   const fixes = useCatalogFixes();
+  // Fix it (0024 J1): the waiting feed says which recs the fixer can write.
+  const { waiting } = useWaiting();
+  const fixRecs = useMemo(
+    () => new Set((waiting?.items ?? []).filter((i) => i.kind === 'rec' && i.fix === true).map((i) => String(i.id))),
+    [waiting],
+  );
   const [store, setStore] = useState(ALL_STORES);
   // ?focus=<id> from "Waiting on you": #fixes means a patch, else a rec.
   const location = useLocation();
@@ -95,6 +102,7 @@ export function CommercePage() {
         onClearNotice={clearNotice}
         fixes={fixes}
         focus={focus}
+        fixRecs={fixRecs}
         onAskDesk={{
           rec: (item) => ask('commerce', recContext(item)),
           kpis: (stores) => ask('commerce', kpiContext(stores)),

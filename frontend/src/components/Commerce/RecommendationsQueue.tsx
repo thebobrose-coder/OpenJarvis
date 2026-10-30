@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Check, CheckCheck, ClipboardList, History, MessageSquarePlus, X } from 'lucide-react';
+import { Check, CheckCheck, ClipboardList, History, MessageSquarePlus, Wrench, X } from 'lucide-react';
 import type { Decision, EcomRecommendations, LedgerItem, RecCategory } from '../../lib/commerce-api';
 import type { PendingDecision } from '../../hooks/useCommerceData';
 import { applyDecisions } from '../../hooks/useCommerceData';
+import { FIX_NOTE } from '../../lib/waiting-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { ALL_STORES, num, shortDateTime } from './format';
 import { MessagesSquare } from 'lucide-react';
@@ -44,9 +45,12 @@ function Meta({ label, value }: { label: string; value?: string | null }) {
 function DecisionControls({
   onDecide,
   allowed,
+  fix = false,
 }: {
   onDecide: (d: Decision, note: string) => void;
   allowed: Decision[];
+  /** A product-copy rec (0024 J1): Fix it takes Accept's place. */
+  fix?: boolean;
 }) {
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState('');
@@ -65,7 +69,18 @@ function DecisionControls({
         />
       )}
       <div className="flex flex-wrap items-center gap-1.5">
-        {allowed.includes('accepted') && (
+        {allowed.includes('accepted') && fix && (
+          <span data-fix>
+            <SmallButton
+              tone="accent"
+              onClick={() => onDecide('accepted', FIX_NOTE)}
+              title="The catalog fixer writes the copy as a patch in Fixes; you tick it there"
+            >
+              <Wrench size={11} /> Fix it
+            </SmallButton>
+          </span>
+        )}
+        {allowed.includes('accepted') && !fix && (
           <SmallButton tone="accent" onClick={() => decide('accepted')} title="Accept: you intend to act on it">
             <Check size={11} /> Accept
           </SmallButton>
@@ -121,6 +136,7 @@ export function RecommendationCard({
   onDecide,
   onAskDesk,
   onOpenFix,
+  fix = false,
 }: {
   item: LedgerItem;
   storeName: string;
@@ -131,6 +147,8 @@ export function RecommendationCard({
   onAskDesk?: () => void;
   /** Show a patch's card on the Fixes tab ("patch ready", v1.23). */
   onOpenFix?: (patchId: string) => void;
+  /** The waiting feed marks this rec `fix: true`. */
+  fix?: boolean;
 }) {
   const r = item.detail;
   const p = PRIORITY[item.priority] ?? PRIORITY[3];
@@ -200,7 +218,7 @@ export function RecommendationCard({
         <Meta label="Owner" value={r.owner} />
       </div>
 
-      <DecisionControls onDecide={onDecide} allowed={['accepted', 'rejected', 'done']} />
+      <DecisionControls onDecide={onDecide} allowed={['accepted', 'rejected', 'done']} fix={fix} />
     </article>
   );
 }
@@ -280,6 +298,7 @@ export function RecommendationsQueue({
   onDecide,
   onAskDesk,
   onOpenFix,
+  fixRecs,
   loading,
   error,
 }: {
@@ -293,6 +312,8 @@ export function RecommendationsQueue({
   onDecide: (id: string, d: Decision, note: string) => void;
   onAskDesk?: (item: LedgerItem) => void;
   onOpenFix?: (patchId: string) => void;
+  /** Rec ids the waiting feed marks `fix: true` (0024 J1). */
+  fixRecs?: ReadonlySet<string>;
   loading?: boolean;
   error?: string | null;
 }) {
@@ -359,6 +380,7 @@ export function RecommendationsQueue({
                     onDecide={(d, note) => onDecide(item.id, d, note)}
                     onAskDesk={onAskDesk ? () => onAskDesk(item) : undefined}
                     onOpenFix={onOpenFix}
+                    fix={fixRecs?.has(item.id) ?? false}
                   />
                 ))}
               </div>
