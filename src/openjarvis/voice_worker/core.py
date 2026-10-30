@@ -126,6 +126,16 @@ class GpuLease:
         self.min_free_mib = min_free_mib
         self._fake_busy = fake_busy
         self.held = False
+        # Called when `held` flips, so the voice state's SSE fires at both edges.
+        self.on_change: Callable[[], None] | None = None
+
+    def _changed(self) -> None:
+        if self.on_change is None:
+            return
+        try:
+            self.on_change()
+        except Exception:  # noqa: BLE001 -- a listener never breaks the lease
+            logger.exception("GPU lease listener failed")
 
     def _read(self) -> dict[str, Any] | None:
         try:
@@ -193,6 +203,7 @@ class GpuLease:
         self._acquired = self._clock()
         self._write(purpose, self._acquired)
         self.held = True
+        self._changed()
         return True
 
     def renew(self, purpose: str) -> None:
@@ -208,6 +219,7 @@ class GpuLease:
         data = self._read()
         if data is not None and data.get("holder") == self.holder:
             self.path.unlink(missing_ok=True)
+        self._changed()
 
 
 # ---------- audio cache ----------

@@ -276,7 +276,14 @@ class Worker:
         self._resolve_devices()
         out_name = device_name(self.out_dev, "output")
         duplex = resolve_duplex(str(cfg.get("duplex", "auto")), out_name)
-        self.voice = VoiceInput(self._make_conversation, duplex, out_name)
+        self.voice = VoiceInput(
+            self._make_conversation,
+            duplex,
+            out_name,
+            lease_held=lambda: self.lease.held,
+        )
+        # The orb's rim sweep: publish when a render takes or drops the lease.
+        self.lease.on_change = self.voice._publish
         Hotkeys(
             {
                 str(cfg.get("hotkey_talk", "ctrl+alt+space")): self.voice.toggle,

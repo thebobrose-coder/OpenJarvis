@@ -1,4 +1,5 @@
-import { Loader2, Mic, MicOff, Volume2, X } from 'lucide-react';
+import { Mic, MicOff, X } from 'lucide-react';
+import { Orb, type OrbMood } from './Orb';
 import type { VoiceState, VoiceStateName, VoiceTurn } from '../../lib/voice-api';
 
 export const LABELS: Record<VoiceStateName, string> = {
@@ -12,23 +13,54 @@ export const LABELS: Record<VoiceStateName, string> = {
 
 export const ACTIVE = new Set<VoiceStateName>(['listening', 'transcribing', 'thinking', 'speaking']);
 
-/** The header's voice indicator: state at a glance, click to start or end a
- * conversation, a mute toggle, and a button that opens the drawer. */
+export const OFFLINE_TITLE = 'Voice worker not running';
+
+/** The orb's mood. A voice state above idle always wins; then a streaming
+ * chat turn (thinking); then a render holding the GPU lease. */
+export function orbMood(state: VoiceState | null, streaming = false): OrbMood {
+  if (!state) return 'offline';
+  if (state.state !== 'idle') return state.state;
+  if (streaming) return 'thinking';
+  if (state.lease_held) return 'rendering';
+  return 'idle';
+}
+
+/** The header's voice indicator: the orb (state at a glance; click to start
+ * or end a conversation), a mute toggle, and a button that opens the drawer.
+ * Without a worker, a dim orb and nothing else. */
 export function VoiceIndicatorView({
   state,
+  streaming = false,
   onToggle,
   onMute,
   onOpen,
 }: {
   state: VoiceState | null;
+  /** A chat turn is streaming. */
+  streaming?: boolean;
   onToggle: () => void;
   onMute: () => void;
   onOpen: () => void;
 }) {
-  if (!state) return null;
+  const mood = orbMood(state, streaming);
+  if (!state) {
+    return (
+      <div className="flex items-center gap-1" data-voice-state="offline">
+        <button
+          type="button"
+          disabled
+          aria-label={OFFLINE_TITLE}
+          title={OFFLINE_TITLE}
+          className="relative flex items-center justify-center w-8 h-8 rounded-full"
+          style={{ background: 'transparent', border: 'none', padding: 0 }}
+        >
+          <Orb mood={mood} />
+        </button>
+      </div>
+    );
+  }
   const s = state.state;
   const active = ACTIVE.has(s);
-  const Icon = s === 'muted' ? MicOff : s === 'speaking' ? Volume2 : s === 'thinking' || s === 'transcribing' ? Loader2 : Mic;
   return (
     <div className="flex items-center gap-1" data-voice-state={s}>
       <button
@@ -37,14 +69,10 @@ export function VoiceIndicatorView({
         disabled={s === 'muted'}
         aria-label={active ? 'End the voice conversation' : 'Start a voice conversation'}
         title={`${LABELS[s]}${state.duplex === 'half' ? ' (half-duplex)' : ''}`}
-        className={`relative flex items-center justify-center w-8 h-8 rounded-full cursor-pointer disabled:opacity-60 ${s === 'listening' ? 'animate-pulse' : ''}`}
-        style={{
-          background: active ? 'var(--color-accent-subtle)' : 'var(--color-surface)',
-          border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
-          color: s === 'muted' ? 'var(--color-text-tertiary)' : active ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-        }}
+        className="relative flex items-center justify-center w-8 h-8 rounded-full cursor-pointer disabled:cursor-default"
+        style={{ background: 'transparent', border: 'none', padding: 0 }}
       >
-        <Icon size={14} className={s === 'thinking' || s === 'transcribing' ? 'animate-spin' : ''} />
+        <Orb mood={mood} />
       </button>
       <button
         type="button"

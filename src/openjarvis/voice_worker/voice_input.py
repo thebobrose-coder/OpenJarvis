@@ -20,8 +20,10 @@ class VoiceInput:
         make_conversation: Callable[[Callable[[], None]], Any],
         duplex: str,
         device: str,
+        lease_held: Callable[[], bool] = lambda: False,
     ) -> None:
         self._make = make_conversation  # (on_change) -> Conversation
+        self._lease_held = lease_held  # the worker holds the GPU lease (a render)
         self.duplex = duplex
         self.device = device
         self.muted = False
@@ -45,6 +47,7 @@ class VoiceInput:
             "turns": [t.as_dict() for t in conv.turns]
             if conv is not None
             else self.last_turns,
+            "lease_held": bool(self._lease_held()),
         }
 
     def _publish(self) -> None:

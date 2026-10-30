@@ -404,20 +404,9 @@
   }
 
   /* HUD ambient animations (CSS-only — kept out of JS for zero-cost continuous motion) */
-  @keyframes hud-breathe {
-    0%, 100% { box-shadow: 0 0 0 1px var(--color-border), 0 0 0 0 var(--color-accent-glow); }
-    50%      { box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 22%, transparent), 0 0 24px -4px var(--color-accent-glow); }
-  }
-
   @keyframes hud-sweep {
     0%   { background-position: -200% 0; }
     100% { background-position: 200% 0; }
-  }
-
-  @keyframes hud-reticle {
-    0%   { transform: rotate(0deg);   opacity: 0.4; }
-    50%  { opacity: 0.9; }
-    100% { transform: rotate(360deg); opacity: 0.4; }
   }
 
   .hud-label {
@@ -515,36 +504,6 @@
     opacity: 0.5;
   }
 
-  .hud-reticle {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-  }
-
-  .hud-reticle::before,
-  .hud-reticle::after {
-    content: '';
-    position: absolute;
-    border-radius: 50%;
-    border: 1px solid var(--color-accent);
-  }
-
-  .hud-reticle::before {
-    inset: 0;
-    opacity: 0.4;
-    border-style: dashed;
-    animation: hud-reticle 6s linear infinite;
-  }
-
-  .hud-reticle::after {
-    inset: 6px;
-    opacity: 0.6;
-    animation: hud-breathe 2.6s ease-in-out infinite;
-  }
-
   /* Additional motion */
   @keyframes hud-grid-drift {
     0%   { background-position: 0 0, 0 0; }
@@ -606,8 +565,6 @@
 
   @media (prefers-reduced-motion: reduce) {
     .hud-shimmer,
-    .hud-reticle::before,
-    .hud-reticle::after,
     .hud-backdrop::before,
     .hud-scan-beam::before,
     .hud-heartbeat,

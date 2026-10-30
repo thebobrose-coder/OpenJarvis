@@ -132,6 +132,8 @@ export interface VoiceState {
   device: string;
   /** This conversation's turns only, in memory on the worker. */
   turns: VoiceTurn[];
+  /** The worker holds the GPU lease (a render); optional for an older worker. */
+  lease_held?: boolean;
 }
 
 export async function fetchVoiceState(): Promise<VoiceState> {
@@ -147,7 +149,7 @@ export async function voiceAction(action: 'start' | 'stop' | 'mute' | 'unmute'):
 }
 
 /** Live state updates; returns an unsubscribe function. */
-export function subscribeVoiceState(onState: (s: VoiceState) => void, onError?: () => void): () => void {
+export function subscribeVoiceState(onState: (s: VoiceState) => void, onError?: (closed: boolean) => void): () => void {
   const source = new EventSource(`${getBase()}/api/voice/events`);
   source.onmessage = (e) => {
     try {
@@ -156,6 +158,7 @@ export function subscribeVoiceState(onState: (s: VoiceState) => void, onError?: 
       /* ignore a malformed event */
     }
   };
-  source.onerror = () => onError?.();
+  // `closed`: the browser has given up (the worker answered 503); otherwise it retries.
+  source.onerror = () => onError?.(source.readyState === EventSource.CLOSED);
   return () => source.close();
 }

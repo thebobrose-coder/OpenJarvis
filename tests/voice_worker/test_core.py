@@ -354,3 +354,29 @@ def test_cache_prune_after_14_days(rig, tmp_path):
     assert not cache.wav_path(f"{1:016x}").exists()
     assert cache.lane(f"{2:016x}") == "fast"
     assert set(cache.index()) == {f"{2:016x}"}
+
+
+def test_lease_listener_fires_on_take_and_release_only(rig):
+    lease, gpu = rig["lease"], rig["gpu"]
+    calls: list[bool] = []
+    lease.on_change = lambda: calls.append(lease.held)
+    lease.release()  # not held: no edge
+    assert lease.acquire("x")
+    lease.renew("x")  # still held: no edge
+    lease.release()
+    assert calls == [True, False]
+    gpu.loaded = ["some-model"]
+    assert not lease.acquire("y")  # refused: no edge
+    assert calls == [True, False]
+
+
+def test_a_failing_lease_listener_never_breaks_the_lease(rig):
+    lease = rig["lease"]
+
+    def boom():
+        raise RuntimeError("listener down")
+
+    lease.on_change = boom
+    assert lease.acquire("x") and lease.held
+    lease.release()
+    assert not lease.held and not lease.path.exists()

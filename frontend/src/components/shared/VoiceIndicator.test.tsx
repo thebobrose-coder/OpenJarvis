@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { VoiceDrawerView, VoiceIndicatorView } from './VoiceIndicatorViews';
+import { OFFLINE_TITLE, orbMood, VoiceDrawerView, VoiceIndicatorView } from './VoiceIndicatorViews';
 import type { VoiceState } from '../../lib/voice-api';
 
 // Neutral fixtures only: real turns are the operator's speech.
@@ -29,9 +29,10 @@ describe('voice indicator', () => {
     expect(html).not.toContain('>Listening<');
   });
 
-  it('listening pulses and offers to end; the label opens the drawer', () => {
+  it('listening offers to end; the label opens the drawer; the orb carries the motion', () => {
     const html = indicator({ state: 'listening', conversation_id: 'c-1' });
-    expect(html).toContain('animate-pulse');
+    expect(html).toContain('data-orb-mood="listening"');
+    expect(html).not.toContain('animate-pulse');
     expect(html).toContain('aria-label="End the voice conversation"');
     expect(html).toContain('>Listening<');
   });
@@ -51,8 +52,42 @@ describe('voice indicator', () => {
     expect(indicator({ duplex: 'half' })).toContain('(half-duplex)');
   });
 
-  it('renders nothing without a worker', () => {
-    expect(renderToStaticMarkup(<VoiceIndicatorView state={null} onToggle={noop} onMute={noop} onOpen={noop} />)).toBe('');
+  it('keeps data-voice-state and draws the orb for every state', () => {
+    for (const st of ['idle', 'listening', 'transcribing', 'thinking', 'speaking', 'muted'] as const) {
+      const html = indicator({ state: st });
+      expect(html).toContain(`data-voice-state="${st}"`);
+      expect(html).toContain(`data-orb-mood="${st}"`);
+      expect(html).toContain('<canvas');
+    }
+  });
+
+  it('without a worker (a 503): a dim offline orb, disabled, and no other controls', () => {
+    const html = renderToStaticMarkup(<VoiceIndicatorView state={null} onToggle={noop} onMute={noop} onOpen={noop} />);
+    expect(html).toContain('data-voice-state="offline"');
+    expect(html).toContain('data-orb-mood="offline"');
+    expect(html).toContain(`title="${OFFLINE_TITLE}"`);
+    expect(html).toContain('disabled=""');
+    expect(html).not.toContain('Mute the microphone');
+    expect(html).not.toContain('Unmute');
+  });
+
+  it('a streaming chat turn with an idle voice shows thinking', () => {
+    const html = renderToStaticMarkup(
+      <VoiceIndicatorView state={base} streaming onToggle={noop} onMute={noop} onOpen={noop} />,
+    );
+    expect(html).toContain('data-orb-mood="thinking"');
+    expect(html).toContain('data-voice-state="idle"');
+  });
+
+  it('picks the mood: voice above idle, then streaming, then the GPU lease', () => {
+    expect(orbMood(null)).toBe('offline');
+    expect(orbMood(base)).toBe('idle');
+    expect(orbMood({ ...base, lease_held: true })).toBe('rendering');
+    expect(orbMood({ ...base, state: 'listening', lease_held: true })).toBe('listening');
+    expect(orbMood({ ...base, state: 'speaking' }, true)).toBe('speaking');
+    expect(orbMood({ ...base, lease_held: true }, true)).toBe('thinking');
+    expect(orbMood({ ...base, state: 'muted', lease_held: true })).toBe('muted');
+    expect(orbMood({ ...base, lease_held: undefined })).toBe('idle'); // an older worker
   });
 });
 

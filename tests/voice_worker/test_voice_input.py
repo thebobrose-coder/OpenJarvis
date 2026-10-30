@@ -113,6 +113,38 @@ def test_events_publish_state_changes(vi):
     vi.unsubscribe(q)
 
 
+def test_state_carries_lease_held(vi):
+    assert vi.state()["lease_held"] is False
+    held = {"v": True}
+    v = VoiceInput(
+        lambda on_change: None,
+        duplex="full",
+        device="Sample Headset",
+        lease_held=lambda: held["v"],
+    )
+    assert v.state()["lease_held"] is True
+
+
+def test_lease_edges_reach_subscribers(tmp_path):
+    from openjarvis.voice_worker.core import GpuLease
+
+    lease = GpuLease(tmp_path / "lease.json", lambda: [], lambda: 9000)
+    v = VoiceInput(
+        lambda on_change: None,
+        duplex="full",
+        device="Sample Headset",
+        lease_held=lambda: lease.held,
+    )
+    lease.on_change = v._publish
+    q = v.subscribe()
+    assert json.loads(q.get_nowait())["lease_held"] is False  # the initial state
+    assert lease.acquire("render")
+    assert json.loads(q.get_nowait())["lease_held"] is True
+    lease.release()
+    assert json.loads(q.get_nowait())["lease_held"] is False
+    assert q.empty()
+
+
 @pytest.mark.parametrize(
     ("combo", "vk", "mods"),
     [
