@@ -103,6 +103,8 @@ def queue(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(cr, "decide", decide)
     monkeypatch.setattr(dr, "_data_dir", lambda: tmp_path)
     monkeypatch.setattr(dr, "edit_scope_allowed", lambda: state["edit"])
+    # No dispatcher config: the cap is the runbook default.
+    monkeypatch.setattr(dr, "_dispatch_config", lambda _root: tmp_path / "none.json")
     state["root"] = root
     return state
 
@@ -353,6 +355,42 @@ def test_past_the_daily_cap_the_order_waits(queue):
     body = _client().post("/api/dispatch", json=PATCH_CLASS).json()
     assert body["waits_for_tomorrow"] is True
     assert len(_pending(root)) == 1
+
+
+def test_the_cap_is_read_from_the_dispatcher_config(queue, tmp_path, monkeypatch):
+    config = tmp_path / "dispatch.config.json"
+    monkeypatch.setattr(dr, "_dispatch_config", lambda _root: config)
+    root = queue["root"]
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for n in range(dr.DAILY_CAP):
+        (root / "done" / f"wo-20260101-ran-{n:06d}.report.json").write_text(
+            json.dumps({"id": f"r{n}", "status": "done", "finishedAt": today})
+        )
+    config.write_text(json.dumps({"dailyCap": 20}))
+    assert dr.daily_cap(root) == 20
+    body = _client().post("/api/dispatch", json=PATCH_CLASS).json()
+    assert body["waits_for_tomorrow"] is False
+    # Lowered below what ran today, the next order waits.
+    config.write_text(json.dumps({"dailyCap": 3}))
+    assert dr.cap_reached(root, datetime.now(timezone.utc)) is True
+
+
+def test_a_missing_or_bad_config_falls_back_to_the_default(tmp_path, monkeypatch):
+    config = tmp_path / "dispatch.config.json"
+    monkeypatch.setattr(dr, "_dispatch_config", lambda _root: config)
+    assert dr.daily_cap(tmp_path) == dr.DAILY_CAP
+    for bad in ("not json", "[]", '{"dailyCap": 0}', '{"dailyCap": "20"}'):
+        config.write_text(bad)
+        assert dr.daily_cap(tmp_path) == dr.DAILY_CAP
+    config.write_text('{"dailyCap": true}')
+    assert dr.daily_cap(tmp_path) == dr.DAILY_CAP
+
+
+def test_the_config_sits_beside_the_data_dir(tmp_path):
+    root = tmp_path / "_data" / "workorders"
+    assert dr._dispatch_config(root) == tmp_path / "hq" / "dispatch" / (
+        "dispatch.config.json"
+    )
 
 
 def test_dispatch_is_loopback_only(queue):

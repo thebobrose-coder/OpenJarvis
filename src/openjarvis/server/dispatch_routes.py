@@ -38,8 +38,11 @@ SCHEMA_REPOS = ("foundry", "openjarvis", "hermes", "x402", "hq")
 GOAL_MAX = 4000
 CONTEXT_MAX = 8000
 # The dispatcher's ``dailyCap``: orders past it wait in pending/ for the next
-# day (hq/runbooks/dispatcher.md, "The daily cap"). Shared with Hermes.
+# day (hq/runbooks/dispatcher.md, "The daily cap"). Shared with Hermes. The
+# live value is read from the dispatcher's own config beside the data dir;
+# this is the runbook default when that file can't be read.
 DAILY_CAP = 5
+DISPATCH_CONFIG = Path("hq") / "dispatch" / "dispatch.config.json"
 QUEUE_STATES = ("pending", "running", "done")
 
 ACCEPTANCE = {
@@ -125,6 +128,26 @@ def find_duplicate(root: Path, plan_ref: str) -> str | None:
     return None
 
 
+def _dispatch_config(root: Path) -> Path:
+    """The dispatcher's config; ``root`` is ``<workspace>/_data/workorders``."""
+    return root.parent.parent / DISPATCH_CONFIG
+
+
+def daily_cap(root: Path) -> int:
+    """The dispatcher's ``dailyCap`` from its config, read-only. Falls back to
+    DAILY_CAP when the file is missing or the value isn't a positive int."""
+    try:
+        doc = json.loads(_dispatch_config(root).read_text(encoding="utf-8"))
+        cap = doc.get("dailyCap") if isinstance(doc, dict) else None
+    except (OSError, ValueError):
+        return DAILY_CAP
+    return (
+        cap
+        if isinstance(cap, int) and not isinstance(cap, bool) and cap > 0
+        else DAILY_CAP
+    )
+
+
 def cap_reached(root: Path, now: datetime) -> bool:
     """Whether today's run is already full: reports finished today plus the
     orders already waiting reach the dispatcher's cap."""
@@ -145,7 +168,7 @@ def cap_reached(root: Path, now: datetime) -> bool:
             ):
                 ran += 1
     waiting = sum(1 for state, _p, _d in _order_files(root) if state == "pending")
-    return ran + waiting >= DAILY_CAP
+    return ran + waiting >= daily_cap(root)
 
 
 def _clip(text: Any, n: int) -> str:
