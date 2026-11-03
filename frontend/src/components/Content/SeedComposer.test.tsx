@@ -107,6 +107,23 @@ const betaLong = beta.lanes[1];
 const alphaThesis = SEEDBANK.properties[0].lanes[1];
 
 describe('seed helpers', () => {
+  // v1.24 O2: an operator thesis seeds to the satire lane only. The sim and
+  // real desks read `proposable: true` (Hermes may propose there) and are
+  // still never offered as seed lanes.
+  it('never offers a proposable desk lane as a seed lane', () => {
+    const desks = {
+      id: 'desks',
+      lanes: [
+        lane({ lane: 'short' }),
+        lane({ lane: 'long', content_type: 'thesis', status: 'ok' }),
+        lane({ lane: 'feed:sim', content_type: 'thesis', status: 'feed', seedable: false, feed_lane: true, proposable: true, hermes_waiting: 1 }),
+        lane({ lane: 'feed:real', content_type: 'thesis', status: 'feed', seedable: false, feed_lane: true, proposable: true, hermes_waiting: 0 }),
+      ],
+      pillars: [],
+    };
+    expect(seedableLanes(desks).map((l) => l.lane)).toEqual(['short', 'long']);
+  });
+
   it('offers seedable and operator-only lanes, never a feed lane, on active properties only', () => {
     expect(seedableLanes(beta).map((l) => l.lane)).toEqual(['short', 'long']);
     expect(seedProperties(SEEDBANK).map((p) => p.id)).toEqual(['alpha', 'beta']);

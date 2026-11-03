@@ -74,6 +74,10 @@ _QUERY_MAX_LEN = 80
 _MOTIONS = ("always", "never")
 _MOTION_BRIEF_MAX = 240
 _VIDEO_KEY_MAX = 512
+# v1.24: the desk of a thesis on the approve body, sent only when
+# the operator changed it. The shape is checked here; Hermes checks the item
+# (pending, on one of these lanes) and answers 400 `invalid-feed-lane: ...`.
+_DESK_LANES = ("feed:sim", "feed:real")
 # v1.16 operator seeds: the bridge's own keys and caps (v1.14 adds the motion keys).
 _SEED_BODY_MAX = 16 * 1024
 _SEED_TEXT_MAX = 6000
@@ -234,6 +238,22 @@ def _motion(body: dict | None) -> dict[str, Any]:
             )
         out[key] = value.strip()
     return out
+
+
+def _desk_lane(body: dict | None) -> dict[str, Any]:
+    """Pop `lane` ("feed:sim" or "feed:real") off the approve body. Any other
+    value is refused with the bridge's wording, so the editor shows one text."""
+    if not body or "lane" not in body:
+        return {}
+    lane = body.pop("lane")
+    if lane not in _DESK_LANES:
+        shown = json.dumps(lane) if isinstance(lane, str) else repr(lane)
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid-feed-lane: lane {shown} is not a desk lane "
+            '("feed:sim" or "feed:real")',
+        )
+    return {"lane": lane}
 
 
 def _check_class(cls: Any, key: str = "episode_class") -> str:
@@ -478,7 +498,12 @@ async def decide_proposal(
         raise HTTPException(status_code=400, detail="Invalid action")
     if action == "approve":
         raw = await _json_body(request, _APPROVE_BODY_MAX)
-        extra = {**_targeting(raw), **_motion(raw), **_episode_edits(raw)}
+        extra = {
+            **_targeting(raw),
+            **_motion(raw),
+            **_episode_edits(raw),
+            **_desk_lane(raw),
+        }
         body = {**(_fields(raw, _APPROVE_LIMITS) or {}), **extra} or None
     else:
         body = _fields(await _json_body(request), _REJECT_LIMITS)

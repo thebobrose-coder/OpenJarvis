@@ -3,7 +3,17 @@ import type { SpeechBlock } from '../../lib/voice-api';
 import { useState } from 'react';
 import { Check, ClipboardList, MessagesSquare, Pencil, Plus, X } from 'lucide-react';
 import type { ProposalFields } from '../../lib/desk-cards';
-import { EPISODE_LIMITS, LIMITS, SEED_LIMITS, type ApprovalEdits, type EpisodeClass, type EpisodeTag, type Proposal, type PropertyMotion } from '../../lib/content-api';
+import {
+  EPISODE_LIMITS,
+  LIMITS,
+  SEED_LIMITS,
+  type ApprovalEdits,
+  type EpisodeClass,
+  type EpisodeTag,
+  type Proposal,
+  type PropertyMotion,
+  type SeedbankProperty,
+} from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { shortDateTime } from '../shared/format';
 import { Chip, ExtIcon, ExtLink, Quiet, Segmented, SmallButton } from '../shared/ui';
@@ -43,6 +53,21 @@ export const isEpisodeProposal = (p: Pick<Proposal, 'lane' | 'content_type'>) =>
 /** v2.8: a long-form proposal (a thesis, an Expedition Debrief) may carry a companion episode tag. */
 export const tagAllowed = (p: Pick<Proposal, 'lane' | 'content_type'>, classes: EpisodeClass[]) =>
   classes.length > 0 && !isEpisodeProposal(p) && p.lane !== 'short' && p.content_type !== 'short' && !p.lane.startsWith('feed:');
+
+/** v1.24: the desks Hermes proposes for, from the property's seedbank: a feed
+ * lane marked `proposable`. Empty on an older seedbank, so no desk control shows. */
+export const deskLanes = (p: Pick<SeedbankProperty, 'lanes'>): string[] =>
+  p.lanes.filter((l) => l.proposable === true && (l.feed_lane || l.lane.startsWith('feed:'))).map((l) => l.lane);
+
+/** The desk's words (the operator's per-channel rules of 2026-11-03); any other desk lane reads from its id. */
+export const DESK_LABEL: Record<string, string> = { 'feed:sim': 'Sim desk, Monday', 'feed:real': 'Real desk, Wednesday' };
+export const deskLabel = (lane: string) => DESK_LABEL[lane] ?? `${laneLabel(lane)} desk`;
+
+/** A thesis on a property with desks: the editor shows the desk as a two-way
+ * control, and no video or target queries. One on none of the desks can't be
+ * approved from the editor (none should exist; Hermes never proposes one). */
+export const isDeskProposal = (p: Pick<Proposal, 'lane' | 'content_type'>, desks: string[]) =>
+  desks.length > 0 && (p.content_type === 'thesis' || desks.includes(p.lane));
 
 /** The classes offered on a proposal: an operator-only class only on the operator's own; Hermes refuses it on its proposals. */
 export const classOptions = (classes: EpisodeClass[], p: Pick<Proposal, 'proposed_by'>) =>
@@ -86,7 +111,7 @@ const tagKey = (t?: EpisodeTag | null) => (t ? JSON.stringify(tagOf(t.class, t.t
  * out so an untouched approval isn't recorded as an edit. */
 export function approvalEdits(
   proposal: Pick<Proposal, 'topic' | 'pillar_hint' | 'product_handle' | 'target_queries' | 'priority' | 'motion' | 'motion_brief'> &
-    Partial<Pick<Proposal, 'episode_class' | 'sources' | 'target_minutes' | 'episode'>>,
+    Partial<Pick<Proposal, 'lane' | 'episode_class' | 'sources' | 'target_minutes' | 'episode'>>,
   form: {
     topic: string;
     pillar: string;
@@ -100,6 +125,8 @@ export function approvalEdits(
     episode?: { cls: string; sources: string[]; minutes: number | null };
     /** v2.8, long-form only: an empty class removes the tag. */
     tag?: { cls: string; minutes: number | null };
+    /** v1.24, a desk proposal only: the desk picked ("feed:sim" or "feed:real"). */
+    desk?: string;
   },
 ): ApprovalEdits {
   const edits: ApprovalEdits = {};
@@ -138,6 +165,7 @@ export function approvalEdits(
     const next = tagOf(form.tag.cls, form.tag.minutes);
     if (tagKey(next) !== tagKey(proposal.episode)) edits.episode = next;
   }
+  if (form.desk && form.desk !== proposal.lane) edits.lane = form.desk;
   return edits;
 }
 
@@ -224,6 +252,7 @@ export function ApproveEditor({
   pillars,
   motion = null,
   episodeClasses = [],
+  desks = [],
   initial,
   onApprove,
   onCancel,
@@ -235,6 +264,8 @@ export function ApproveEditor({
   motion?: PropertyMotion | null;
   /** The property's seedbank `episode_classes` (v1.17); empty offers no episode fields. */
   episodeClasses?: EpisodeClass[];
+  /** v1.24: the property's desk lanes (`deskLanes`); empty shows no Desk control. */
+  desks?: string[];
   /** A desk card's suggested values, shown for the operator to check. */
   initial?: ProposalFields;
   onApprove: (edits: ApprovalEdits) => void;
@@ -251,9 +282,13 @@ export function ApproveEditor({
   const [queries, setQueries] = useState(() => cleanQueries(initial?.target_queries ?? proposal.target_queries ?? []));
   const [priority, setPriority] = useState(initial?.priority ?? proposal.priority ?? DEFAULT_PRIORITY);
   const pillar = pillarChoice === OTHER ? pillarText : pillarChoice;
-  const editQueries = queriesEditable(proposal);
+  // v1.24: a desk proposal has no video and no target queries; off every desk it can't be approved here.
+  const deskItem = isDeskProposal(proposal, desks);
+  const onDesk = desks.includes(proposal.lane);
+  const [desk, setDesk] = useState(proposal.lane);
+  const editQueries = !deskItem && queriesEditable(proposal);
   const editPriority = 'priority' in proposal;
-  const editVideo = videoAllowed(motion, proposal.lane, proposal.content_type);
+  const editVideo = !deskItem && videoAllowed(motion, proposal.lane, proposal.content_type);
   const [choice, setChoice] = useState<MotionChoice>(choiceOf(proposal.motion));
   const [beat, setBeat] = useState(proposal.motion_brief ?? '');
   const [assetKey, setAssetKey] = useState('');
@@ -326,6 +361,18 @@ export function ApproveEditor({
           />
         </label>
       </div>
+      {deskItem && (
+        <div className="flex flex-col gap-1" role="group" aria-label="Desk">
+          <Label>Desk</Label>
+          {onDesk ? (
+            <Segmented ariaLabel="Desk" value={desk} onChange={setDesk} options={desks.map((d) => ({ value: d, label: deskLabel(d) }))} />
+          ) : (
+            <p role="note" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+              This thesis is on no desk ({laneLabel(proposal.lane)}), and Hermes never proposes one there. It can’t be approved from here.
+            </p>
+          )}
+        </div>
+      )}
       {(editQueries || editPriority) && (
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
           {editQueries ? (
@@ -455,7 +502,7 @@ export function ApproveEditor({
       <div className="flex gap-1.5">
         <SmallButton
           tone="accent"
-          disabled={!topic.trim() || keyBad || episodeProblems.length > 0}
+          disabled={!topic.trim() || keyBad || episodeProblems.length > 0 || (deskItem && !onDesk)}
           onClick={() =>
             onApprove(
               approvalEdits(proposal, {
@@ -468,6 +515,7 @@ export function ApproveEditor({
                 video: editVideo ? { choice, beat, assetKey, removeKey } : undefined,
                 episode: episodeForm,
                 tag: tagForm,
+                desk: deskItem && onDesk ? desk : undefined,
               }),
             )
           }
@@ -646,6 +694,7 @@ export function ProposalCard({
   pillars,
   motion = null,
   episodeClasses = [],
+  desks = [],
   showProperty,
   onApprove,
   onReject,
@@ -659,6 +708,8 @@ export function ProposalCard({
   motion?: PropertyMotion | null;
   /** The property's seedbank `episode_classes` (v1.17). */
   episodeClasses?: EpisodeClass[];
+  /** v1.24: the property's desk lanes. */
+  desks?: string[];
   showProperty: boolean;
   onApprove: (edits: ApprovalEdits) => void;
   onReject: (note: string) => void;
@@ -707,6 +758,7 @@ export function ProposalCard({
           pillars={pillars}
           motion={motion}
           episodeClasses={episodeClasses}
+          desks={desks}
           initial={deskDecision?.decision === 'approve' ? deskDecision.fields : undefined}
           onApprove={onApprove}
           onCancel={() => setMode('idle')}
@@ -727,7 +779,9 @@ export function ProposalCard({
             title={
               isEpisodeProposal(proposal)
                 ? 'Edit the topic, pillar, product, episode class, sources or target minutes, then approve'
-                : hasTargeting(proposal)
+                : isDeskProposal(proposal, desks)
+                  ? 'Edit the topic, pillar, product or desk, then approve'
+                  : hasTargeting(proposal)
                   ? 'Edit the topic, pillar, product, target queries or priority, then approve'
                   : 'Edit the topic, pillar or product, then approve'
             }
@@ -814,6 +868,7 @@ export function ProposalsQueue({
   pillarsByProperty,
   motionByProperty = {},
   episodeClassesByProperty = {},
+  deskLanesByProperty = {},
   showProperty,
   onApprove,
   onReject,
@@ -834,6 +889,8 @@ export function ProposalsQueue({
   motionByProperty?: Record<string, PropertyMotion | null>;
   /** v1.17: each property's seedbank `episode_classes`, for the episode fields and the companion tag. */
   episodeClassesByProperty?: Record<string, EpisodeClass[]>;
+  /** v1.24: each property's desk lanes (`deskLanes`), for the Desk control. */
+  deskLanesByProperty?: Record<string, string[]>;
   showProperty: boolean;
   onApprove: (id: string, edits: ApprovalEdits) => void;
   onReject: (id: string, note: string) => void;
@@ -889,6 +946,7 @@ export function ProposalsQueue({
                     pillars={pillarsByProperty[p.property_id] ?? []}
                     motion={motionByProperty[p.property_id] ?? null}
                     episodeClasses={episodeClassesByProperty[p.property_id] ?? []}
+                    desks={deskLanesByProperty[p.property_id] ?? []}
                     showProperty={showProperty}
                     onApprove={(edits) => onApprove(p.id, edits)}
                     onReject={(note) => onReject(p.id, note)}

@@ -516,6 +516,23 @@ as "Posts to approve (G1)", right after Trading, and open a G1 drawer.
   `/api/g1/approvals/<id>/media/<still|clip>`, and the server lists again
   and streams the file, so the CSP is unchanged. All routes are loopback only.
 
+**Content page: the desk on a proposal, and the seedbank's Hermes seeds**
+(contract v1.24, the operator's per-channel lane rules of 2026-11-03).
+- The approve editor shows a thesis proposal's desk ("Sim desk, Monday" or
+  "Real desk, Wednesday") as a two-way control and sends `lane` only when the
+  operator changed it. The desks come from the property's seedbank: its feed
+  lanes marked `proposable`, so an older seedbank shows no control. A desk
+  proposal offers no video and no target queries, and one on none of the
+  desks can't be approved from the editor. A 400 `invalid-feed-lane` shows
+  the route's note as is; a 503 says to try again.
+- The proxy checks `lane` ("feed:sim" or "feed:real") with the bridge's
+  wording and forwards it; a reject never carries it. The 12 KB approve body
+  still holds.
+- Seedbank: a `proposable` lane row reads "N Hermes seeds waiting" beside its
+  news items (its `queued` counts the feed's items, not seeds). The composer
+  still never offers a feed lane as a seed lane, now pinned by a test with
+  the two proposable desks.
+
 **Content page: the Episodes panel gets controls** (foundry-studio.md
 v0.4.5). Until now the panel could only watch; the three actions Foundry's
 studio takes from `action.json` are now on the page.

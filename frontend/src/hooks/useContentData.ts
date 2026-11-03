@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ApiError,
   CONTENT_FEEDS,
   approveProposal,
   fetchContentFeed,
@@ -194,7 +195,9 @@ export function useContentData() {
           delete next[id];
           return next;
         });
-        setNotice(e instanceof Error ? e.message : `${what} failed.`);
+        const message = e instanceof Error ? e.message : `${what} failed.`;
+        // A 503 is Hermes's store, not the decision: the same click can be retried.
+        setNotice(e instanceof ApiError && e.status === 503 ? `${message} Try again.` : message);
         return false;
       }
     },

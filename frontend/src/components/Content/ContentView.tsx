@@ -11,7 +11,7 @@ import { nextRunAt } from './episodes';
 import { ALL_PROPERTIES, matchesProperty } from './format';
 import { HealthStrip } from './HealthStrip';
 import { PerformancePanel } from './PerformancePanel';
-import { ProposalsQueue, type DeskDecision, type QueueTab } from './ProposalsQueue';
+import { ProposalsQueue, deskLanes, type DeskDecision, type QueueTab } from './ProposalsQueue';
 import { SeedbankStrip } from './SeedbankStrip';
 import { SeedComposer, draftFromPrompt, emptyDraft, episodeDraftFromPrompt, promptEpisodeClass, type SeedDraft } from './SeedComposer';
 import { ThesisLane } from './ThesisLane';
@@ -132,9 +132,11 @@ export function ContentView(props: ContentViewProps) {
 
   const motionByProperty: Record<string, PropertyMotion | null> = {};
   const episodeClassesByProperty: Record<string, EpisodeClass[]> = {};
+  const deskLanesByProperty: Record<string, string[]> = {};
   for (const p of seedbank?.properties ?? []) {
     motionByProperty[p.id] = p.motion ?? null;
     episodeClassesByProperty[p.id] = p.episode_classes ?? [];
+    deskLanesByProperty[p.id] = deskLanes(p);
   }
 
   return (
@@ -224,6 +226,7 @@ export function ContentView(props: ContentViewProps) {
           pillarsByProperty={pillarsByProperty}
           motionByProperty={motionByProperty}
           episodeClassesByProperty={episodeClassesByProperty}
+          deskLanesByProperty={deskLanesByProperty}
           showProperty={showProperty}
           onApprove={props.onApprove}
           onReject={props.onReject}

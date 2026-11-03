@@ -933,3 +933,64 @@ def test_intake_run_off_windows_is_501(monkeypatch):
     client, patcher, _ = _client(_minted)
     with patcher:
         assert client.post("/api/content/intake/run").status_code == 501
+
+
+# -- v1.24: the desk lane on the approve body ---------------------------------
+
+
+def test_approve_forwards_the_desk_lane():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(
+            f"/api/content/proposals/{UUID}/approve",
+            json={"lane": "feed:real", "note": "Wednesday fits."},
+        )
+
+    assert resp.status_code == 202
+    assert json.loads(seen[0].content) == {
+        "lane": "feed:real",
+        "note": "Wednesday fits.",
+    }
+
+
+@pytest.mark.parametrize("lane", ["long", "feed:x", "sim", "", 5, None, ["feed:sim"]])
+def test_a_non_desk_lane_is_refused_with_the_bridge_wording(lane):
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(
+            f"/api/content/proposals/{UUID}/approve", json={"lane": lane}
+        )
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"].startswith("invalid-feed-lane: lane ")
+    assert seen == []
+
+
+def test_reject_never_forwards_a_lane():
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(
+            f"/api/content/proposals/{UUID}/reject", json={"lane": "feed:sim"}
+        )
+
+    assert resp.status_code == 400
+    assert seen == []
+
+
+def test_approve_body_at_every_cap_with_the_lane_fits_12kb():
+    body = {
+        "topic": "x" * 600,
+        "pillar_hint": "p" * 120,
+        "product_handle": "h" * 120,
+        "note": "n" * 500,
+        "target_queries": ["q" * 80] * 3,
+        "priority": 3,
+        "episode": {"class": "sample-check", "target_minutes": 6},
+        "lane": "feed:sim",
+    }
+    client, patcher, seen = _client(_queued)
+    with patcher:
+        resp = client.post(f"/api/content/proposals/{UUID}/approve", json=body)
+
+    assert resp.status_code == 202
+    assert json.loads(seen[0].content)["lane"] == "feed:sim"

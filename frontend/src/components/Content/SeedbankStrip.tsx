@@ -18,6 +18,7 @@ export const LANE_STATUS: Record<string, { label: string; tone: Tone }> = {
 /** The lane's one-line explanation, for the statuses that aren't counts. */
 function laneNote(lane: Lane): string | null {
   if (lane.status === 'operator-only') return 'Yours: Hermes offers prompts only';
+  if (lane.proposable === true) return 'Hermes proposes here; the feed queues news items';
   if (lane.status === 'feed') return 'Automatic (RSS)';
   if (lane.status === 'unknown') return 'Waiting for Foundry’s snapshot';
   if (lane.status === 'not-seedable') return 'Not seeded by Hermes';
@@ -58,14 +59,23 @@ function LaneCard({ lane }: { lane: Lane }) {
       {note ? (
         <span className="text-[11.5px]">{note}</span>
       ) : null}
-      {lane.status !== 'feed' && (
+      {lane.proposable === true ? (
+        // v1.24: a desk Hermes proposes for. `queued` counts the feed's news items, not seeds.
+        <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px]" data-proposable>
+          <span data-hermes-waiting className="tabular-nums" style={{ color: 'var(--color-text)' }}>
+            {count(lane.hermes_waiting)} Hermes seeds waiting
+          </span>
+          <Stat label="News items" value={count(lane.queued)} />
+          <Stat label="Runway" value={lane.runway_days == null ? 'unknown' : `${num(lane.runway_days, 1)} d`} />
+        </div>
+      ) : lane.status !== 'feed' ? (
         <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px]">
           <Stat label="Queued" value={count(lane.queued)} />
           <Stat label="In flight" value={count(lane.in_flight)} />
           <Stat label="Pending" value={count(lane.pending)} />
           <Stat label="Runway" value={lane.runway_days == null ? 'unknown' : `${num(lane.runway_days, 1)} d`} />
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

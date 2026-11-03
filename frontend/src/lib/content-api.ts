@@ -39,6 +39,10 @@ export interface Lane {
   status: LaneStatus | string;
   last_run_at?: string | null;
   last_run_result?: string | null;
+  /** v1.24: Hermes may propose on this lane (a desk). Never a seed lane. */
+  proposable?: boolean | null;
+  /** v1.24, with `proposable`: Hermes's own seeds the intake queued in the last 14 days, not yet posted. */
+  hermes_waiting?: number | null;
 }
 
 /** A queued thesis, in lane order (v1.8). */
@@ -474,6 +478,8 @@ export interface ApprovalEdits {
   target_minutes?: number | null;
   /** v2.8, long-form only: the companion episode tag; null removes it. */
   episode?: EpisodeTag | null;
+  /** v1.24: the desk of a thesis ("feed:sim" or "feed:real"), only when changed. */
+  lane?: string;
 }
 
 export const LIMITS = {
@@ -487,9 +493,19 @@ export const LIMITS = {
   video_asset_key: 512,
 } as const;
 
+/** A failed action, with the status so a 503 (Hermes's store unreadable) can offer a retry. */
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 async function failure(res: Response, what: string): Promise<Error> {
   const detail = await res.json().then((b) => b?.detail ?? b?.error).catch(() => null);
-  return new Error(detail ? String(detail) : `${what} failed: ${res.status}`);
+  return new ApiError(res.status, detail ? String(detail) : `${what} failed: ${res.status}`);
 }
 
 function jsonInit(body: object | undefined): RequestInit {

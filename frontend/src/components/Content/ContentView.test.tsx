@@ -16,7 +16,8 @@ import { ALL_PROPERTIES } from './format';
 import { sortAlerts } from './HealthStrip';
 import { socialLine } from './PerformancePanel';
 import { ThesisLane, laneQueue, queueGroups, weeksOut } from './ThesisLane';
-import { ApproveEditor, ProposalCard, RejectConfirm, approvalEdits, classOptions, episodeEditProblems, tagAllowed } from './ProposalsQueue';
+import { ApproveEditor, ProposalCard, RejectConfirm, approvalEdits, classOptions, deskLabel, deskLanes, episodeEditProblems, isDeskProposal, tagAllowed } from './ProposalsQueue';
+import { SeedbankStrip } from './SeedbankStrip';
 
 // Neutral fixtures only: this repo is public, and real proposals name the
 // operator's properties, products, pillars and topics.
@@ -579,5 +580,102 @@ describe('ThesisLane', () => {
     expect(html).toContain('data-thesis-lane="alpha"');
     expect(html.match(/<button[^>]*>/g) ?? []).toEqual([expect.stringContaining('disabled')]);
     expect(html).not.toMatch(/<a |<form|href=/i);
+  });
+});
+
+// v1.24: the desk lane on a proposal (hq, 2026-11-03). The desks
+// come from the seedbank's `proposable` feed lanes, never from a property id.
+describe('desk proposals (v1.24)', () => {
+  const DESKS = ['feed:sim', 'feed:real'];
+  const deskProperty = {
+    id: 'gamma',
+    lanes: [
+      lane({ lane: 'short' }),
+      lane({ lane: 'long', content_type: 'thesis', status: 'ok', queued: 5 }),
+      lane({ lane: 'feed:sim', content_type: 'thesis', status: 'feed', seedable: false, feed_lane: true, proposable: true, queued: 18, hermes_waiting: 1, runway_days: 126 }),
+      lane({ lane: 'feed:real', content_type: 'thesis', status: 'feed', seedable: false, feed_lane: true, proposable: true, queued: 98, hermes_waiting: 0, runway_days: 686 }),
+    ],
+  };
+  const onDesk = proposal(21, { property_id: 'gamma', lane: 'feed:sim', content_type: 'thesis', target_queries: ['sample query'] });
+  const offDesk = proposal(22, { property_id: 'gamma', lane: 'long', content_type: 'thesis' });
+  const same = { topic: onDesk.topic, pillar: 'grit', product: 'sample-mount', note: '' };
+
+  it('reads the desks off the seedbank: proposable feed lanes only', () => {
+    expect(deskLanes(deskProperty)).toEqual(DESKS);
+    expect(deskLanes(SEEDBANK.properties[0])).toEqual([]);
+    expect(isDeskProposal(onDesk, DESKS)).toBe(true);
+    expect(isDeskProposal(offDesk, DESKS)).toBe(true);
+    expect(isDeskProposal(onDesk, [])).toBe(false);
+    expect(isDeskProposal(proposal(23, { lane: 'short' }), DESKS)).toBe(false);
+    expect(deskLabel('feed:sim')).toBe('Sim desk, Monday');
+    expect(deskLabel('feed:real')).toBe('Real desk, Wednesday');
+    expect(deskLabel('feed:other')).toBe('Feed · other desk');
+  });
+
+  it('shows the desk as a two-way control, with no video and no target queries', () => {
+    const html = renderToStaticMarkup(
+      <ApproveEditor proposal={onDesk} pillars={['grit']} motion={{ lanes: ['feed:sim'], release: 'g1' }} desks={DESKS} onApprove={vi.fn()} onCancel={vi.fn()} />,
+    );
+    expect(html).toContain('aria-label="Desk"');
+    expect(html).toContain('Sim desk, Monday');
+    expect(html).toContain('Real desk, Wednesday');
+    expect(html).not.toContain('Target queries');
+    expect(html).not.toContain('aria-label="Video"');
+    expect(html).not.toContain('can’t be approved from here');
+  });
+
+  it('shows nothing of the kind without desks, as before O1', () => {
+    const html = renderToStaticMarkup(<ApproveEditor proposal={onDesk} pillars={['grit']} onApprove={vi.fn()} onCancel={vi.fn()} />);
+    expect(html).not.toContain('aria-label="Desk"');
+    expect(html).toContain('Target queries');
+  });
+
+  it('refuses to approve a thesis on no desk', () => {
+    const html = renderToStaticMarkup(<ApproveEditor proposal={offDesk} pillars={['grit']} desks={DESKS} onApprove={vi.fn()} onCancel={vi.fn()} />);
+    expect(html).toContain('This thesis is on no desk (Long)');
+    expect(html).toContain('can’t be approved from here');
+    expect(html).not.toContain('Sim desk, Monday');
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*<svg[\s\S]*?Approve<\/button>/);
+  });
+
+  it('sends `lane` only when the desk changed', () => {
+    expect(approvalEdits(onDesk, { ...same, desk: 'feed:sim' })).toEqual({});
+    expect(approvalEdits(onDesk, { ...same, desk: 'feed:real' })).toEqual({ lane: 'feed:real' });
+    expect(approvalEdits(onDesk, same)).toEqual({});
+  });
+
+  it('names the desk in the Edit & approve hint', () => {
+    const html = renderToStaticMarkup(<ProposalCard proposal={onDesk} pillars={['grit']} desks={DESKS} showProperty={false} onApprove={vi.fn()} onReject={vi.fn()} />);
+    expect(html).toContain('Edit the topic, pillar, product or desk, then approve');
+  });
+
+  it('shows Hermes seeds waiting on a proposable lane, with its news items', () => {
+    const html = renderToStaticMarkup(<SeedbankStrip seedbank={{ ...SEEDBANK, properties: [deskProperty] }} selectedProperty={ALL_PROPERTIES} />);
+    expect(html).toContain('data-proposable');
+    expect(html).toContain('>1 Hermes seeds waiting<');
+    expect(html).toContain('>0 Hermes seeds waiting<');
+    expect(html).toContain('News items </span><span class="tabular-nums" style="color:var(--color-text)">18<');
+    expect(html).toContain('Hermes proposes here; the feed queues news items');
+    expect(html).not.toContain('Automatic (RSS)');
+    // The satire lane is a plain seedable row.
+    expect(html).toContain('Queued </span><span class="tabular-nums" style="color:var(--color-text)">5<');
+  });
+
+  it('renders a second property’s thesis lane and its operator_lane_empty alert like the first', () => {
+    const lane: ThesisLaneData = { lane: 'long', cadence_per_week: 1, queued: 0, in_flight: 0, runway_days: 0, approvals_pending: 0, next_up: null, queue: [], posts: [], flags: [] };
+    const html = render({
+      feeds: feeds({
+        content_seedbank: { data: { ...SEEDBANK, properties: [...SEEDBANK.properties, { ...deskProperty, thesis_lane: lane }] }, loading: false, error: null },
+        content_health: {
+          data: { ...HEALTH, alerts: [{ property: 'gamma', kind: 'operator_lane_empty', severity: 'info', message: 'Sample empty-lane message' }] },
+          loading: false,
+          error: null,
+        },
+      }),
+    });
+    expect(html).toContain('data-thesis-lane="gamma"');
+    expect(html).toContain('Nothing queued');
+    expect(html).toContain('operator lane empty');
+    expect(html).toContain('Sample empty-lane message');
   });
 });
