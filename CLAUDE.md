@@ -52,6 +52,9 @@ no OpenJarvis agent, tools, system prompt, or memory. The `hermes` engine is
   (writes `src/openjarvis/server/static/`, which the live server serves). Component tests
   use `renderToStaticMarkup`: keep pages as a pure `*View` plus a thin hook page.
 - Desktop rebuild: `npx tauri build --no-bundle` in `frontend/`, then relaunch the exe.
+  The window loads the frontend baked into the exe, not `:8000`, so a frontend change
+  reaches the desktop app only through this rebuild; `npm run build` plus a relaunch
+  updates the browser copy alone. A Python-only change needs just the relaunch.
   Never use the NSIS/MSI installer: it installs vanilla upstream.
 
 ## Git
