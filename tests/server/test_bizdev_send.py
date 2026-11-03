@@ -923,7 +923,7 @@ class MockFE:
 
     def __init__(self):
         self.limit = "ok"  # ok | timeout
-        self.post = "ok"  # ok | timeout | connect | 503
+        self.post = "ok"  # ok | timeout | connect | 503 | noid | garbage
         self.rows: list = []  # the `GET /v1/emails` listing, newest first
         self.list_fail = False
         self.calls: list[httpx.Request] = []
@@ -945,6 +945,10 @@ class MockFE:
                 raise httpx.ConnectError("refused", request=req)
             if self.post == "503":
                 return httpx.Response(503, json={"message": "busy"})
+            if self.post == "noid":
+                return httpx.Response(200, json={"status": "queued"})
+            if self.post == "garbage":
+                return httpx.Response(200, content=b"<html>oops</html>")
             return httpx.Response(200, json={"id": "fe0001", "status": "queued"})
         if req.method == "GET" and path == "/v1/emails":
             if self.list_fail:
@@ -1207,3 +1211,24 @@ def test_a_log_from_before_this_change_behaves_as_before(mfe):
         assert asyncio.run(bs.reconcile()) == []
     assert _send(_card(), mfe).status_code == 409  # the touch is still taken
     assert mfe.count("GET", "/v1/emails") == 0
+
+
+@pytest.mark.parametrize("mode", ["noid", "garbage"])
+def test_an_accepted_send_with_no_id_or_an_unreadable_reply_is_held_unconfirmed(
+    mfe, mode
+):
+    mfe.post = mode
+    seen: list = []
+    resp = _send(_card(), mfe, seen)
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["fe_status"] == "unconfirmed"
+    assert mfe.count("POST", "/v1/emails") == 1 and _flags(seen, "sent") == []
+    (entry,) = bs.load_log()
+    assert entry["fe_status"] == "unconfirmed" and entry["flag"]["fe_id"] is None
+    assert _send(_card(), mfe).status_code == 409
+    # The lookup settles it like a timed-out send.
+    mfe.rows = [_row(entry["message_id"], status="queued")]
+    with _wire(_card(), mfe, seen):
+        asyncio.run(bs.reconcile())
+    assert bs.load_log()[0]["fe_id"] == "fe7" and len(_flags(seen, "sent")) == 1
+    assert mfe.count("POST", "/v1/emails") == 1

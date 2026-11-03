@@ -46,9 +46,13 @@ class ForwardEmailError(Exception):
         self.message = message
 
 
-class ForwardEmailTimeout(ForwardEmailError):
-    """No answer in time. For a `POST /v1/emails` the mail may still have been
-    queued: the caller holds it as unconfirmed and never sends it again."""
+class ForwardEmailUnconfirmed(ForwardEmailError):
+    """A `POST /v1/emails` whose outcome is unknown: the mail may have been
+    queued. The caller holds it as unconfirmed and never sends it again."""
+
+
+class ForwardEmailTimeout(ForwardEmailUnconfirmed):
+    """No answer in time (for a POST, see `ForwardEmailUnconfirmed`)."""
 
     def __init__(self) -> None:
         super().__init__(None, "Forward Email didn't answer in time")
@@ -142,6 +146,11 @@ class ForwardEmail:
             try:
                 return resp.json()
             except ValueError:
+                if method != "GET":
+                    # Accepted (2xx) but unreadable: it may have been queued.
+                    raise ForwardEmailUnconfirmed(
+                        resp.status_code, "Forward Email's reply was unreadable"
+                    ) from None
                 raise ForwardEmailError(resp.status_code, "Unreadable reply") from None
         assert last is not None
         raise last

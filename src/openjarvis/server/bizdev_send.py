@@ -67,6 +67,7 @@ from openjarvis.server.forwardemail import (
     ForwardEmail,
     ForwardEmailError,
     ForwardEmailTimeout,
+    ForwardEmailUnconfirmed,
     bare_message_id,
     parse_time,
     read_token,
@@ -758,9 +759,13 @@ async def send(prospect_id: int, raw: dict) -> dict:
             flag["meta"] = {"draft_edited": req["draft_edited"]}
         try:
             result = await client.send(payload)
-        except ForwardEmailTimeout:
-            # It may have been queued: hold it, unsent to Hermes, until its
-            # Message-ID settles it (`reconcile`). Never sent again meanwhile.
+            if not result["id"]:
+                # Accepted with no id to poll by: as unknown as no answer.
+                raise ForwardEmailUnconfirmed(None, "Forward Email returned no id")
+        except ForwardEmailUnconfirmed as exc:
+            # It may have been queued (no answer in time, an unreadable reply,
+            # or no id): hold it, unsent to Hermes, until its Message-ID
+            # settles it (`reconcile`). Never sent again meanwhile.
             sends.append(
                 {
                     "prospect_id": prospect_id,
@@ -776,7 +781,8 @@ async def send(prospect_id: int, raw: dict) -> dict:
             )
             save_log(sends)
             logger.warning(
-                "A send got no answer from Forward Email; checking %s",
+                "A send is unconfirmed (%s); checking %s",
+                exc.message,
                 payload["messageId"],
             )
             return {
@@ -787,8 +793,6 @@ async def send(prospect_id: int, raw: dict) -> dict:
             }
         except ForwardEmailError as exc:
             raise HTTPException(status_code=502, detail=exc.message) from None
-        if not result["id"]:
-            raise HTTPException(status_code=502, detail="Forward Email returned no id")
 
         fe_status = normalise(result["status"]) or "pending"
         flag["fe_id"] = result["id"]
