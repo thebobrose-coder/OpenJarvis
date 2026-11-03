@@ -267,7 +267,10 @@ as before: the mail link, the copy buttons and "Mark as sent".
     newsletter (421) until the account is approved for newsletters;
   - sends it, then posts the v0.10 flag body.
 
-  A Forward Email error answers 502 and records nothing. When the bridge is
+  A refused send (a 4xx, a 5xx, or a connection that never opened) answers
+  502 and records nothing. A send whose outcome is unknown (no answer in
+  time, or an accepted reply with no id or an unreadable body) is held as
+  unconfirmed and settled by its Message-ID (see Fixed). When the bridge is
   down, nothing is sent.
 - **Status poll:** a background task (only under `jarvis serve`) polls each
   send's delivery status every 5 minutes for up to 7 days. It relays changes
@@ -876,6 +879,28 @@ themselves stay; upstream code still uses them.
 `digest_collect.py` and `news_rss.py` are back to upstream.
 
 ### Fixed
+
+**A Forward Email timeout can no longer send a Business Development touch
+twice.** The client retried a timed-out `POST /v1/emails`, and a failed send
+recorded nothing, so a mail Forward Email had queued anyway could go out again
+on the retry or on the next click. Now:
+- a send is never retried. Reads (the daily-limit check, delivery status, the
+  listing) get 20 s and one retry; the send gets 45 s and none.
+- a send with no answer in time, or accepted with no id or an unreadable reply,
+  answers 202 and is logged `unconfirmed`. Its `sent` flag is kept and not
+  posted, and the same touch to the same address is refused while it is
+  checked.
+- the status poll, or **Check now** on the card
+  (`POST /api/bizdev/prospects/<id>/check`, local only), looks the mail's
+  Message-ID up in `GET /v1/emails`: newest first, at most 3 pages, down to
+  5 minutes before the send. Found, it becomes an ordinary send and the flag
+  goes out with its id. Missing 15 minutes on, on two lookups, it is
+  `not_sent` and the touch can be sent again. A failed lookup, or one that
+  runs out of pages first, changes nothing.
+- a limit-check timeout says nothing was sent.
+- the card keeps an unconfirmed send's draft on screen, read-only, with Check
+  now. `GET /api/bizdev/send-status` gives the page these local states after
+  a reload.
 
 **Business Development delivery status reaches the card.** A send logged
 Forward Email's first answer (`queued`) while Hermes recorded the touch as
