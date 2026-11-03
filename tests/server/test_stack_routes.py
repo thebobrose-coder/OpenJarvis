@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from unittest.mock import patch
 
 import pytest
@@ -182,6 +183,49 @@ def test_cloud_events_are_open_within_their_window_newest_first(files):
     assert first["alias"] == "sample-prod" and first["category"] == "issue"
     assert first["description_first_line"] == "First line of the event."
     assert "Second line" in first["description"]
+
+
+def test_rfc_1123_times_still_age_out_of_their_window(files):
+    """Some AWS Health rows stamp ``lastUpdatedTime`` as RFC 1123, not ISO.
+    Before the parser accepted it the row had no age, and a notice with no
+    age skipped the 30-day window and never left the drawer."""
+    paths, _ = files
+    _write(paths[sr.HEALTH_KEY], _health())
+
+    def rfc(days: float) -> str:
+        return format_datetime(NOW - timedelta(days=days), usegmt=True)
+
+    events = [
+        _event(
+            1,
+            eventTypeCategory="scheduledChange",
+            service="fresh-rfc",
+            startTime=rfc(1),
+            lastUpdatedTime=rfc(1),
+        ),
+        _event(
+            40,
+            eventTypeCategory="scheduledChange",
+            service="old-rfc",
+            startTime=rfc(40),
+            lastUpdatedTime=rfc(40),
+        ),
+        _event(
+            1,
+            eventTypeCategory="scheduledChange",
+            service="no-time",
+            startTime=None,
+            lastUpdatedTime=None,
+        ),
+    ]
+    _write(
+        paths[sr.EVENTS_KEY], {"version": 1, "updated_at": _iso(NOW), "events": events}
+    )
+    body = _client().get("/api/stack/health").json()
+    by = {e["service"]: e for e in body["cloud_events"]}
+    assert set(by) == {"fresh-rfc", "no-time"}
+    assert 86000 <= by["fresh-rfc"]["age_seconds"] <= 87000
+    assert by["no-time"]["age_seconds"] is None
 
 
 def test_a_broken_events_file_never_hides_the_local_checks(files):

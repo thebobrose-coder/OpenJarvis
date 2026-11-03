@@ -23,6 +23,7 @@ import json
 import subprocess
 import sys
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -54,12 +55,18 @@ def _local_only(request: Request) -> None:
 
 
 def _parse_time(value: Any) -> datetime | None:
+    """ISO 8601, or the RFC 1123 form some AWS Health rows carry
+    (``Wed, 28 Oct 2026 03:51:13 GMT``): a row whose time does not parse has
+    no age, and a notice with no age never leaves its window."""
     if not isinstance(value, str) or not value:
         return None
     try:
         t = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
-        return None
+        try:
+            t = parsedate_to_datetime(value)
+        except (TypeError, ValueError, IndexError):
+            return None
     return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
