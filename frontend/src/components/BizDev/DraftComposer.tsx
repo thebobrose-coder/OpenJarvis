@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { BookmarkPlus, ChevronDown } from 'lucide-react';
 import {
   sendBlock,
+  sendCheckKey,
   sendRequest,
   touchOf,
   type PipelineProspect,
@@ -25,7 +26,7 @@ import {
   type MergeValues,
 } from '../../lib/bizdev-compose';
 import { Quiet, SmallButton } from '../shared/ui';
-import { MailActions } from './MailActions';
+import { MailActions, SendChecks } from './MailActions';
 import { TemplateEditor } from './Templates';
 
 const field = {
@@ -163,6 +164,10 @@ export function DraftComposer({
   }, [choice, base.subject, base.body]);
 
   const sendOn = !!sendConfig?.enabled && !!onSend;
+  const checks = useContext(SendChecks);
+  const local = sendOn && to ? (checks.states[sendCheckKey(prospect.id, touch, to)] ?? null) : null;
+  // Read-only while Forward Email's answer is checked: what went out is fixed.
+  const held = local === 'unconfirmed';
   const sentTouch = to ? touchOf(prospect, touch, to) : undefined;
   const screened = sendOn ? screenReason(line?.screen, subject, body) : null;
   const sourceId = templateSourceId(base.source);
@@ -178,6 +183,7 @@ export function DraftComposer({
       <input
         value={subject}
         onChange={(e) => setSubject(e.target.value)}
+        readOnly={held}
         aria-label="Subject"
         className="rounded-md px-2 py-1.5"
         style={field}
@@ -185,6 +191,7 @@ export function DraftComposer({
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        readOnly={held}
         aria-label="Body"
         rows={compact ? 7 : 10}
         className="rounded-md px-2 py-1.5 resize-y leading-relaxed"
@@ -266,6 +273,9 @@ export function DraftComposer({
                 blocked: blocked ?? sendBlock(prospect, to, touch) ?? (screened ? `Withheld by the screen: ${screened}` : goneTemplate),
                 status: sentTouch?.fe_status ?? null,
                 error: sentTouch?.fe_error ?? null,
+                local,
+                touch,
+                onCheck: checks.check ? () => checks.check!(prospect.id) : undefined,
                 onSend: (recipient, fromName) =>
                   onSend!(
                     sendRequest(prospect, {

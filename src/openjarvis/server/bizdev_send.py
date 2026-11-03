@@ -36,6 +36,13 @@ counts per recipient, a card goes to at most 3 distinct addresses, and a
 contact with `bounce_hard_at` is refused. The log keeps a hash of each
 send's address (`to_key`), never the address; an entry without one (from
 before v0.10.7) counts for the card's first recipient.
+
+2026-11-03 follow-up: a send is never retried. A `POST /v1/emails` with no
+answer in time is logged `unconfirmed` (its `sent` flag kept, not posted) and
+blocks the touch; the poll, or `reconcile()` on the page's Check now, looks its
+Message-ID up in `GET /v1/emails`. Found, it becomes an ordinary send and the
+flag goes out with its fe_id; missing for good, it is `not_sent` and the touch
+may go again. These two states stay local: the flags keep their shape.
 """
 
 from __future__ import annotations
@@ -56,7 +63,14 @@ import httpx
 from fastapi import HTTPException
 
 from openjarvis.core.credentials import get_tool_credential
-from openjarvis.server.forwardemail import ForwardEmail, ForwardEmailError, read_token
+from openjarvis.server.forwardemail import (
+    ForwardEmail,
+    ForwardEmailError,
+    ForwardEmailTimeout,
+    bare_message_id,
+    parse_time,
+    read_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +104,21 @@ REFUSED = frozenset({"bounced"})
 _ON = frozenset({"1", "true", "yes", "on"})
 RETENTION = timedelta(days=7)  # Forward Email keeps a mail 7 days
 POLL_S = 300
+# The limit pre-check timed out: nothing went out, and a retry is safe.
+SLOW = "Forward Email is slow right now; nothing was sent. Try again in a few minutes."
+
+# Local send-log states (never relayed; the contract's flags keep their
+# shape). A `POST /v1/emails` that got no answer is `unconfirmed` until its
+# Message-ID settles it: found, it becomes an ordinary send; missing, it is
+# `not_sent` and the touch may go again.
+UNCONFIRMED = "unconfirmed"
+NOT_SENT = "not_sent"
+# Entries that don't hold a touch: it may be sent again.
+DEAD = frozenset({"rejected", NOT_SENT})
+SETTLE_AFTER = timedelta(minutes=15)  # no "not sent" sooner than this
+MISS_GAP = timedelta(minutes=2)  # two misses in a row, this far apart at least
+LOOKBACK = timedelta(minutes=5)  # the listing stops at sent_at minus this
+WARN_AFTER = timedelta(hours=24)
 
 _EMAIL = re.compile(r"^[^@\s<>,;\"]+@[^@\s<>,;\"]+\.[^@\s<>,;\"]+$")
 _MERGE = re.compile(r"\{\{\s*([^{}]*?)\s*\}\}")
@@ -317,13 +346,32 @@ def _touch_taken(
         if int(t.get("n") or 0) == touch and _recipient(card, t) == want:
             if t.get("fe_id") and t.get("fe_status") != "rejected":
                 return True
-    key = to_key(want)
     return any(
-        s.get("prospect_id") == pid
+        s.get("fe_status") not in DEAD
+        for s in _log_touch(card, sends, pid, touch, want)
+    )
+
+
+def _log_touch(
+    card: dict, sends: list[dict], pid: int, touch: int, to_email: str
+) -> list[dict]:
+    """The send log's entries for one `(n, address)` touch of a card."""
+    key = to_key(to_email)
+    return [
+        s
+        for s in sends
+        if s.get("prospect_id") == pid
         and s.get("touch") == touch
         and _log_key(card, s) == key
-        and s.get("fe_status") != "rejected"
-        for s in sends
+    ]
+
+
+def _being_checked(
+    card: dict, sends: list[dict], pid: int, touch: int, to_email: str
+) -> bool:
+    return any(
+        s.get("fe_status") == UNCONFIRMED
+        for s in _log_touch(card, sends, pid, touch, to_email)
     )
 
 
@@ -333,7 +381,7 @@ def _over_cap(card: dict, sends: list[dict], pid: int, to_email: str) -> bool:
     keys |= {
         _log_key(card, s)
         for s in sends
-        if s.get("prospect_id") == pid and s.get("fe_status") != "rejected"
+        if s.get("prospect_id") == pid and s.get("fe_status") not in DEAD
     }
     return to_key(to_email) not in keys and len(keys) >= MAX_RECIPIENTS
 
@@ -349,13 +397,8 @@ def _first_message_id(
             and _recipient(card, t) == want
         ):
             return str(t["message_id"])
-    key = to_key(want)
-    for s in sends:
-        if (
-            s.get("prospect_id") == pid
-            and s.get("touch") == 1
-            and _log_key(card, s) == key
-        ):
+    for s in _log_touch(card, sends, pid, 1, want):
+        if s.get("fe_status") != NOT_SENT:  # a not_sent Message-ID never went out
             return s.get("message_id")
     return None
 
@@ -646,6 +689,12 @@ async def send(prospect_id: int, raw: dict) -> dict:
                 status_code=409,
                 detail=f"This card already went to {MAX_RECIPIENTS} recipients",
             )
+        if _being_checked(card, sends, prospect_id, touch, to):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Touch {touch} to this address is being checked "
+                "with Forward Email",
+            )
         if _touch_taken(card, sends, prospect_id, touch, to):
             raise HTTPException(
                 status_code=409,
@@ -668,35 +717,33 @@ async def send(prospect_id: int, raw: dict) -> dict:
         try:
             client = _client(cfg)
             lim = await client.limit()
-            if lim["limit"] and lim["count"] >= lim["limit"]:
-                raise HTTPException(
-                    status_code=429,
-                    detail="Forward Email's daily limit is reached "
-                    f"({lim['count']} of {lim['limit']})",
-                )
-            payload = render(
-                cfg,
-                prospect_id=prospect_id,
-                touch=touch,
-                to_email=req["to_email"],
-                subject=req["subject"],
-                body=req["body"],
-                from_name=req["from_name"],
-                reply_to=req["reply_to"],
-                in_reply_to=in_reply_to,
-                line=line,
-                token=token,
-            )
-            result = await client.send(payload)
+        except ForwardEmailTimeout:
+            # Nothing went out: the pre-check is a read, so a retry is safe.
+            raise HTTPException(status_code=502, detail=SLOW) from None
         except ForwardEmailError as exc:
             raise HTTPException(status_code=502, detail=exc.message) from None
-        if not result["id"]:
-            raise HTTPException(status_code=502, detail="Forward Email returned no id")
-
-        fe_status = normalise(result["status"]) or "pending"
+        if lim["limit"] and lim["count"] >= lim["limit"]:
+            raise HTTPException(
+                status_code=429,
+                detail="Forward Email's daily limit is reached "
+                f"({lim['count']} of {lim['limit']})",
+            )
+        payload = render(
+            cfg,
+            prospect_id=prospect_id,
+            touch=touch,
+            to_email=req["to_email"],
+            subject=req["subject"],
+            body=req["body"],
+            from_name=req["from_name"],
+            reply_to=req["reply_to"],
+            in_reply_to=in_reply_to,
+            line=line,
+            token=token,
+        )
         flag = {
             "touch": touch,
-            "fe_id": result["id"],
+            "fe_id": None,
             "message_id": payload["messageId"],
             "token": token,  # the open pixel's; empty without BD_TRACK_BASE_URL
             "to_email": req["to_email"],
@@ -709,6 +756,42 @@ async def send(prospect_id: int, raw: dict) -> dict:
         if req["draft_edited"] is not None:
             # Hermes phase 3 reads it; earlier phases ignore the key.
             flag["meta"] = {"draft_edited": req["draft_edited"]}
+        try:
+            result = await client.send(payload)
+        except ForwardEmailTimeout:
+            # It may have been queued: hold it, unsent to Hermes, until its
+            # Message-ID settles it (`reconcile`). Never sent again meanwhile.
+            sends.append(
+                {
+                    "prospect_id": prospect_id,
+                    "touch": touch,
+                    "to_key": to_key(to),
+                    "fe_id": None,
+                    "message_id": payload["messageId"],
+                    "fe_status": UNCONFIRMED,
+                    "fe_raw": None,
+                    "sent_at": _iso(_now()),
+                    "flag": flag,
+                }
+            )
+            save_log(sends)
+            logger.warning(
+                "A send got no answer from Forward Email; checking %s",
+                payload["messageId"],
+            )
+            return {
+                "fe_id": None,
+                "message_id": payload["messageId"],
+                "fe_status": UNCONFIRMED,
+                "recorded": False,
+            }
+        except ForwardEmailError as exc:
+            raise HTTPException(status_code=502, detail=exc.message) from None
+        if not result["id"]:
+            raise HTTPException(status_code=502, detail="Forward Email returned no id")
+
+        fe_status = normalise(result["status"]) or "pending"
+        flag["fe_id"] = result["id"]
         entry = {
             "prospect_id": prospect_id,
             "touch": touch,
@@ -751,23 +834,28 @@ async def poll_once(
         no_client = False
         for s in sends:
             pid = s.get("prospect_id")
+            if s.get("fe_status") == UNCONFIRMED:
+                if client is None and not no_client:
+                    client = _client_or_none()
+                    no_client = client is None
+                if client is not None:
+                    await _settle(s, client, now)
+                continue  # its flag waits for the Message-ID (never posted here)
             if s.get("flag") and await _post_flag(
                 f"/bd/prospects/{pid}/sent", s["flag"]
             ):
                 s["flag"] = None
             pending_status = s.get("status_flag")
-            if pending_status and await _post_flag(
-                f"/bd/prospects/{pid}/status", pending_status
+            if (
+                pending_status
+                and not s.get("flag")  # the touch first, then its status
+                and await _post_flag(f"/bd/prospects/{pid}/status", pending_status)
             ):
                 s["status_flag"] = None
             if s.get("fe_status") not in TRANSIENT or _age(s, now) > RETENTION:
                 continue
             if client is None and not no_client:
-                cfg = config()
-                try:
-                    client = None if missing(cfg) else _client(cfg)
-                except ForwardEmailError:
-                    client = None
+                client = _client_or_none()
                 no_client = client is None
             if client is None:
                 continue  # flags above still retry; status waits for the key
@@ -796,6 +884,164 @@ async def poll_once(
             if s.get("flag") or s.get("status_flag") or _age(s, now) <= RETENTION
         ]
         save_log(kept)
+
+
+def _client_or_none() -> ForwardEmail | None:
+    cfg = config()
+    try:
+        return None if missing(cfg) else _client(cfg)
+    except ForwardEmailError:
+        return None
+
+
+def _domain(s: dict) -> str:
+    """The From domain the send went out under: its Message-ID's (render
+    builds it from the sender address), else the configured sender's."""
+    mid = bare_message_id(s.get("message_id"))
+    if "@" in mid:
+        return mid.rsplit("@", 1)[1]
+    sender = config().get("BD_SENDER_ADDRESS") or ""
+    return sender.rsplit("@", 1)[1] if "@" in sender else ""
+
+
+async def _settle(s: dict, client: ForwardEmail, now: datetime) -> str:
+    """Look an unconfirmed send up by its Message-ID and settle it if the
+    answer is certain. Returns the entry's `fe_status` after the lookup.
+
+    Found: it is an ordinary send from here on (fe_id, status, Forward
+    Email's created_at), and the kept `sent` flag goes to the bridge with its
+    fe_id. Missing at least `SETTLE_AFTER` after the send, on two lookups at
+    least `MISS_GAP` apart: `not_sent`, its flag body dropped. A failed or
+    inconclusive lookup changes nothing. Never sends, never retries a send.
+    """
+    pid = s.get("prospect_id")
+    try:
+        sent = datetime.fromisoformat(str(s.get("sent_at")).replace("Z", "+00:00"))
+        sent = sent if sent.tzinfo else sent.replace(tzinfo=timezone.utc)
+    except ValueError:
+        sent = now
+    try:
+        row = await client.find_by_message_id(
+            str(s.get("message_id") or ""), _domain(s), since=sent - LOOKBACK
+        )
+    except ForwardEmailError as exc:
+        if now - sent >= WARN_AFTER and not s.get("warned"):
+            s["warned"] = True
+            logger.warning(
+                "Send %s is still unconfirmed after 24 h: %s",
+                s.get("message_id"),
+                exc.message,
+            )
+        return UNCONFIRMED
+    if row is not None:
+        fe_id = str(row.get("id") or row.get("_id") or "")
+        if not fe_id:
+            return UNCONFIRMED  # nothing to key the status poll on: ask again
+        fe_status = normalise(row.get("status")) or "pending"
+        created = parse_time(row.get("created_at"))
+        s.update(
+            fe_id=fe_id,
+            fe_status=fe_status,
+            fe_raw=row.get("status"),
+            sent_at=_iso(created) if created else s.get("sent_at"),
+        )
+        for k in ("misses", "last_miss_at", "warned"):
+            s.pop(k, None)
+        flag = s.get("flag")
+        if isinstance(flag, dict):
+            flag["fe_id"] = fe_id
+            if await _post_flag(f"/bd/prospects/{pid}/sent", flag):
+                s["flag"] = None
+        if fe_status != "pending":
+            # Hermes records the new touch as `pending`; relay the rest.
+            body = {"touch": s.get("touch"), "fe_id": fe_id, "fe_status": fe_status}
+            if s.get("flag") or not await _post_flag(
+                f"/bd/prospects/{pid}/status", body
+            ):
+                s["status_flag"] = body
+        logger.info("Send %s confirmed by Message-ID", s.get("message_id"))
+        return fe_status
+    if now - sent < SETTLE_AFTER:
+        return UNCONFIRMED
+    last = parse_time(s.get("last_miss_at"))
+    if last is None or now - last >= MISS_GAP:
+        s["misses"] = int(s.get("misses") or 0) + 1
+        s["last_miss_at"] = _iso(now)
+    if s["misses"] >= 2:
+        s.update(fe_status=NOT_SENT, flag=None)
+        for k in ("misses", "last_miss_at", "warned"):
+            s.pop(k, None)
+        logger.info("Send %s never reached Forward Email", s.get("message_id"))
+        return NOT_SENT
+    return UNCONFIRMED
+
+
+async def reconcile(
+    prospect_id: int | None = None,
+    client: ForwardEmail | None = None,
+    now: datetime | None = None,
+) -> list[dict]:
+    """Settle the unconfirmed sends now (one card's, or all), the "did that go
+    out?" check for the page and for a work order. Read only toward Forward
+    Email. Returns `{touch, fe_status, to_key, message_id}` per entry that was
+    unconfirmed; `client` None with Send unconfigured is a 503."""
+    now = now or _now()
+    async with _lock:
+        sends = load_log()
+        todo = [
+            s
+            for s in sends
+            if s.get("fe_status") == UNCONFIRMED
+            and (prospect_id is None or s.get("prospect_id") == prospect_id)
+        ]
+        if not todo:
+            return []
+        if client is None:
+            client = _client_or_none()
+            if client is None:
+                raise HTTPException(status_code=503, detail="Send is not configured")
+        out = []
+        for s in todo:
+            out.append(
+                {
+                    "prospect_id": s.get("prospect_id"),
+                    "touch": s.get("touch"),
+                    "to_key": s.get("to_key"),
+                    "message_id": s.get("message_id"),
+                    "fe_status": await _settle(s, client, now),
+                }
+            )
+        save_log(sends)
+    return out
+
+
+def local_states() -> list[dict]:
+    """Sends the page can't learn from Hermes yet: `unconfirmed` ones and
+    `not_sent` ones not since sent again. Ids and hashes only."""
+    sends = load_log()
+    out = []
+    for i, s in enumerate(sends):
+        status = s.get("fe_status")
+        if status not in (UNCONFIRMED, NOT_SENT):
+            continue
+        if status == NOT_SENT and any(
+            later.get("prospect_id") == s.get("prospect_id")
+            and later.get("touch") == s.get("touch")
+            and later.get("to_key") == s.get("to_key")
+            for later in sends[i + 1 :]
+        ):
+            continue  # sent again since
+        out.append(
+            {
+                "prospect_id": s.get("prospect_id"),
+                "touch": s.get("touch"),
+                "to_key": s.get("to_key"),
+                "message_id": s.get("message_id"),
+                "fe_status": status,
+                "sent_at": s.get("sent_at"),
+            }
+        )
+    return out
 
 
 async def poll_loop() -> None:

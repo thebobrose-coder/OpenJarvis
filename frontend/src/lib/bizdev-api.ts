@@ -398,11 +398,79 @@ export interface SendRequest {
 }
 
 export interface SendResult {
-  fe_id: string;
+  /** Null on a 202: Forward Email didn't answer, the send is being checked. */
+  fe_id: string | null;
   message_id: string;
-  fe_status: FeStatus;
+  fe_status: FeStatus | 'unconfirmed';
   /** False when the bridge didn't take the record yet; the server retries it. */
   recorded: boolean;
+}
+
+/** A send this machine holds that Hermes can't show yet: Forward Email didn't
+ * answer (`unconfirmed`, checked by Message-ID), or it never got the mail
+ * (`not_sent`: the touch may go again). Local to OpenJarvis, not the contract. */
+export type LocalSendState = 'unconfirmed' | 'not_sent';
+
+export interface LocalSend {
+  prospect_id: number;
+  touch: number;
+  /** The server's hash of the address (it keeps no address). */
+  to_key: string | null;
+  message_id: string;
+  fe_status: LocalSendState;
+  sent_at?: string;
+}
+
+/** The key the page files a local send state under. */
+export function sendCheckKey(id: number, touch: number, to: string): string {
+  return `${id}:${touch}:${to.trim().toLowerCase()}`;
+}
+
+/** The send log's `to_key` for an address: sha256, first 16 hex digits. */
+export async function toKey(address: string): Promise<string> {
+  const bytes = new TextEncoder().encode(address.trim().toLowerCase());
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 16);
+}
+
+/** Local send states by `sendCheckKey`, each matched to a contact of its card. */
+export async function resolveLocalSends(pipeline: BdPipeline, sends: LocalSend[]): Promise<Record<string, LocalSendState>> {
+  const cards = new Map<number, Contact[]>();
+  for (const line of pipeline.lines) {
+    for (const stage of Object.values(line.stages ?? {})) for (const p of stage ?? []) cards.set(p.id, p.contacts ?? []);
+  }
+  const out: Record<string, LocalSendState> = {};
+  for (const s of sends) {
+    for (const c of cards.get(s.prospect_id) ?? []) {
+      if (c.email && s.to_key && (await toKey(c.email)) === s.to_key) {
+        out[sendCheckKey(s.prospect_id, s.touch, c.email)] = s.fe_status;
+      }
+    }
+  }
+  return out;
+}
+
+/** The local send states (empty when the server can't say). */
+export async function fetchSendStatus(): Promise<LocalSend[]> {
+  try {
+    const res = await apiFetch('/api/bizdev/send-status');
+    if (!res.ok) return [];
+    const body = await res.json();
+    return Array.isArray(body?.sends) ? body.sends : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Check now: the server looks the card's unconfirmed sends up by Message-ID
+ * (it never sends). */
+export async function checkProspect(id: number): Promise<{ touch: number; fe_status: string }[]> {
+  const res = await apiFetch(`/api/bizdev/prospects/${id}/check`, { method: 'POST' });
+  if (!res.ok) throw await failure(res, 'Check');
+  const body = await res.json();
+  return Array.isArray(body?.entries) ? body.entries : [];
 }
 
 /** Whether Send is set up; null when the server can't say (Send stays off). */

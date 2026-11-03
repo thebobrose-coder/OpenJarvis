@@ -252,7 +252,32 @@ async def send_prospect(prospect_id: str, request: Request) -> JSONResponse:
     _check_id(prospect_id)
     body = await _local_json(request, bizdev_send.REQUEST_MAX)
     result = await bizdev_send.send(int(prospect_id), body)
-    return JSONResponse(status_code=200, content=result)
+    # 202: Forward Email didn't answer; the send is held and checked by its
+    # Message-ID (never sent twice).
+    unconfirmed = result["fe_status"] == bizdev_send.UNCONFIRMED
+    return JSONResponse(status_code=202 if unconfirmed else 200, content=result)
+
+
+@bizdev_router.post("/prospects/{prospect_id}/check")
+async def check_prospect(prospect_id: str, request: Request) -> dict:
+    """Check now: settle this card's unconfirmed sends by Message-ID. Reads
+    Forward Email only; it never sends or retries a send."""
+    _local_only(request)
+    _check_id(prospect_id)
+    entries = await bizdev_send.reconcile(prospect_id=int(prospect_id))
+    return {
+        "entries": [
+            {k: e[k] for k in ("touch", "fe_status", "to_key", "message_id")}
+            for e in entries
+        ]
+    }
+
+
+@bizdev_router.get("/send-status")
+async def send_status(request: Request) -> dict:
+    """The local send states Hermes can't show yet (unconfirmed, not_sent)."""
+    _local_only(request)
+    return {"sends": bizdev_send.local_states()}
 
 
 @bizdev_router.post("/prospects/{prospect_id}/contact")

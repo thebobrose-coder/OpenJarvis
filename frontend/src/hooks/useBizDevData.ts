@@ -7,7 +7,11 @@ import {
   archiveTemplate,
   fetchSendConfig,
   addContact,
+  checkProspect,
+  fetchSendStatus,
   hasContact,
+  resolveLocalSends,
+  sendCheckKey,
   moveProspect,
   saveTemplate,
   sendProspect,
@@ -18,6 +22,8 @@ import {
   type BizDevFeeds,
   type ContactAdd,
   type BoardStage,
+  type LocalSend,
+  type LocalSendState,
   type PipelineLine,
   type PipelineProspect,
   type SendConfig,
@@ -47,6 +53,9 @@ export interface PendingMove {
   at: number;
   /** For a follow-up marked sent: the touch number it records. */
   touch?: number;
+  /** A send Forward Email didn't confirm: the follow-up stays on screen
+   * (read-only) and the move is never given up while it is checked. */
+  checking?: boolean;
 }
 
 const isSuppression = (s: string) => (SUPPRESSION_STAGES as readonly string[]).includes(s);
@@ -79,8 +88,41 @@ export function applyMoves(
       }
     }
   }
-  const followUps = (line.follow_ups_due ?? []).filter((f) => pending[f.prospect_id]?.touch !== f.touch);
+  const followUps = (line.follow_ups_due ?? []).filter((f) => {
+    const move = pending[f.prospect_id];
+    return move?.touch !== f.touch || move.checking;
+  });
   return { stages, suppressed, followUps };
+}
+
+/**
+ * A send's local state on the pending moves: an unconfirmed send keeps its
+ * move (fresh, never given up, `checking`), one that never reached Forward
+ * Email undoes it, a confirmed one is an ordinary pending send again.
+ */
+export function applySendChecks(
+  pending: Record<number, PendingMove>,
+  sends: LocalSend[],
+  now: number,
+): Record<number, PendingMove> {
+  const next: Record<number, PendingMove> = {};
+  for (const [key, move] of Object.entries(pending)) {
+    const id = Number(key);
+    if (move.stage !== 'sent') {
+      next[id] = move;
+      continue;
+    }
+    const touch = move.touch ?? 1;
+    const mine = sends.filter((s) => s.prospect_id === id && s.touch === touch);
+    if (mine.some((s) => s.fe_status === 'unconfirmed')) {
+      next[id] = { ...move, at: now, checking: true };
+    } else if (mine.some((s) => s.fe_status === 'not_sent')) {
+      continue;
+    } else {
+      next[id] = move.checking ? { ...move, at: now, checking: false } : move;
+    }
+  }
+  return next;
 }
 
 /** Drop local moves the pipeline now shows; give up on very old ones. */
@@ -190,6 +232,8 @@ export function useBizDevData() {
   const [notice, setNotice] = useState<string | null>(null);
   const [sendConfig, setSendConfig] = useState<SendConfig | null>(null);
   const [contactWatch, setContactWatch] = useState<Record<number, ContactWatch>>({});
+  // Sends Hermes can't show yet (the 2026-11-03 follow-up), by sendCheckKey.
+  const [sendChecks, setSendChecks] = useState<Record<string, LocalSendState>>({});
   const contactWatchRef = useRef(contactWatch);
   contactWatchRef.current = contactWatch;
 
@@ -206,7 +250,10 @@ export function useBizDevData() {
       const data = await fetchBizDevFeed(feed);
       setFeeds((prev) => ({ ...prev, [feed]: { data, loading: false, error: null } }));
       if (feed === 'bd_pipeline' && data) {
-        const { pending: next, lost } = reconcileMoves(data as BdPipeline, pendingRef.current, Date.now());
+        const sends = await fetchSendStatus();
+        setSendChecks(await resolveLocalSends(data as BdPipeline, sends));
+        const checked = applySendChecks(pendingRef.current, sends, Date.now());
+        const { pending: next, lost } = reconcileMoves(data as BdPipeline, checked, Date.now());
         setPending(next);
         if (lost.length) {
           setNotice(`${lost.length} change${lost.length > 1 ? 's were' : ' was'} not applied by Hermes; try again.`);
@@ -264,6 +311,17 @@ export function useBizDevData() {
       setPending((p) => ({ ...p, [id]: { stage: 'sent', at: Date.now(), ...(req.touch > 1 ? { touch: req.touch } : {}) } }));
       try {
         const result = await sendProspect(id, req);
+        const key = sendCheckKey(id, req.touch, req.to_email);
+        const unconfirmed = result.fe_status === 'unconfirmed';
+        // 202: Forward Email didn't answer. The move stays, the draft stays
+        // on screen read-only, and the server checks it by Message-ID.
+        if (unconfirmed) setPending((p) => (p[id] ? { ...p, [id]: { ...p[id], checking: true } } : p));
+        setSendChecks((c) => {
+          const next = { ...c };
+          if (unconfirmed) next[key] = 'unconfirmed';
+          else delete next[key];
+          return next;
+        });
         later(RECHECK_MS, () => void loadFeed('bd_pipeline'));
         return result;
       } catch (e: unknown) {
@@ -277,6 +335,20 @@ export function useBizDevData() {
       }
     },
     [later, loadFeed],
+  );
+
+  // Check now: settle a card's unconfirmed sends by Message-ID, then read
+  // the board again (the local states come with it).
+  const checkSend = useCallback(
+    async (id: number) => {
+      try {
+        await checkProspect(id);
+      } catch (e: unknown) {
+        setNotice(e instanceof Error ? e.message : 'Check failed.');
+      }
+      await loadFeed('bd_pipeline');
+    },
+    [loadFeed],
   );
 
   // Add recipient (A3): the bridge queues it; Hermes publishes the contact
@@ -357,6 +429,8 @@ export function useBizDevData() {
     move,
     send,
     sendConfig,
+    sendChecks,
+    checkSend,
     addRecipient,
     contactNotes: Object.fromEntries(Object.entries(contactWatch).map(([id, w]) => [id, w.state])) as Record<number, ContactWatch['state']>,
     confirmMeeting,

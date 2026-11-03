@@ -51,7 +51,8 @@ const CARD: PipelineProspect = {
 const FOLLOW_UP: FollowUp = {
   prospect_id: 9,
   touch: 2,
-  due: '2026-10-27',
+  // Always ahead: the snapshot was recorded with a muted (not overdue) chip.
+  due: new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10),
   draft: { subject: 'Re: Sample subject', body: 'Following up.' },
 };
 

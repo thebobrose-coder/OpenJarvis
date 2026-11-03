@@ -1,6 +1,13 @@
-import { useState } from 'react';
-import { ChevronDown, Copy, Loader2, Mail, Send } from 'lucide-react';
-import { unresolvedFields, type Contact, type FeStatus, type SendConfig, type SendResult } from '../../lib/bizdev-api';
+import { createContext, useState } from 'react';
+import { ChevronDown, Copy, Loader2, Mail, RefreshCw, Send } from 'lucide-react';
+import {
+  unresolvedFields,
+  type Contact,
+  type FeStatus,
+  type LocalSendState,
+  type SendConfig,
+  type SendResult,
+} from '../../lib/bizdev-api';
 import { Chip, SmallButton, type Tone } from '../shared/ui';
 import { buildMailto, copyText, openMailto } from './mail';
 
@@ -22,6 +29,21 @@ export function FeStatusChip({ status, error }: { status: FeStatus | null | unde
   );
 }
 
+/** Local send states by `sendCheckKey` and "Check now", for every composer
+ * on the page (the 2026-11-03 follow-up). */
+export interface SendChecksValue {
+  states: Record<string, LocalSendState>;
+  check?: (prospectId: number) => Promise<void>;
+}
+
+export const SendChecks = createContext<SendChecksValue>({ states: {} });
+
+export const UNCONFIRMED_NOTE = 'Sent, but Forward Email didn’t confirm it. Checking…';
+
+export function notSentNote(touch: number): string {
+  return `Forward Email never received touch ${touch}. Nothing was sent. You can send it again.`;
+}
+
 /** Send through Forward Email (hq 0018), when the server has it configured. */
 export interface SendMode {
   config: SendConfig;
@@ -32,6 +54,11 @@ export interface SendMode {
   /** Why it was deferred or rejected (v0.10.1 `fe_error`). */
   error?: string | null;
   onSend: (to: string, fromName: string) => Promise<SendResult>;
+  /** This touch to this address is held unconfirmed or was never received. */
+  local?: LocalSendState | null;
+  touch?: number;
+  /** Check now: settle an unconfirmed send by its Message-ID. */
+  onCheck?: () => Promise<void>;
 }
 
 /**
@@ -77,7 +104,13 @@ export function MailActions({
   const [sending, setSending] = useState(false);
   // One click sends to one address: a send to A leaves Send open for B.
   const [results, setResults] = useState<Record<string, SendResult>>({});
-  const result = results[to.toLowerCase()] ?? null;
+  const [checking, setChecking] = useState(false);
+  const local = send?.local ?? null;
+  const held = results[to.toLowerCase()] ?? null;
+  // A send Forward Email never received no longer counts as sent here; one
+  // confirmed since (no local state left) reads as an ordinary send.
+  const result = held && held.fe_status === 'unconfirmed' && local === 'not_sent' ? null : held;
+  const unconfirmed = local === 'unconfirmed';
   const mailto = buildMailto(to, subject, body);
   const sendOn = !!send?.config.enabled;
 
@@ -94,8 +127,10 @@ export function MailActions({
   const fields = unresolvedFields(subject, body);
   const sendBlocked = !sendOn
     ? null
-    : result
-      ? 'Sent'
+    : unconfirmed
+      ? UNCONFIRMED_NOTE
+      : result
+        ? 'Sent'
       : send!.blocked ??
         (!to
           ? 'No contact email on file'
@@ -104,6 +139,16 @@ export function MailActions({
             : fields.length
               ? `Unresolved merge field: ${fields.map((f) => `{{${f}}}`).join(', ')}`
               : null);
+
+  const doCheck = async () => {
+    if (!send?.onCheck) return;
+    setChecking(true);
+    try {
+      await send.onCheck();
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const doSend = async () => {
     if (!send || sendBlocked) return;
@@ -172,7 +217,8 @@ export function MailActions({
   );
 
   if (sendOn) {
-    const shown = result?.fe_status ?? send!.status ?? null;
+    const confirmed = result && result.fe_status !== 'unconfirmed' ? result.fe_status : null;
+    const shown = unconfirmed ? null : (confirmed ?? send!.status ?? null);
     return (
       <div className="flex flex-col gap-2" data-send-mode="forwardemail">
         <div className="flex flex-wrap items-center gap-2">
@@ -196,12 +242,32 @@ export function MailActions({
           <SmallButton onClick={() => setMore((m) => !m)} title="Mail link and copy buttons">
             More <ChevronDown size={11} />
           </SmallButton>
-          {sendBlocked && sendBlocked !== 'Sent' && !result && (
-            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-              {sendBlocked}
+          {unconfirmed ? (
+            <>
+              <span className="text-[11px]" style={{ color: 'var(--color-warning)' }} role="status" data-send-check="unconfirmed">
+                {UNCONFIRMED_NOTE}
+              </span>
+              {send!.onCheck && (
+                <SmallButton onClick={() => void doCheck()} disabled={checking} title="Look the mail up by its Message-ID (nothing is sent)">
+                  {checking ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Check now
+                </SmallButton>
+              )}
+            </>
+          ) : (
+            sendBlocked &&
+            sendBlocked !== 'Sent' &&
+            !result && (
+              <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                {sendBlocked}
+              </span>
+            )
+          )}
+          {local === 'not_sent' && !result && (
+            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }} role="status" data-send-check="not_sent">
+              {notSentNote(send!.touch ?? 1)}
             </span>
           )}
-          {result && (
+          {result && !unconfirmed && (
             <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }} role="status">
               {result.recorded ? 'Sent; Hermes records it within a few minutes.' : 'Sent; the record is queued and retries on its own.'}
             </span>

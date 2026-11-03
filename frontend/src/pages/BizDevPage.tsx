@@ -73,6 +73,8 @@ export function BizDevPage() {
         onClearNotice={data.clearNotice}
         sendConfig={data.sendConfig}
         onSend={data.send}
+        sendChecks={data.sendChecks}
+        onCheckSend={data.checkSend}
         tab={tab}
         onTab={setTab}
         onSaveTemplate={data.saveTemplate}

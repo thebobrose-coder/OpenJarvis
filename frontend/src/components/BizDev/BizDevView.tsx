@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import {
   BOARD_STAGES,
   type ContactAdd,
+  type LocalSendState,
   type PipelineProspect,
   type SendConfig,
   type SendRequest,
@@ -13,6 +14,7 @@ import {
 import { applyMoves, type BizDevFeedStates, type PendingMove } from '../../hooks/useBizDevData';
 import { BizDevHeader } from './BizDevHeader';
 import { FollowUpsStrip } from './FollowUpsStrip';
+import { SendChecks } from './MailActions';
 import { InsightsPanel, ResearchLog } from './InsightsPanel';
 import { PipelineBoard } from './PipelineBoard';
 import { ProspectDrawer, type ContactNote } from './ProspectDrawer';
@@ -40,6 +42,9 @@ export interface BizDevViewProps {
   /** Send through Forward Email (hq 0018); null keeps the mail link path. */
   sendConfig?: SendConfig | null;
   onSend?: (id: number, req: SendRequest) => Promise<SendResult>;
+  /** Sends Forward Email didn't confirm or never got, and Check now. */
+  sendChecks?: Record<string, LocalSendState>;
+  onCheckSend?: (id: number) => Promise<void>;
   /** Templates (Part C): the Templates tab and "Save as template…". */
   tab?: BizDevTab;
   onTab?: (tab: BizDevTab) => void;
@@ -89,6 +94,7 @@ export function BizDevView(props: BizDevViewProps) {
   const liveTemplates = templates.filter((t) => !t.archived_at).length;
 
   return (
+    <SendChecks.Provider value={{ states: props.sendChecks ?? {}, check: props.onCheckSend }}>
     <div className="max-w-[1800px] mx-auto">
       <BizDevHeader
         lines={lines}
@@ -199,5 +205,6 @@ export function BizDevView(props: BizDevViewProps) {
         />
       )}
     </div>
+    </SendChecks.Provider>
   );
 }

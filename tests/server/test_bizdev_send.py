@@ -908,3 +908,302 @@ def test_the_status_poll_keys_by_fe_id_with_two_recipients(env):
     bodies = [json.loads(r.content) for r in seen if r.url.path.endswith("/status")]
     assert sorted(b["fe_id"] for b in bodies) == ["fe0001", "fe0002"]
     assert all(b["fe_status"] == "sent" and b["touch"] == 1 for b in bodies)
+
+
+# -- 2026-11-03 follow-up: a timeout never sends twice ---------------------------
+# The real client over a mocked Forward Email (httpx.MockTransport); the bridge
+# shares the same transport, told apart by host.
+
+FE_HOST = "api.forwardemail.net"
+MID = "<bd-42-1-abcd1234@example.org>"
+
+
+class MockFE:
+    """Forward Email for the real client: records every call."""
+
+    def __init__(self):
+        self.limit = "ok"  # ok | timeout
+        self.post = "ok"  # ok | timeout | connect | 503
+        self.rows: list = []  # the `GET /v1/emails` listing, newest first
+        self.list_fail = False
+        self.calls: list[httpx.Request] = []
+
+    def count(self, method, path):
+        return sum(1 for r in self.calls if r.method == method and r.url.path == path)
+
+    def __call__(self, req: httpx.Request):
+        self.calls.append(req)
+        path = req.url.path
+        if path == "/v1/emails/limit":
+            if self.limit == "timeout":
+                raise httpx.ReadTimeout("slow", request=req)
+            return httpx.Response(200, json={"count": 3, "limit": 300})
+        if req.method == "POST" and path == "/v1/emails":
+            if self.post == "timeout":
+                raise httpx.ReadTimeout("slow", request=req)
+            if self.post == "connect":
+                raise httpx.ConnectError("refused", request=req)
+            if self.post == "503":
+                return httpx.Response(503, json={"message": "busy"})
+            return httpx.Response(200, json={"id": "fe0001", "status": "queued"})
+        if req.method == "GET" and path == "/v1/emails":
+            if self.list_fail:
+                return httpx.Response(503, json={"message": "busy"})
+            page = int(req.url.params.get("page", "1"))
+            size = int(req.url.params.get("limit", "50"))
+            return httpx.Response(200, json=self.rows[(page - 1) * size : page * size])
+        return httpx.Response(404)
+
+
+@pytest.fixture
+def mfe(env, monkeypatch):
+    fe = MockFE()
+    monkeypatch.setattr(bs, "_client", lambda c: ForwardEmail("tok-secret"))
+    return fe
+
+
+def _wire(card, fe, seen=None, flag_status=202):
+    def handler(req: httpx.Request):
+        if req.url.host == FE_HOST:
+            return fe(req)
+        if seen is not None:
+            seen.append(req)
+        if req.method == "GET" and req.url.path == "/panels/bd_pipeline":
+            return httpx.Response(200, json=_pipeline(card))
+        if req.method == "POST" and req.url.path.startswith("/bd/"):
+            return httpx.Response(flag_status, json={"queued": True})
+        return httpx.Response(404)
+
+    real = httpx.AsyncClient
+
+    def fake(*a, **kw):
+        kw["transport"] = httpx.MockTransport(handler)
+        return real(*a, **kw)
+
+    return patch.object(bs.httpx, "AsyncClient", side_effect=fake)
+
+
+def _send(card, fe, seen=None, **over):
+    with _wire(card, fe, seen):
+        return _client().post("/api/bizdev/prospects/42/send", json=_body(**over))
+
+
+def _row(message_id, *, minutes_ago=0, status="queued", fe_id="fe7"):
+    t = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+    return {
+        "id": fe_id,
+        "messageId": message_id,
+        "status": status,
+        "created_at": t.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+    }
+
+
+def _unconfirmed(*, minutes_ago=0, message_id=MID):
+    t = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+    entry = {
+        "prospect_id": 42,
+        "touch": 1,
+        "to_key": bs.to_key(TO),
+        "fe_id": None,
+        "message_id": message_id,
+        "fe_status": "unconfirmed",
+        "fe_raw": None,
+        "sent_at": bs._iso(t),
+        "flag": {"touch": 1, "fe_id": None, "message_id": message_id, "to_email": TO},
+    }
+    bs.save_log([entry])
+    return entry
+
+
+def _polls(fe, now, *minutes):
+    for m in minutes:
+        with _wire(_card(), fe):
+            asyncio.run(bs.poll_once(now=now + timedelta(minutes=m)))
+
+
+def test_a_post_timeout_is_never_retried_and_is_held_unconfirmed(mfe):
+    mfe.post = "timeout"
+    seen: list = []
+    resp = _send(_card(), mfe, seen)
+    # Test 1: exactly one POST /v1/emails.
+    assert mfe.count("POST", "/v1/emails") == 1
+    # Test 3: 202, logged unconfirmed, its flag kept and not posted.
+    assert resp.status_code == 202, resp.text
+    out = resp.json()
+    assert out["fe_status"] == "unconfirmed" and out["fe_id"] is None
+    assert out["message_id"].startswith("<bd-42-1-")
+    assert _flags(seen, "sent") == []
+    (entry,) = bs.load_log()
+    assert entry["fe_status"] == "unconfirmed" and entry["fe_id"] is None
+    assert entry["message_id"] == out["message_id"]
+    assert entry["to_key"] == bs.to_key(TO)
+    assert entry["flag"]["fe_id"] is None and entry["flag"]["to_email"] == TO
+    # The same touch to the same address is refused while it is checked.
+    again = _send(_card(), mfe)
+    assert again.status_code == 409
+    assert again.json()["detail"] == (
+        "Touch 1 to this address is being checked with Forward Email"
+    )
+    assert mfe.count("POST", "/v1/emails") == 1
+    # The poll never posts the kept flag while the send is unconfirmed.
+    mfe.list_fail = True
+    seen.clear()
+    with _wire(_card(), mfe, seen):
+        asyncio.run(bs.poll_once())
+    assert _flags(seen, "sent") == [] and mfe.count("POST", "/v1/emails") == 1
+
+
+@pytest.mark.parametrize("mode", ["503", "connect"])
+def test_a_post_5xx_or_refused_connection_is_502_once_and_records_nothing(mfe, mode):
+    mfe.post = mode
+    resp = _send(_card(), mfe)
+    assert resp.status_code == 502
+    assert mfe.count("POST", "/v1/emails") == 1 and bs.load_log() == []
+    if mode == "connect":
+        assert resp.json()["detail"] == "Forward Email unreachable"
+
+
+def test_a_limit_timeout_is_502_logs_nothing_and_the_touch_can_go_right_after(mfe):
+    mfe.limit = "timeout"
+    resp = _send(_card(), mfe)
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == bs.SLOW and "nothing was sent" in bs.SLOW
+    assert mfe.count("GET", "/v1/emails/limit") == 2  # a read retries once
+    assert mfe.count("POST", "/v1/emails") == 0 and bs.load_log() == []
+    mfe.limit = "ok"
+    assert _send(_card(), mfe).status_code == 200
+    assert mfe.count("POST", "/v1/emails") == 1
+
+
+def test_the_poll_finds_the_message_id_and_posts_the_flag_once(mfe):
+    _unconfirmed(minutes_ago=2)
+    # Forward Email's row has no angle brackets: matching ignores them.
+    mfe.rows = [
+        _row("<bd-42-2-ffff0000@example.org>", minutes_ago=1, fe_id="fe8"),
+        _row(MID.strip("<>"), minutes_ago=2, status="sent"),
+    ]
+    seen: list = []
+    with _wire(_card(), mfe, seen):
+        asyncio.run(bs.poll_once())
+        asyncio.run(bs.poll_once())
+    (got,) = bs.load_log()
+    assert got["fe_id"] == "fe7" and got["fe_status"] == "sent"
+    assert got["flag"] is None
+    (flag,) = _flags(seen, "sent")
+    assert flag["fe_id"] == "fe7" and flag["message_id"] == MID
+    assert _flags(seen, "status") == [{"touch": 1, "fe_id": "fe7", "fe_status": "sent"}]
+    listing = next(r for r in mfe.calls if r.url.path == "/v1/emails")
+    assert listing.url.params["domain"] == "example.org"
+    assert listing.url.params["sort"] == "-created_at"
+    assert mfe.count("POST", "/v1/emails") == 0
+
+
+def test_a_found_send_still_pending_relays_no_status(mfe):
+    _unconfirmed(minutes_ago=1)
+    mfe.rows = [_row(MID, status="pending")]
+    seen: list = []
+    with _wire(_card(), mfe, seen):
+        out = asyncio.run(bs.reconcile())
+    assert out[0]["fe_status"] == "pending"
+    assert len(_flags(seen, "sent")) == 1 and _flags(seen, "status") == []
+    assert bs.load_log()[0]["fe_id"] == "fe7"
+
+
+def test_not_found_after_15_min_and_two_polls_is_not_sent_and_the_touch_reopens(mfe):
+    _unconfirmed(minutes_ago=20)
+    mfe.rows = [_row("<other@example.org>", minutes_ago=60)]  # older than the send
+    now = datetime.now(timezone.utc)
+    _polls(mfe, now, 0, 0.5)  # the second is too soon to count
+    assert bs.load_log()[0]["fe_status"] == "unconfirmed"
+    _polls(mfe, now, 5)
+    (got,) = bs.load_log()
+    assert got["fe_status"] == "not_sent" and got["flag"] is None
+    card = _card()
+    assert bs.next_touch(card, TO) == 1
+    assert bs.local_states()[0]["fe_status"] == "not_sent"
+    resp = _send(card, mfe)
+    assert resp.status_code == 200 and mfe.count("POST", "/v1/emails") == 1
+    assert resp.json()["message_id"] != MID
+    assert bs.local_states() == []  # sent again since
+
+
+def test_never_not_sent_within_15_minutes(mfe):
+    _unconfirmed(minutes_ago=5)
+    _polls(mfe, datetime.now(timezone.utc), 0, 3, 6)
+    assert bs.load_log()[0]["fe_status"] == "unconfirmed"
+
+
+def test_a_failing_listing_leaves_it_unconfirmed(mfe):
+    _unconfirmed(minutes_ago=30)
+    mfe.list_fail = True
+    _polls(mfe, datetime.now(timezone.utc), 0, 5, 10)
+    (got,) = bs.load_log()
+    assert got["fe_status"] == "unconfirmed" and got["flag"] is not None
+    assert "misses" not in got
+
+
+def test_paging_stops_at_the_time_bound_and_the_cap_is_inconclusive(mfe):
+    from openjarvis.server.forwardemail import ForwardEmailInconclusive
+
+    newer = [_row(f"<n{i}@example.org>", minutes_ago=1) for i in range(50)]
+    mfe.rows = newer + [_row("<old@example.org>", minutes_ago=90)] + newer
+    since = datetime.now(timezone.utc) - timedelta(minutes=30)
+    client = ForwardEmail("tok-secret")
+    with _wire(_card(), mfe):
+        found = asyncio.run(client.find_by_message_id(MID, "example.org", since=since))
+    assert found is None
+    pages = [int(r.url.params["page"]) for r in mfe.calls if r.url.path == "/v1/emails"]
+    assert pages == [1, 2]  # stopped at the older row
+    mfe.calls.clear()
+    mfe.rows = [_row(f"<n{i}@example.org>", minutes_ago=1) for i in range(200)]
+    with _wire(_card(), mfe), pytest.raises(ForwardEmailInconclusive):
+        asyncio.run(client.find_by_message_id(MID, "example.org", since=since))
+    assert len([r for r in mfe.calls if r.url.path == "/v1/emails"]) == 3
+    # An inconclusive lookup never counts toward not_sent.
+    _unconfirmed(minutes_ago=30)
+    _polls(mfe, datetime.now(timezone.utc), 0, 5, 10)
+    assert bs.load_log()[0]["fe_status"] == "unconfirmed"
+
+
+def test_check_is_local_only_settles_the_card_and_never_sends(mfe):
+    _unconfirmed(minutes_ago=1)
+    mfe.rows = [_row(MID, status="sent")]
+    with _wire(_card(), mfe):
+        assert (
+            _client("10.0.0.5").post("/api/bizdev/prospects/42/check").status_code
+            == 403
+        )
+        assert _client("10.0.0.5").get("/api/bizdev/send-status").status_code == 403
+        status = _client().get("/api/bizdev/send-status").json()
+        assert [s["fe_status"] for s in status["sends"]] == ["unconfirmed"]
+        resp = _client().post("/api/bizdev/prospects/42/check")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["entries"] == [
+        {"touch": 1, "fe_status": "sent", "to_key": bs.to_key(TO), "message_id": MID}
+    ]
+    assert mfe.count("POST", "/v1/emails") == 0
+    with _wire(_card(), mfe):
+        again = _client().post("/api/bizdev/prospects/42/check").json()
+        assert again == {"entries": []}
+        assert _client().get("/api/bizdev/send-status").json() == {"sends": []}
+
+
+def test_a_log_from_before_this_change_behaves_as_before(mfe):
+    bs.save_log(
+        [
+            {
+                "prospect_id": 42,
+                "touch": 1,
+                "fe_id": "fe0",
+                "message_id": "<m@example.org>",
+                "fe_status": "queued",
+                "sent_at": bs._iso(bs._now()),
+                "flag": None,
+            }
+        ]
+    )
+    assert bs.local_states() == []
+    with _wire(_card(), mfe):
+        assert asyncio.run(bs.reconcile()) == []
+    assert _send(_card(), mfe).status_code == 409  # the touch is still taken
+    assert mfe.count("GET", "/v1/emails") == 0
