@@ -654,11 +654,33 @@ describe('desk proposals (v1.24)', () => {
     expect(html).toContain('data-proposable');
     expect(html).toContain('>1 Hermes seeds waiting<');
     expect(html).toContain('>0 Hermes seeds waiting<');
-    expect(html).toContain('News items </span><span class="tabular-nums" style="color:var(--color-text)">18<');
+    expect(html).toContain('Fresh news </span><span class="tabular-nums" style="color:var(--color-text)">18<');
+    expect(html).not.toContain('News items');
     expect(html).toContain('Hermes proposes here; the feed queues news items');
     expect(html).not.toContain('Automatic (RSS)');
     // The satire lane is a plain seedable row.
     expect(html).toContain('Queued </span><span class="tabular-nums" style="color:var(--color-text)">5<');
+  });
+
+  // v1.25: a news desk has no runway, whether Hermes sends a number or null.
+  it('shows no Runway on a proposable lane, with or without runway_days', () => {
+    const desksOnly = { id: 'gamma', lanes: deskProperty.lanes.filter((l) => l.proposable) };
+    for (const runway_days of [126, null]) {
+      const property = { ...desksOnly, lanes: desksOnly.lanes.map((l) => ({ ...l, runway_days })) };
+      const html = renderToStaticMarkup(<SeedbankStrip seedbank={{ ...SEEDBANK, properties: [property] }} selectedProperty={ALL_PROPERTIES} />);
+      expect(html).toContain('Fresh news </span><span class="tabular-nums" style="color:var(--color-text)">98<');
+      expect(html).not.toContain('Runway ');
+      expect(html).not.toContain('126');
+    }
+  });
+
+  it('keeps Queued, In flight, Pending and Runway on a queue lane', () => {
+    const queueOnly = { id: 'gamma', lanes: [lane({ lane: 'long', content_type: 'thesis', status: 'ok', queued: 5, in_flight: 2, pending: 1, runway_days: 9 })] };
+    const html = renderToStaticMarkup(<SeedbankStrip seedbank={{ ...SEEDBANK, properties: [queueOnly] }} selectedProperty={ALL_PROPERTIES} />);
+    for (const [label, value] of [['Queued', '5'], ['In flight', '2'], ['Pending', '1'], ['Runway', '9 d']]) {
+      expect(html).toContain(`${label} </span><span class="tabular-nums" style="color:var(--color-text)">${value}<`);
+    }
+    expect(html).not.toContain('Fresh news');
   });
 
   it('renders a second property’s thesis lane and its operator_lane_empty alert like the first', () => {

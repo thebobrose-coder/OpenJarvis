@@ -61,12 +61,12 @@ function LaneCard({ lane }: { lane: Lane }) {
       ) : null}
       {lane.proposable === true ? (
         // v1.24: a desk Hermes proposes for. `queued` counts the feed's news items, not seeds.
+        // v1.25: a news desk posts the freshest item of the last 72 h, so it has no runway.
         <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px]" data-proposable>
           <span data-hermes-waiting className="tabular-nums" style={{ color: 'var(--color-text)' }}>
             {count(lane.hermes_waiting)} Hermes seeds waiting
           </span>
-          <Stat label="News items" value={count(lane.queued)} />
-          <Stat label="Runway" value={lane.runway_days == null ? 'unknown' : `${num(lane.runway_days, 1)} d`} />
+          <Stat label="Fresh news" value={count(lane.queued)} />
         </div>
       ) : lane.status !== 'feed' ? (
         <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px]">
