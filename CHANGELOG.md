@@ -531,8 +531,10 @@ as "Posts to approve (G1)", right after Trading, and open a G1 drawer.
 - The proxy checks `lane` ("feed:sim" or "feed:real") with the bridge's
   wording and forwards it; a reject never carries it. The 12 KB approve body
   still holds.
-- Seedbank: a `proposable` lane row reads "N Hermes seeds waiting" beside its
-  news items (its `queued` counts the feed's items, not seeds). The composer
+- Seedbank: a `proposable` lane row reads "N Hermes seeds waiting" and
+  "Fresh news N" (its `queued` counts the feed's items still postable, not
+  seeds). It shows no runway (v1.25): a news desk posts the freshest item of
+  the last 72 hours, so it has no queue to run out of. The composer
   still never offers a feed lane as a seed lane, now pinned by a test with
   the two proposable desks.
 
