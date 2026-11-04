@@ -26,7 +26,8 @@ export type WaitingKind =
   | 'decision'
   | 'x402'
   | 'workorder'
-  | 'g1';
+  | 'g1'
+  | 'notice';
 
 export interface WaitingItem {
   kind: WaitingKind | (string & {});
@@ -40,7 +41,10 @@ export interface WaitingItem {
   priority: number | null;
   link: { page: string; focus: string | number | null } | null;
   /** Local rows that open a drawer here instead of a page. */
-  opens?: 'decisions' | 'g1' | 'workorder';
+  opens?: 'decisions' | 'g1' | 'workorder' | 'sites';
+  /** v1.27, `notice` only: serve_failed, privacy_changed or
+   * last_modified_changed (null when the server couldn't tell). */
+  notice_kind?: string | null;
   /** v1.22; absent on an older feed, which reads as `act`. */
   lane?: Lane;
   delegate?: Delegate | null;
@@ -141,6 +145,7 @@ export const KIND_ORDER: WaitingKind[] = [
   'patch',
   'patch_class',
   'rec',
+  'notice',
   'workorder',
 ];
 
@@ -155,6 +160,7 @@ export const KIND_LABEL: Record<string, string> = {
   patch: 'Catalog fixes',
   patch_class: 'Invalid patches, by class',
   rec: 'Store recommendations',
+  notice: 'Company sites',
   workorder: 'Work orders',
 };
 
@@ -169,6 +175,7 @@ export const SOURCE_LABEL: Record<string, string> = {
   catalog_fixes: 'Catalog fixes',
   bd_pipeline: 'BD pipeline',
   ecom_recommendations: 'Recommendations',
+  entity_watch: 'Company sites',
 };
 
 export class WaitingError extends Error {

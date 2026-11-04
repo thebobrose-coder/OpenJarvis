@@ -717,3 +717,111 @@ def test_header_is_the_manifest_alone_when_the_list_fails(monkeypatch, real_head
     monkeypatch.setattr(wr, "build_waiting", boom)
     text = asyncio.run(wr.waiting_header())
     assert wr.MANIFEST in text and "For you" not in text
+
+
+# ---------- company-site notices (contract v1.27, hq 0026 D5) ----------
+
+
+def _notice(nid: str, title: str, detail: str) -> dict:
+    return {
+        "kind": "notice",
+        "id": nid,
+        "source_feed": "entity_watch",
+        "scope": "site-a",
+        "title": title,
+        "detail": detail,
+        "created_at": _iso(NOW),
+        "due": None,
+        "priority": None,
+        "link": {"page": "/ops", "focus": nid},
+        "lane": "act",
+        "delegate": None,
+        "times_seen": None,
+        "last_seen": None,
+    }
+
+
+def _with_notices() -> dict:
+    a = _laned()
+    a["counts"].update({"notice": 2, "total": 8, "act": 4})
+    a["items"] += [
+        _notice(
+            "aaaaaaaaaaaa",
+            "Company site not serving",
+            "https://alpha.example.test/app/privacy.html: status 503",
+        ),
+        _notice(
+            "bbbbbbbbbbbb",
+            "Company privacy page changed",
+            "https://alpha.example.test/app/privacy.html: the page's text changed",
+        ),
+    ]
+    a["sources"]["entity_watch"] = _iso(NOW)
+    return a
+
+
+@pytest.fixture
+def watch(monkeypatch):
+    state = {
+        "feed": {
+            "notices": [
+                {"id": "aaaaaaaaaaaa", "kind": "serve_failed", "entity": "site-a"},
+                {"id": "bbbbbbbbbbbb", "kind": "privacy_changed", "entity": "site-a"},
+            ]
+        },
+        "calls": 0,
+    }
+
+    async def entity_watch():
+        state["calls"] += 1
+        return state["feed"]
+
+    monkeypatch.setattr(wr, "_entity_watch", entity_watch)
+    return state
+
+
+def test_notices_are_counted_listed_act_and_open_the_card(wired, watch):
+    wired["approvals"] = _with_notices()
+    body = _client().get("/api/waiting").json()
+    c = body["counts"]
+    assert c["notice"] == 2
+    assert c["total"] == 8 + 2  # Hermes's total holds both, plus two decisions
+    rows = [i for i in body["items"] if i["kind"] == "notice"]
+    assert [r["notice_kind"] for r in rows] == ["serve_failed", "privacy_changed"]
+    assert all(r["lane"] == "act" and r["delegate"] is None for r in rows)
+    assert all(r["opens"] == "sites" for r in rows)
+
+
+def test_notice_kind_falls_back_to_the_title(wired, watch):
+    wired["approvals"] = _with_notices()
+    watch["feed"] = None  # entity_watch unavailable
+    rows = [
+        i
+        for i in _client().get("/api/waiting").json()["items"]
+        if i["kind"] == "notice"
+    ]
+    assert [r["notice_kind"] for r in rows] == ["serve_failed", "privacy_changed"]
+
+
+def test_no_notice_means_no_entity_watch_read(wired, watch):
+    _client().get("/api/waiting")
+    assert watch["calls"] == 0
+
+
+def test_notice_without_hermes_counts_is_in_the_fallback_total(wired, watch):
+    a = _with_notices()
+    a["counts"] = {"notice": 2}
+    a["items"] = a["items"][-2:]
+    wired["approvals"] = a
+    c = _client().get("/api/waiting").json()["counts"]
+    assert c["notice"] == 2 and c["total"] == 2 + 2
+
+
+def test_a_serve_failed_notice_is_in_the_answer_through_kind_words(wired, watch):
+    wired["approvals"] = _with_notices()
+    import asyncio
+
+    w = asyncio.run(wr.build_waiting())
+    answer = wr.format_answer(w)
+    assert "Company site notices: Company site not serving" in answer
+    assert wr.KIND_WORDS["notice"] == "company site notices"

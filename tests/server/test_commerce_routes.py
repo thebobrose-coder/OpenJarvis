@@ -162,6 +162,7 @@ def test_refresh_passes_allowed_flags_through(feed):
         "ecom_recommendations",
         "compliance_findings",
         "merchant_status",
+        "entity_watch",
         "x",
     ],
 )

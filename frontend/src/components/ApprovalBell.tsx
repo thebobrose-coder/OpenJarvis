@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Bell } from 'lucide-react';
+import { useAppStore } from '../lib/store';
 import { useWaiting } from '../lib/WaitingContext';
 import { bellCount, linkFor, type FiledRow, type Lane, type WaitingItem } from '../lib/waiting-api';
 import { WaitingTabsView } from './Waiting/WaitingListView';
@@ -19,6 +20,7 @@ export function ApprovalBell() {
   const [tab, setTab] = useState<Lane>('act');
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const setStackDrawerOpen = useAppStore((st) => st.setStackDrawerOpen);
   const count = bellCount(waiting);
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export function ApprovalBell() {
     if (item.opens === 'decisions') setDecisionsOpen(true);
     else if (item.opens === 'g1') setG1Open(String(item.id));
     else if (item.opens === 'workorder') setReportOpen(String(item.id));
+    else if (item.opens === 'sites') setStackDrawerOpen(true);
     else {
       const href = linkFor(item);
       if (href) navigate(href);

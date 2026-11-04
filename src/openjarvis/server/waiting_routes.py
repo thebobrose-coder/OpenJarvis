@@ -58,7 +58,17 @@ WORKORDER_DAYS = 7
 DECIDED_DAYS = 14
 DECIDED_MAX = 30
 NOTE_MAX = 500
-HERMES_KINDS = ("proposal", "thesis_prompt", "patch", "follow_up", "rec")
+HERMES_KINDS = ("proposal", "thesis_prompt", "patch", "follow_up", "rec", "notice")
+# v1.27 (hq 0026 D5): a company-site notice. The approvals item says which
+# kind only in its title, so the kind is read from entity_watch's notices by
+# id, with Hermes's titles as the fallback. The row opens the Company sites
+# card here (Hermes's page, /ops, has no view in OpenJarvis) and has no action.
+NOTICE_KINDS = ("serve_failed", "privacy_changed", "last_modified_changed")
+NOTICE_TITLES = {
+    "Company site not serving": "serve_failed",
+    "Company privacy page changed": "privacy_changed",
+    "Company site page updated": "last_modified_changed",
+}
 LOCAL_KINDS = ("g0", "decision", "x402", "workorder", "g1")
 LANES = ("act", "delegate", "fyi")
 LOCAL_SOURCES = ("trading_status", "inbox", "studio", "workorders", "g1_mirror")
@@ -643,6 +653,36 @@ async def _trading() -> tuple[dict[str, Any] | None, str | None]:
         return None, str(exc.detail)
 
 
+async def _entity_watch() -> dict[str, Any] | None:
+    from openjarvis.server.commerce_routes import get_feed
+
+    try:
+        return await get_feed("entity_watch")
+    except HTTPException:
+        return None
+
+
+def notice_rows(
+    items: list[dict[str, Any]], watch: dict[str, Any] | None
+) -> list[dict[str, Any]]:
+    """Each ``notice`` item with its ``notice_kind`` (from the feed's notices
+    by id, else from Hermes's title; null when neither says) and ``opens``
+    set to the Company sites card. Other kinds pass through unchanged."""
+    by_id = {
+        str(n.get("id")): n.get("kind")
+        for n in (watch or {}).get("notices") or []
+        if isinstance(n, dict) and n.get("kind") in NOTICE_KINDS
+    }
+    out = []
+    for item in items:
+        if item.get("kind") != "notice":
+            out.append(item)
+            continue
+        kind = by_id.get(str(item.get("id"))) or NOTICE_TITLES.get(item.get("title"))
+        out.append({**item, "notice_kind": kind, "opens": "sites", "delegate": None})
+    return out
+
+
 def _hermes_lanes(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Hermes's items with the v1.22 fields always present: an item from an
     older feed (no ``lane``) is ``act``, with no delegate."""
@@ -689,6 +729,8 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
         rows = _hermes_lanes(
             [i for i in hermes.get("items") or [] if isinstance(i, dict)]
         )
+        if any(r.get("kind") == "notice" for r in rows):
+            rows = notice_rows(rows, await _entity_watch())
         items += rows
         if all(isinstance(hc.get(k), int) for k in LANES):
             for k in LANES:
@@ -885,6 +927,7 @@ KIND_WORDS = {
     "decision": "decision box",
     "x402": "trading alert",
     "workorder": "work order",
+    "notice": "company site notices",
 }
 _header_cache: dict[str, Any] = {"at": 0.0, "text": None}
 

@@ -5,6 +5,7 @@ import { useAppStore } from '../../lib/store';
 import { ALL_CLEAR, NO_RUN, clock, stripLines, type StackHealth, type StackLevel } from '../../lib/stack-api';
 import { formatAge } from '../Dashboard/FeedFreshness';
 import { StackHealthDrawer } from './StackHealthDrawer';
+import { useEntityWatch } from '../../hooks/useEntityWatch';
 
 const TINT: Record<'fail' | 'warn', { color: string; background: string; border: string }> = {
   fail: {
@@ -131,6 +132,7 @@ export function StackHealthDock() {
   const setOpen = useAppStore((st) => st.setStackDrawerOpen);
   const openDeskThread = useAppStore((st) => st.openDeskThread);
   const navigate = useNavigate();
+  const sites = useEntityWatch(open);
   return (
     <>
       <StackHealthDockView
@@ -143,13 +145,14 @@ export function StackHealthDock() {
         pulse={s.pulse}
         onOpen={() => setOpen(true)}
       />
-      {open && s.health && (
+      {open && (
         <StackHealthDrawer
           health={s.health}
           now={s.now}
           run={s.run}
           onRun={s.runNow}
           onClose={() => setOpen(false)}
+          sites={sites}
           onAskDesk={() => {
             openDeskThread('ops', stackContext(s.health!));
             setOpen(false);

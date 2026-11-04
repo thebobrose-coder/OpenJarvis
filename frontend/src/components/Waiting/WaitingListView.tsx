@@ -27,6 +27,7 @@ import {
   type WaitingGroup,
   type WaitingItem,
 } from '../../lib/waiting-api';
+import { PRIVACY_NOTE, noticeLine } from '../../lib/sites-api';
 
 export const EMPTY = 'Nothing waiting on you';
 export const EMPTY_LANE: Record<Lane, string> = {
@@ -37,7 +38,11 @@ export const EMPTY_LANE: Record<Lane, string> = {
 
 /** Whether a row does anything when clicked: a page link or a drawer here. */
 export const isOpenable = (item: WaitingItem) =>
-  item.opens === 'decisions' || item.opens === 'g1' || item.opens === 'workorder' || linkFor(item) != null;
+  item.opens === 'decisions' ||
+  item.opens === 'g1' ||
+  item.opens === 'workorder' ||
+  item.opens === 'sites' ||
+  (item.kind !== 'notice' && linkFor(item) != null);
 
 /** The row actions: Dispatch on a delegate row and Snooze on a rec (hq 0023);
  * Fix it on a product-copy rec and Dismiss on a work-order row (hq 0024). */
@@ -97,6 +102,8 @@ export function DismissControl({ id, busy, onDismiss }: { id: string; busy?: boo
 function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) {
   const [armed, setArmed] = useState(false);
   const [days, setDays] = useState<number>(SNOOZE_DEFAULT);
+  // A company-site notice has no action: the row only opens its card (v1.27).
+  if (item.kind === 'notice') return null;
   const status = actions.status[rowKey(item)];
   const busy = status?.kind === 'busy';
   const lane = laneOf(item);
@@ -215,13 +222,17 @@ function Row({
   const href = linkFor(item);
   const seen = item.times_seen ?? 0;
   const age = item.last_seen ?? item.created_at;
+  const notice = item.kind === 'notice';
+  const title = notice ? noticeLine(item) : item.title;
+  const detail = notice ? (item.notice_kind === 'privacy_changed' ? PRIVACY_NOTE : null) : item.detail;
   return (
     <li>
       <button
         type="button"
         onClick={() => openable && onOpen(item)}
         disabled={!openable}
-        data-href={href ?? undefined}
+        data-href={notice ? undefined : href ?? undefined}
+        data-notice={notice ? item.notice_kind ?? 'unknown' : undefined}
         data-kind={item.kind}
         className="w-full text-left flex flex-col gap-0.5 rounded-md px-2 py-1.5 cursor-pointer disabled:cursor-default"
         style={{ background: 'transparent', border: 'none' }}
@@ -229,6 +240,8 @@ function Row({
           openable
             ? item.opens === 'decisions'
               ? 'Open the Decisions drawer'
+              : item.opens === 'sites'
+              ? 'Open the Company sites card'
               : item.opens === 'workorder'
               ? 'Open the report'
               : `Open ${href}`
@@ -237,7 +250,7 @@ function Row({
       >
         <span className="flex items-center gap-1.5 min-w-0">
           <span className="text-[12.5px] truncate" style={{ color: 'var(--color-text)' }}>
-            {item.title}
+            {title}
           </span>
         </span>
         <span className="flex flex-wrap items-center gap-1.5 text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -250,9 +263,9 @@ function Row({
           )}
           {age && <span>{ago(age, now)}</span>}
         </span>
-        {!compact && item.detail && (
-          <span className="text-[11.5px] line-clamp-2" style={{ color: 'var(--color-text-secondary)' }}>
-            {item.detail}
+        {(!compact || notice) && detail && (
+          <span className="text-[11.5px] line-clamp-2" style={{ color: 'var(--color-text-secondary)' }} data-detail>
+            {detail}
           </span>
         )}
       </button>

@@ -3,6 +3,7 @@ import { Inbox } from 'lucide-react';
 import { DashboardPanel } from './DashboardPanel';
 import { SmallButton } from '../shared/ui';
 import { WaitingListView, type RowActions } from '../Waiting/WaitingListView';
+import { useAppStore } from '../../lib/store';
 import { useWaiting } from '../../lib/WaitingContext';
 import { bellCount, fmtAge, groupItems, linkFor, sourceAges, staleSources, type Waiting, type WaitingItem } from '../../lib/waiting-api';
 
@@ -77,6 +78,7 @@ export function WaitingPanelView({
 export function WaitingPanel() {
   const { waiting, loading, error, setDecisionsOpen, setG1Open, setReportOpen, setBellOpen, rowActions } = useWaiting();
   const navigate = useNavigate();
+  const setStackDrawerOpen = useAppStore((st) => st.setStackDrawerOpen);
   return (
     <WaitingPanelView
       waiting={waiting}
@@ -90,6 +92,7 @@ export function WaitingPanel() {
         if (item.opens === 'decisions') setDecisionsOpen(true);
         else if (item.opens === 'g1') setG1Open(String(item.id));
         else if (item.opens === 'workorder') setReportOpen(String(item.id));
+        else if (item.opens === 'sites') setStackDrawerOpen(true);
         else {
           const href = linkFor(item);
           if (href) navigate(href);

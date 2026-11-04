@@ -44,6 +44,9 @@ FEEDS = frozenset(
         # v1.26 (hq 0025 D6): Merchant Center, read-only. GET only: its refresh
         # flag is never forwarded from here, and it has no other route.
         "merchant_status",
+        # v1.27 (hq 0026 D5): the company-site watch, read-only. GET only, for
+        # the Company sites card; its refresh is refused (not in REFRESHABLE).
+        "entity_watch",
     }
 )
 # Refresh flags the bridge accepts for the ecom feeds (v0.6.1): the three
