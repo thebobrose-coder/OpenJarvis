@@ -533,3 +533,11 @@ export async function fetchReports(): Promise<WorkOrderReport[]> {
   if (!res.ok) throw new WaitingError(res.status, await detail(res, `Failed: ${res.status}`));
   return (await res.json()).reports ?? [];
 }
+
+/** One report by id at any age (hq 0027 D6 A1); none when it is gone (404). */
+export async function fetchReport(id: string): Promise<WorkOrderReport[]> {
+  const res = await apiFetch(`/api/workorders/reports/${encodeURIComponent(id)}`);
+  if (res.status === 404) return [];
+  if (!res.ok) throw new WaitingError(res.status, await detail(res, `Failed: ${res.status}`));
+  return [await res.json()];
+}

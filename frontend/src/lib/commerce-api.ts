@@ -176,6 +176,16 @@ export interface Recommendation {
   note?: string;
 }
 
+/** v1.28 (hq 0027): where Hermes's rec-router sent an accepted rec. */
+export interface RecRoute {
+  route: 'fixes' | 'findings' | 'workorder' | 'operator' | (string & {});
+  /** A code-written sentence; "plan ready: <gist>" on a read-only report. */
+  reason: string;
+  /** A patch id or fixer class (fixes), an order id (workorder, plan ready), or null. */
+  ref: string | null;
+  closed_at: string | null;
+}
+
 export interface LedgerItem {
   id: string;
   created_at: string;
@@ -189,6 +199,8 @@ export interface LedgerItem {
   note: string | null;
   /** v1.23: the newest patch addressing the rec ("patch ready"). */
   fix_patch_id?: string | null;
+  /** v1.28: on accepted recs and on recs the router closed; absent until routed. */
+  route?: RecRoute;
 }
 
 export interface EcomRecommendations extends FeedMeta {

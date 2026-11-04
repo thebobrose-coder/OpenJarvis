@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Chip, Quiet } from '../shared/ui';
 import { useWaiting } from '../../lib/WaitingContext';
-import { ago, fetchReports, rowStatusText, type RowStatus, type WorkOrderReport } from '../../lib/waiting-api';
+import { ago, fetchReport, fetchReports, rowStatusText, type RowStatus, type WorkOrderReport } from '../../lib/waiting-api';
 import { DismissControl } from './WaitingListView';
 
 const STATUS_TONE: Record<string, 'success' | 'error' | 'warning'> = {
@@ -113,7 +113,7 @@ export function ReportsView({
   onDismiss?: (id: string, note: string) => void;
 }) {
   const shown = open === '*' ? reports : reports.filter((r) => r.id === open);
-  if (shown.length === 0) return <Quiet>{open === '*' ? 'No work-order reports in the last 7 days.' : 'That report is gone or older than 7 days.'}</Quiet>;
+  if (shown.length === 0) return <Quiet>{open === '*' ? 'No work-order reports in the last 7 days.' : 'That report is gone.'}</Quiet>;
   return (
     <div className="flex flex-col gap-4">
       {shown.map((r) => (
@@ -128,7 +128,7 @@ export function ReportsView({
   );
 }
 
-/** The drawer shell: reads /api/workorders/reports when it opens. */
+/** The drawer shell: reads the 7-day list ('*'), or one report by id at any age. */
 export function ReportsDrawer() {
   const { reportOpen, setReportOpen, rowStatus, dismiss } = useWaiting();
   const [reports, setReports] = useState<WorkOrderReport[] | null>(null);
@@ -138,7 +138,7 @@ export function ReportsDrawer() {
   useEffect(() => {
     if (!reportOpen) return;
     setError(null);
-    fetchReports().then(setReports, (e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    (reportOpen === '*' ? fetchReports() : fetchReport(reportOpen)).then(setReports, (e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [reportOpen, reload]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Check, CheckCheck, ClipboardList, History, MessageSquarePlus, Wrench, X } from 'lucide-react';
 import type { Decision, EcomRecommendations, LedgerItem, RecCategory } from '../../lib/commerce-api';
 import type { PendingDecision } from '../../hooks/useCommerceData';
@@ -238,51 +238,277 @@ function LedgerStats({ ledger }: { ledger: EcomRecommendations }) {
   );
 }
 
-function RecentlyDecided({
+/** v1.28 (hq 0027 D6): an accepted rec routed here is someone else's work. */
+export const IN_FLIGHT_ROUTES: readonly string[] = ['fixes', 'findings', 'workorder'];
+
+export const isPlanReady = (i: LedgerItem) => i.route?.route === 'operator' && i.route.reason.startsWith('plan ready');
+
+/** The router's re-check wording: "… — waits on a compliance-sentinel run after its acceptance". */
+export const waitsOnRecheck = (reason?: string | null) => !!reason && /waits on an? .+ run after its acceptance\.?\s*$/.test(reason);
+
+/** Accepted recs split by Hermes's route; every other decision is history. */
+export function splitLedger(items: LedgerItem[]): { needsYou: LedgerItem[]; inFlight: LedgerItem[]; history: LedgerItem[] } {
+  const accepted = items.filter((i) => i.status === 'accepted');
+  const inFlight = accepted.filter((i) => i.route && IN_FLIGHT_ROUTES.includes(i.route.route));
+  const flying = new Set(inFlight.map((i) => i.id));
+  // "plan ready" first, otherwise the feed's order (a stable sort).
+  const needsYou = accepted
+    .filter((i) => !flying.has(i.id))
+    .sort((a, b) => Number(isPlanReady(b)) - Number(isPlanReady(a)));
+  return { needsYou, inFlight, history: items.filter((i) => i.status !== 'accepted') };
+}
+
+/** A note's own part and the router's "auto: …" parts (v1.28 closes). */
+export function splitNote(note: string | null): { own: string; auto: string[] } {
+  const parts = (note ?? '').split(' | ').map((p) => p.trim()).filter(Boolean);
+  return {
+    own: parts.filter((p) => !p.startsWith('auto:')).join(' | '),
+    auto: parts.filter((p) => p.startsWith('auto:')),
+  };
+}
+
+const ROUTE_LABEL: Record<string, string> = { fixes: 'Fixes', findings: 'Findings', workorder: 'Work order' };
+
+function LinkButton({ onClick, title, data, children }: { onClick: () => void; title: string; data: Record<string, string>; children: ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      {...data}
+      className="cursor-pointer underline text-[11px]"
+      style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-accent)' }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Ledger row links (v1.28): Fixes, the Reports drawer, the Compliance panel. */
+export interface LedgerLinks {
+  onOpenFix?: (patchId: string) => void;
+  onOpenReport?: (orderId: string) => void;
+  onOpenCompliance?: (store: string) => void;
+}
+
+function RowHead({ item, storeNames, chip }: { item: LedgerItem; storeNames: Record<string, string>; chip: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {chip}
+      <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        {storeNames[item.store] ?? item.store} · {shortDateTime(item.decided_at)}
+      </span>
+    </div>
+  );
+}
+
+function Reason({ text }: { text?: string | null }) {
+  if (!text) return null;
+  return (
+    <span className="text-[11.5px]" data-route-reason style={{ color: 'var(--color-text-secondary)' }}>
+      {text}
+    </span>
+  );
+}
+
+function OwnNote({ note }: { note: string | null }) {
+  const { own } = splitNote(note);
+  return own ? <span className="italic">“{own}”</span> : null;
+}
+
+function NeedsYouRow({
+  item,
+  storeNames,
+  links,
+  onDecide,
+}: {
+  item: LedgerItem;
+  storeNames: Record<string, string>;
+  links: LedgerLinks;
+  onDecide: (id: string, d: Decision, note: string) => void;
+}) {
+  const plan = isPlanReady(item);
+  const ref = item.route?.ref;
+  const openReport = links.onOpenReport;
+  return (
+    <li id={`rec-${item.id}`} data-needs-you={item.id} className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }}>
+      <RowHead
+        item={item}
+        storeNames={storeNames}
+        chip={
+          plan ? (
+            <span data-plan-ready>
+              <Chip tone="accent">plan ready</Chip>
+            </span>
+          ) : (
+            <Chip tone={STATUS_TONE.accepted}>accepted</Chip>
+          )
+        }
+      />
+      <span style={{ color: 'var(--color-text)' }}>{item.title}</span>
+      <Reason text={item.route?.reason} />
+      <div className="flex flex-wrap items-center gap-2">
+        {plan && ref && openReport && (
+          <LinkButton onClick={() => openReport(ref)} title="Open the work-order report: the plan is there" data={{ 'data-open-report': ref }}>
+            open the report
+          </LinkButton>
+        )}
+        <PatchReady id={item.fix_patch_id} onOpenFix={links.onOpenFix} />
+      </div>
+      <OwnNote note={item.note} />
+      <DecisionControls allowed={['done']} onDecide={(d, note) => onDecide(item.id, d, note)} />
+    </li>
+  );
+}
+
+function InFlightLink({ item, links }: { item: LedgerItem; links: LedgerLinks }) {
+  const route = item.route!;
+  const ref = route.ref;
+  const { onOpenFix, onOpenReport, onOpenCompliance } = links;
+  if (route.route === 'fixes') {
+    // A store-wide meta or alt rec names the fixer's class, not a patch.
+    if (ref && ref.includes(':')) {
+      return (
+        <span data-fix-class={ref}>
+          <Chip tone="muted" title="The catalog fixer writes this class automatically">
+            class {ref}
+          </Chip>
+        </span>
+      );
+    }
+    const patch = ref ?? item.fix_patch_id;
+    if (patch && onOpenFix) {
+      return (
+        <LinkButton onClick={() => onOpenFix(patch)} title="Open the patch on the Fixes tab" data={{ 'data-open-patch': patch }}>
+          open the patch
+        </LinkButton>
+      );
+    }
+    return <Quiet>no patch yet</Quiet>;
+  }
+  if (route.route === 'workorder') {
+    if (ref && onOpenReport) {
+      return (
+        <LinkButton onClick={() => onOpenReport(ref)} title="Open the work order in the Reports drawer" data={{ 'data-open-report': ref }}>
+          open the order
+        </LinkButton>
+      );
+    }
+    return <Quiet>no order sent yet</Quiet>;
+  }
+  if (route.route === 'findings' && onOpenCompliance) {
+    return (
+      <LinkButton onClick={() => onOpenCompliance(item.store)} title="Show the Compliance panel" data={{ 'data-open-compliance': item.store }}>
+        open Compliance
+      </LinkButton>
+    );
+  }
+  return null;
+}
+
+function InFlightRow({ item, storeNames, links }: { item: LedgerItem; storeNames: Record<string, string>; links: LedgerLinks }) {
+  const route = item.route!;
+  return (
+    <li id={`rec-${item.id}`} data-in-flight={item.id} className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }}>
+      <RowHead item={item} storeNames={storeNames} chip={<Chip tone="muted">{ROUTE_LABEL[route.route] ?? route.route}</Chip>} />
+      <span style={{ color: 'var(--color-text)' }}>{item.title}</span>
+      <Reason text={route.reason} />
+      <div className="flex flex-wrap items-center gap-2">
+        <InFlightLink item={item} links={links} />
+        {waitsOnRecheck(route.reason) && (
+          <span data-recheck>
+            <Chip tone="muted" title="Closes once a checker run after the acceptance shows nothing open">
+              waiting on a re-check
+            </Chip>
+          </span>
+        )}
+      </div>
+      <OwnNote note={item.note} />
+    </li>
+  );
+}
+
+function Group({ title, count, hint, children }: { title: string; count: number; hint: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[11px] uppercase tracking-wide" title={hint} style={{ color: 'var(--color-text-tertiary)' }}>
+        {title} ({count})
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/** Pure: the ledger's accepted recs (Needs you, In flight) and its history. */
+export function LedgerGroups({
   items,
   storeNames,
   onDecide,
-  onOpenFix,
+  links = {},
 }: {
   items: LedgerItem[];
   storeNames: Record<string, string>;
   onDecide: (id: string, d: Decision, note: string) => void;
-  onOpenFix?: (patchId: string) => void;
+  links?: LedgerLinks;
 }) {
   const [open, setOpen] = useState(true);
+  const { needsYou, inFlight, history } = splitLedger(items);
   return (
-    <div className="flex flex-col gap-2">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide cursor-pointer"
-        style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-text-tertiary)' }}
-        aria-expanded={open}
-      >
-        <History size={11} /> Recently decided ({items.length}) {open ? '▾' : '▸'}
-      </button>
-      {open &&
-        (items.length === 0 ? (
-          <Quiet>No decisions yet. Every accept, reject and done is recorded here.</Quiet>
+    <div className="flex flex-col gap-3">
+      <Group title="Needs you" count={needsYou.length} hint="Accepted recs that are yours to carry out">
+        {needsYou.length === 0 ? (
+          <Quiet>Nothing accepted is waiting on you.</Quiet>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {items.map((i) => (
-              <li key={i.id} id={`rec-${i.id}`} className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }}>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Chip tone={STATUS_TONE[i.status] ?? 'neutral'}>{i.status}</Chip>
-                  <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                    {storeNames[i.store] ?? i.store} · {shortDateTime(i.decided_at)}
-                  </span>
-                  <PatchReady id={i.fix_patch_id} onOpenFix={onOpenFix} />
-                </div>
-                <span style={{ color: 'var(--color-text)' }}>{i.title}</span>
-                {i.note && <span className="italic">“{i.note}”</span>}
-                {i.status === 'accepted' && (
-                  <DecisionControls allowed={['done']} onDecide={(d, note) => onDecide(i.id, d, note)} />
-                )}
-              </li>
+          <ul className="flex flex-col gap-2" data-group="needs-you">
+            {needsYou.map((i) => (
+              <NeedsYouRow key={i.id} item={i} storeNames={storeNames} links={links} onDecide={onDecide} />
             ))}
           </ul>
-        ))}
+        )}
+      </Group>
+      {inFlight.length > 0 && (
+        <Group title="In flight" count={inFlight.length} hint="Someone else's work: Hermes closes these on evidence">
+          <ul className="flex flex-col gap-2" data-group="in-flight">
+            {inFlight.map((i) => (
+              <InFlightRow key={i.id} item={i} storeNames={storeNames} links={links} />
+            ))}
+          </ul>
+        </Group>
+      )}
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide cursor-pointer"
+          style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-text-tertiary)' }}
+          aria-expanded={open}
+        >
+          <History size={11} /> Recently decided ({history.length}) {open ? '▾' : '▸'}
+        </button>
+        {open &&
+          (history.length === 0 ? (
+            <Quiet>No decisions yet. Every accept, reject and done is recorded here.</Quiet>
+          ) : (
+            <ul className="flex flex-col gap-2" data-group="history">
+              {history.map((i) => (
+                <li key={i.id} id={`rec-${i.id}`} className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }}>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Chip tone={STATUS_TONE[i.status] ?? 'neutral'}>{i.status}</Chip>
+                    <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                      {storeNames[i.store] ?? i.store} · {shortDateTime(i.decided_at)}
+                    </span>
+                    <PatchReady id={i.fix_patch_id} onOpenFix={links.onOpenFix} />
+                  </div>
+                  <span style={{ color: 'var(--color-text)' }}>{i.title}</span>
+                  <OwnNote note={i.note} />
+                  {splitNote(i.note).auto.map((a) => (
+                    <span key={a} className="text-[11px]" data-auto-close style={{ color: 'var(--color-text-secondary)' }}>
+                      {a}
+                    </span>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          ))}
+      </div>
     </div>
   );
 }
@@ -298,6 +524,8 @@ export function RecommendationsQueue({
   onDecide,
   onAskDesk,
   onOpenFix,
+  onOpenReport,
+  onOpenCompliance,
   fixRecs,
   loading,
   error,
@@ -312,6 +540,10 @@ export function RecommendationsQueue({
   onDecide: (id: string, d: Decision, note: string) => void;
   onAskDesk?: (item: LedgerItem) => void;
   onOpenFix?: (patchId: string) => void;
+  /** Open a work-order report by id (the Reports drawer). */
+  onOpenReport?: (orderId: string) => void;
+  /** Show the Compliance panel (a findings row). */
+  onOpenCompliance?: (store: string) => void;
   /** Rec ids the waiting feed marks `fix: true` (0024 J1). */
   fixRecs?: ReadonlySet<string>;
   loading?: boolean;
@@ -330,6 +562,7 @@ export function RecommendationsQueue({
       (owner === 'all' || i.detail.owner === owner),
   );
   const recentVisible = recent.filter((i) => selectedStore === ALL_STORES || i.store === selectedStore);
+  const split = splitLedger(recentVisible);
 
   return (
     <div className="col-span-12 grid grid-cols-12 gap-4">
@@ -389,13 +622,19 @@ export function RecommendationsQueue({
         )}
       </DashboardPanel>
 
-      <DashboardPanel icon={History} title="Decision ledger" tag="Track record" size="tall" loading={loading}>
+      <DashboardPanel
+        icon={History}
+        title="Decision ledger"
+        tag={ledger ? `${split.needsYou.length} need you · ${split.inFlight.length} in flight` : 'Track record'}
+        size="tall"
+        loading={loading}
+      >
         {!ledger ? (
           <Quiet>No ledger yet.</Quiet>
         ) : (
           <div className="flex flex-col gap-3">
             <LedgerStats ledger={ledger} />
-            <RecentlyDecided items={recentVisible} storeNames={storeNames} onDecide={onDecide} onOpenFix={onOpenFix} />
+            <LedgerGroups items={recentVisible} storeNames={storeNames} onDecide={onDecide} links={{ onOpenFix, onOpenReport, onOpenCompliance }} />
           </div>
         )}
       </DashboardPanel>

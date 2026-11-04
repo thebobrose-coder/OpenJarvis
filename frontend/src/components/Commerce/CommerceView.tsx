@@ -67,6 +67,8 @@ export interface CommerceViewProps {
   fixRecs?: ReadonlySet<string>;
   /** content_health.ads_hold (v1.21; its Merchant part v1.26), read only. */
   adsHold?: AdsHold | null;
+  /** Open a work-order report by id: a ledger row's plan or order (v1.28). */
+  onOpenReport?: (orderId: string) => void;
 }
 
 /**
@@ -92,6 +94,7 @@ export function CommerceView({
   precheck,
   fixRecs,
   adsHold = null,
+  onOpenReport,
 }: CommerceViewProps) {
   const [tab, setTab] = useState<CommerceTab>(fixes ? initialTab : 'overview');
   // A fix another panel linked to: the Fixes tab opens on its view.
@@ -131,6 +134,9 @@ export function CommerceView({
     // Once per navigation: not on every fixes poll.
   }, [focus?.key, focus?.fix, focus?.rec]);
   const waiting = waitingCount(fixes?.data ?? null);
+  // A ledger findings row (v1.28): the panel shows every property.
+  const openCompliance = () =>
+    window.setTimeout(() => document.getElementById('commerce-compliance')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
   const openFix = (id: string) => {
     setFixTarget(id);
     setTab('fixes');
@@ -238,6 +244,8 @@ export function CommerceView({
               onDecide={onDecide}
               onAskDesk={onAskDesk?.rec}
               onOpenFix={fixes ? openFix : undefined}
+              onOpenReport={onOpenReport}
+              onOpenCompliance={openCompliance}
               fixRecs={fixRecs}
               loading={feeds.ecom_recommendations.loading}
               error={feeds.ecom_recommendations.error}
@@ -277,7 +285,7 @@ export function CommerceView({
             />
           </div>
 
-          <div className="grid grid-cols-12 gap-4 mb-10">
+          <div id="commerce-compliance" className="grid grid-cols-12 gap-4 mb-10">
             <CompliancePanel
               findings={feeds.compliance_findings.data}
               loading={feeds.compliance_findings.loading}

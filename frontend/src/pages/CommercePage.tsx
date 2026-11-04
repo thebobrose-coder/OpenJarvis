@@ -61,7 +61,7 @@ export function CommercePage() {
   const { feeds, pending, refreshStatus, refresh, decide, notice, clearNotice } = useCommerceData();
   const fixes = useCatalogFixes();
   // Fix it (0024 J1): the waiting feed says which recs the fixer can write.
-  const { waiting } = useWaiting();
+  const { waiting, setReportOpen } = useWaiting();
   const fixRecs = useMemo(
     () => new Set((waiting?.items ?? []).filter((i) => i.kind === 'rec' && i.fix === true).map((i) => String(i.id))),
     [waiting],
@@ -109,6 +109,7 @@ export function CommercePage() {
         fixes={fixes}
         focus={focus}
         fixRecs={fixRecs}
+        onOpenReport={setReportOpen}
         adsHold={adsHold}
         onAskDesk={{
           rec: (item) => ask('commerce', recContext(item)),
