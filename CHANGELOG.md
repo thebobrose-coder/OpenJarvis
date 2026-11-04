@@ -460,6 +460,25 @@ D6). The Overview gains a full-width "Merchant Center" panel from Hermes's
 - **Desk:** the Commerce desk's `panel_feed` reads `merchant_status`, filterable
   by store. Its shown Hermes allowlist adds the three `merchant_*` read tools.
 
+**Waiting on you: company-site notices and a Company sites card** (contract
+v1.27, hq 0026 D5). Hermes's daily `entity_watch` read of the company sites
+now reaches the app, read-only.
+- **Waiting row:** the `approvals` kind `notice` is counted with the Hermes
+  kinds and listed under "Company sites", just before work orders, in For you.
+  Each row reads the site, the notice in words and the path: "is not serving
+  /path (503)", "privacy page changed" (with a line saying Google's OAuth
+  verification reads that page) or "/path Last-Modified changed". It has no
+  Dispatch, Fix it, Snooze or Dismiss; clicking it opens the card.
+- **Company sites card:** in the Stack health drawer, one card per site: each
+  serve check as a status chip with its Last-Modified, the privacy hash's first
+  12 characters, Search Console (clicks, impressions, position, inspection
+  verdict) and GA4 sessions over 28 days, or the reason string as-is, and when
+  it was checked, amber past 36 h. The drawer now opens with no stack-health
+  file too.
+- **Read only:** `entity_watch` is a GET feed on `/api/commerce`; its refresh is
+  refused. The "what's waiting on me?" answer names a notice as "company site
+  notices"; there is no proactive speech and no chime for one.
+
 **Desks: the Content desk and the BD desk** (hq 0020 P2). A desk is one role
 you can talk to: a Chat thread with a desk id, a soul the operator owns, read-only
 tools, a default route and the pages it is bound to. It reads, explains, drafts
