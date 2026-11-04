@@ -516,6 +516,40 @@ def test_commerce_feeds_come_compact_and_whole(monkeypatch):
     )
 
 
+def test_commerce_ledger_names_needs_you_and_in_flight(monkeypatch):
+    # v1.28 (hq 0027 D6 O4): the two counts the ledger panel shows.
+    def rec(i, store, route=None, status="accepted"):
+        r = {"id": f"r{i}", "store": store, "title": f"Rec {i}", "status": status}
+        if route:
+            r["route"] = {"route": route, "reason": f"why {i}", "ref": None}
+        return r
+
+    decided = [
+        rec(1, "store-a", "operator"),
+        rec(2, "store-a"),  # no route yet: the operator's
+        rec(3, "store-b", "fixes"),
+        rec(4, "store-a", "findings"),
+        rec(5, "store-a", "workorder"),
+        rec(6, "store-a", "operator", status="done"),
+    ]
+    doc = {"counts": {"accepted": 5}, "open": [], "recent_decided": decided}
+
+    async def fake(feed):
+        return json.loads(json.dumps(doc))
+
+    monkeypatch.setattr(desk_tools, "_feed", fake)
+    pf = desk_tools.tools_for(desks.DESKS["commerce"])["panel_feed"]
+    split = json.loads(asyncio.run(pf("ecom_recommendations")))["accepted_split"]
+    assert (split["needs_you"], split["in_flight"]) == (2, 3)
+    assert [r["id"] for r in split["needs_you_items"]] == ["r1", "r2"]
+    assert split["needs_you_items"][0]["reason"] == "why 1"
+    a = json.loads(asyncio.run(pf("ecom_recommendations", filter="store-a")))
+    assert (a["accepted_split"]["needs_you"], a["accepted_split"]["in_flight"]) == (
+        2,
+        2,
+    )
+
+
 def test_commerce_feeds_filter_and_one_item_in_full(monkeypatch):
     _big_feeds(monkeypatch)
     pf = desk_tools.tools_for(desks.DESKS["commerce"])["panel_feed"]

@@ -550,6 +550,38 @@ def test_reports_route_is_read_only_and_recent(wired, data):
     assert _client("10.0.0.5").get("/api/workorders/reports").status_code == 403
 
 
+WO_PLAN = "wo-20260101-sample-plan-order-0a1b2c"
+
+
+def test_one_report_by_id_has_no_age_limit(wired, data):
+    # hq 0027 D6 A1: a "plan ready" rec opens its report after the 7 days.
+    _report(data, "done", WO_PLAN, "done", days=30)
+    _report(data, "blocked", WO_BLOCKED, "blocked", days=40)
+    assert _client().get("/api/workorders/reports").json()["reports"] == []
+    one = _client().get(f"/api/workorders/reports/{WO_PLAN}")
+    assert one.status_code == 200
+    assert one.json()["id"] == WO_PLAN and one.json()["status"] == "done"
+    assert one.json()["summary"] == f"summary of {WO_PLAN}"
+    blocked = _client().get(f"/api/workorders/reports/{WO_BLOCKED}").json()
+    assert blocked["status"] == "blocked"
+
+
+def test_one_report_missing_or_malformed_is_404(wired, data):
+    _report(data, "done", "wo-a", "done")
+    assert _client().get(f"/api/workorders/reports/{WO_DONE}").status_code == 404
+    # Not the order-id form: never read, even if a file has that name.
+    assert _client().get("/api/workorders/reports/wo-a").status_code == 404
+    assert _client().get("/api/workorders/reports/..%2Fsecret").status_code == 404
+    path = f"/api/workorders/reports/{WO_PLAN}"
+    assert _client("10.0.0.5").get(path).status_code == 403
+
+
+def test_one_report_in_the_wrong_folder_status_is_404(wired, data):
+    # done/ holds done and failed only, as in the 7-day list.
+    _report(data, "done", WO_PLAN, "blocked")
+    assert _client().get(f"/api/workorders/reports/{WO_PLAN}").status_code == 404
+
+
 # ---------- Dismiss a work-order row (hq 0024 J4) ----------
 
 WO_BLOCKED = "wo-20260101-sample-blocked-order-a1b2c3"

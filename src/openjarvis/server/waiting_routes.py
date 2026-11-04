@@ -375,6 +375,35 @@ def _g0_items(data: Path) -> tuple[list[dict[str, Any]], datetime | None]:
     return items, newest
 
 
+def _report_entry(
+    doc: dict[str, Any], path: Path, at: datetime, dismissed: dict[str, dict]
+) -> dict[str, Any]:
+    """One report as the drawer shows it."""
+    claude = doc.get("claude") if isinstance(doc.get("claude"), dict) else {}
+    rid = str(doc.get("id") or path.name.split(".")[0])
+    gone = dismissed.get(rid) or {}
+    return {
+        "id": rid,
+        "status": doc.get("status"),
+        "repo": doc.get("repo") or None,
+        "scope": doc.get("scope") or None,
+        "branch": doc.get("branch") or None,
+        "costUsd": doc.get("costUsd"),
+        "finishedAt": _iso(at),
+        "reason": _clip(doc.get("reason"), 1000) or None,
+        "needsHuman": _clip(claude.get("needsHuman"), 1000) or None,
+        "summary": _clip(claude.get("summary"), 2000) or None,
+        "dismissedAt": gone.get("dismissedAt") or None,
+        "dismissNote": gone.get("note") or None,
+    }
+
+
+REPORT_FOLDERS = (
+    ("blocked", frozenset({"blocked", "rejected"})),
+    ("done", frozenset({"done", "failed"})),
+)
+
+
 def read_reports(
     data: Path, now: datetime
 ) -> tuple[list[dict[str, Any]], datetime | None]:
@@ -385,10 +414,7 @@ def read_reports(
     reports, newest = [], None
     cutoff = now - timedelta(days=WORKORDER_DAYS)
     dismissed = read_dismissed(data)
-    for folder, wanted in (
-        ("blocked", {"blocked", "rejected"}),
-        ("done", {"done", "failed"}),
-    ):
+    for folder, wanted in REPORT_FOLDERS:
         for report in (
             (root / folder).glob("*.report.json") if (root / folder).is_dir() else []
         ):
@@ -405,27 +431,29 @@ def read_reports(
                 or at < cutoff
             ):
                 continue
-            claude = doc.get("claude") if isinstance(doc.get("claude"), dict) else {}
-            rid = str(doc.get("id") or report.name.split(".")[0])
-            gone = dismissed.get(rid) or {}
-            reports.append(
-                {
-                    "id": rid,
-                    "status": doc.get("status"),
-                    "repo": doc.get("repo") or None,
-                    "scope": doc.get("scope") or None,
-                    "branch": doc.get("branch") or None,
-                    "costUsd": doc.get("costUsd"),
-                    "finishedAt": _iso(at),
-                    "reason": _clip(doc.get("reason"), 1000) or None,
-                    "needsHuman": _clip(claude.get("needsHuman"), 1000) or None,
-                    "summary": _clip(claude.get("summary"), 2000) or None,
-                    "dismissedAt": gone.get("dismissedAt") or None,
-                    "dismissNote": gone.get("note") or None,
-                }
-            )
+            reports.append(_report_entry(doc, report, at, dismissed))
     reports.sort(key=lambda r: r["finishedAt"], reverse=True)
     return reports, newest
+
+
+def read_report(data: Path, order_id: str) -> dict[str, Any] | None:
+    """One report by order id, at any age (hq 0027 D6 A1): a "plan ready" rec
+    points at an order that can be older than the 7-day list. ``None`` when
+    the id is malformed or neither folder holds it."""
+    if not ORDER_ID.fullmatch(order_id):
+        return None
+    root = data / "workorders"
+    for folder, wanted in REPORT_FOLDERS:
+        path = root / folder / f"{order_id}.report.json"
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(doc, dict) or doc.get("status") not in wanted:
+            continue
+        at = _parse_time(doc.get("finishedAt")) or _mtime(path)
+        return _report_entry(doc, path, at, read_dismissed(data))
+    return None
 
 
 def read_dismissed(data: Path) -> dict[str, dict[str, Any]]:
@@ -844,6 +872,21 @@ def get_reports(request: Request):
         )
     reports, _ = read_reports(data, datetime.now(timezone.utc))
     return {"reports": reports}
+
+
+@waiting_router.get("/workorders/reports/{order_id}")
+def get_report(order_id: str, request: Request):
+    """One report by id with no age limit, read-only (hq 0027 D6 A1)."""
+    _local_only(request)
+    data = _data_dir()
+    if data is None:
+        raise HTTPException(
+            status_code=404, detail="Workspace data folder not configured"
+        )
+    report = read_report(data, order_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="No report for that order")
+    return report
 
 
 class DismissBody(BaseModel):

@@ -449,6 +449,15 @@ _FINDING_KEYS = (
     "first_seen",
 )
 _REC_KEYS = ("id", "store", "category", "priority", "title", "created_at")
+# v1.28 (hq 0027 D6): an accepted rec routed here is someone else's work.
+IN_FLIGHT_ROUTES = ("fixes", "findings", "workorder")
+
+
+def needs_operator(rec: dict[str, Any]) -> bool:
+    """An accepted rec is the operator's when Hermes routed it ``operator``,
+    or has not routed it yet; any other route is in flight."""
+    route = rec.get("route")
+    return not (isinstance(route, dict) and route.get("route") in IN_FLIGHT_ROUTES)
 
 
 def _compact(feed: str, doc: Any, wanted: str, item_id: str) -> Any:
@@ -495,10 +504,30 @@ def _compact(feed: str, doc: Any, wanted: str, item_id: str) -> Any:
             if isinstance(r, dict) and _matches(r, wanted, ("store",))
         ]
         recs.sort(key=lambda r: (r.get("priority") or 3, str(r.get("created_at"))))
+        accepted = [
+            r
+            for r in doc.get("recent_decided") or []
+            if isinstance(r, dict)
+            and r.get("status") == "accepted"
+            and _matches(r, wanted, ("store",))
+        ]
+        mine = [r for r in accepted if needs_operator(r)]
         return {
             **meta,
             "counts": doc.get("counts"),
             "acceptance_rate": doc.get("acceptance_rate"),
+            # The ledger panel's split (v1.28): name both counts.
+            "accepted_split": {
+                "needs_you": len(mine),
+                "in_flight": len(accepted) - len(mine),
+                "needs_you_items": [
+                    {
+                        **_pick(r, ("id", "store", "title")),
+                        "reason": (r.get("route") or {}).get("reason"),
+                    }
+                    for r in mine[:LIST_MAX]
+                ],
+            },
             "open_total": len(recs),
             "open": [
                 {
