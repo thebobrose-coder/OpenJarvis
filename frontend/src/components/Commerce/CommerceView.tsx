@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import type { ComplianceFinding, DailyStore, Decision, LedgerItem, RefreshTarget } from '../../lib/commerce-api';
+import type { AdsHold, ComplianceFinding, DailyStore, Decision, LedgerItem, RefreshTarget } from '../../lib/commerce-api';
 import type { PrecheckProps } from './PrecheckWidget';
 import type { FeedStates, PendingDecision, RefreshStatus } from '../../hooks/useCommerceData';
 import { AdsPanel } from './AdsPanel';
@@ -9,6 +9,7 @@ import { CommerceHeader } from './CommerceHeader';
 import { CompliancePanel } from './CompliancePanel';
 import { storesFor } from './format';
 import { KpiStrip } from './KpiStrip';
+import { MerchantPanel } from './MerchantPanel';
 import { ProductsTable } from './ProductsTable';
 import { RecommendationsQueue } from './RecommendationsQueue';
 import { SeoHealthPanel } from './SeoHealthPanel';
@@ -64,6 +65,8 @@ export interface CommerceViewProps {
   precheck?: PrecheckProps;
   /** Rec ids that get Fix it, from the waiting feed (0024 J1). */
   fixRecs?: ReadonlySet<string>;
+  /** content_health.ads_hold (v1.21; its Merchant part v1.26), read only. */
+  adsHold?: AdsHold | null;
 }
 
 /**
@@ -88,6 +91,7 @@ export function CommerceView({
   onAskDesk,
   precheck,
   fixRecs,
+  adsHold = null,
 }: CommerceViewProps) {
   const [tab, setTab] = useState<CommerceTab>(fixes ? initialTab : 'overview');
   // A fix another panel linked to: the Fixes tab opens on its view.
@@ -257,6 +261,19 @@ export function CommerceView({
               selectedStore={selectedStore}
               loading={feeds.ecom_seo_health.loading}
               error={feeds.ecom_seo_health.error}
+            />
+          </div>
+
+          <div className="grid grid-cols-12 gap-4 mb-4">
+            <MerchantPanel
+              merchant={feeds.merchant_status.data}
+              selectedStore={selectedStore}
+              stores={storeRefs}
+              adsHold={adsHold}
+              patches={fixes?.data?.patches ?? []}
+              onOpenFix={fixes ? openFix : undefined}
+              loading={feeds.merchant_status.loading}
+              error={feeds.merchant_status.error}
             />
           </div>
 

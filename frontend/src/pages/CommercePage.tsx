@@ -4,7 +4,8 @@ import { CommerceView } from '../components/Commerce/CommerceView';
 import { ALL_STORES } from '../components/Commerce/format';
 import { useCatalogFixes } from '../hooks/useCatalogFixes';
 import { useCommerceData } from '../hooks/useCommerceData';
-import type { ComplianceFinding, DailyStore, LedgerItem } from '../lib/commerce-api';
+import type { AdsHold, ComplianceFinding, DailyStore, LedgerItem } from '../lib/commerce-api';
+import { fetchContentFeed } from '../lib/content-api';
 import { contextBlock, fetchPrecheckProperties, runPrecheck, type PrecheckResult } from '../lib/desks-api';
 import { useAppStore } from '../lib/store';
 import { useWaiting } from '../lib/WaitingContext';
@@ -87,6 +88,11 @@ export function CommercePage() {
   useEffect(() => {
     fetchPrecheckProperties().then(setProperties, () => setProperties([]));
   }, []);
+  // The ads-hold verdict per flight lives on content_health (v1.21); read once.
+  const [adsHold, setAdsHold] = useState<AdsHold | null>(null);
+  useEffect(() => {
+    fetchContentFeed('content_health').then((h) => setAdsHold(h?.ads_hold ?? null), () => setAdsHold(null));
+  }, []);
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-10">
@@ -103,6 +109,7 @@ export function CommercePage() {
         fixes={fixes}
         focus={focus}
         fixRecs={fixRecs}
+        adsHold={adsHold}
         onAskDesk={{
           rec: (item) => ask('commerce', recContext(item)),
           kpis: (stores) => ask('commerce', kpiContext(stores)),

@@ -79,6 +79,7 @@ def test_panel_feed_limits_per_desk_and_no_forbidden_feed_anywhere():
         "ecom_recommendations",
         "ecom_seo_health",
         "compliance_findings",
+        "merchant_status",
     ]
     assert feeds("compliance") == ["compliance_findings"]
     assert feeds("ops") is None
@@ -93,6 +94,25 @@ def test_panel_feed_refuses_a_feed_outside_the_desk(data):
     panel_feed = desk_tools.tools_for(desks.DESKS["compliance"])["panel_feed"]
     for feed in ("ecom_daily", "catalog_fixes", "trading_status"):
         assert "feed must be one of" in asyncio.run(panel_feed(feed))
+
+
+def test_the_commerce_desk_reads_merchant_status_by_store(data, monkeypatch):
+    # v1.26: the Merchant card's numbers ground a local turn like any panel.
+    async def fake_feed(feed):
+        assert feed == "merchant_status"
+        return {
+            "run_at": "2026-11-04T08:03:00Z",
+            "stores": [
+                {"store": "store-a", "approved": 10, "role_confirmed": "READ_ONLY"},
+                {"store": "store-b", "approved": 3, "role_confirmed": "READ_ONLY"},
+            ],
+        }
+
+    monkeypatch.setattr(desk_tools, "_feed", fake_feed)
+    panel_feed = desk_tools.tools_for(desks.DESKS["commerce"])["panel_feed"]
+    doc = json.loads(asyncio.run(panel_feed("merchant_status", filter="store-b")))
+    assert [s["store"] for s in doc["stores"]] == ["store-b"]
+    assert doc["stores"][0]["approved"] == 3
 
 
 def test_the_local_tools_per_desk():

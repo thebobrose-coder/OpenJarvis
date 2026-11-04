@@ -512,7 +512,9 @@ def _compact(feed: str, doc: Any, wanted: str, item_id: str) -> Any:
     # Per-store feeds: the stores asked for; the long page lists only counted.
     stores = []
     for s in doc.get("stores") or []:
-        if not isinstance(s, dict) or not _matches(s, wanted, ("slug", "display_name")):
+        if not isinstance(s, dict) or not _matches(
+            s, wanted, ("slug", "store", "display_name")
+        ):
             continue
         slim = {}
         for k, v in s.items():

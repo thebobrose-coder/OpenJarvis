@@ -156,7 +156,14 @@ def test_refresh_passes_allowed_flags_through(feed):
 
 
 @pytest.mark.parametrize(
-    "feed", ["ecom_products", "ecom_recommendations", "compliance_findings", "x"]
+    "feed",
+    [
+        "ecom_products",
+        "ecom_recommendations",
+        "compliance_findings",
+        "merchant_status",
+        "x",
+    ],
 )
 def test_refresh_rejects_other_feeds(feed):
     client, patcher, seen = _client(lambda r: httpx.Response(202, json={}))

@@ -58,6 +58,7 @@ COMMERCE_FEEDS = (
     "ecom_recommendations",
     "ecom_seo_health",
     "compliance_findings",
+    "merchant_status",
 )
 COMPLIANCE_FEEDS = ("compliance_findings",)
 
@@ -157,6 +158,9 @@ DESKS: dict[str, Desk] = {
                 "list_properties",
                 "get_property",
                 "property_for_store",
+                "merchant_status",
+                "merchant_offer",
+                "merchant_video_coverage",
                 "session_search",
                 "web_search",
                 "web_extract",

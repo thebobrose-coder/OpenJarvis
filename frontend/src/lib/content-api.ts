@@ -11,6 +11,7 @@
  */
 import type { SpeechBlock } from './voice-api';
 import { apiFetch } from './api';
+import type { AdsHold } from './commerce-api';
 
 export interface FeedMeta {
   generated_at: string;
@@ -364,6 +365,8 @@ export interface HealthAlert {
 export interface ContentHealth extends FeedMeta {
   run_at: string;
   alerts: HealthAlert[];
+  /** v1.21 (hq 0022 D6): the ads-hold verdict per flight; the Commerce view shows it. */
+  ads_hold?: AdsHold | null;
 }
 
 /** A winners/laggards entry: a long-form post, briefly. */

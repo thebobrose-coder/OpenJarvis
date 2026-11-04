@@ -41,6 +41,9 @@ FEEDS = frozenset(
         "ecom_recommendations",
         "compliance_findings",
         "catalog_fixes",  # v1.3; its decision routes are in fixes_routes.py
+        # v1.26 (hq 0025 D6): Merchant Center, read-only. GET only: its refresh
+        # flag is never forwarded from here, and it has no other route.
+        "merchant_status",
     }
 )
 # Refresh flags the bridge accepts for the ecom feeds (v0.6.1): the three

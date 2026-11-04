@@ -214,6 +214,7 @@ function feeds(over: Partial<FeedStates> = {}): FeedStates {
     ecom_briefing: state(BRIEFING),
     ecom_recommendations: state(LEDGER),
     compliance_findings: state(COMPLIANCE),
+    merchant_status: state(null),
     ...over,
   };
 }

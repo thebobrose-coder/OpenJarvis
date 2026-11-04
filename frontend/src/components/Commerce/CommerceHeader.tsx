@@ -16,6 +16,7 @@ const FEED_LABELS: { feed: FeedName; label: string; staleAfter: number }[] = [
   { feed: 'ecom_recommendations', label: 'Ledger', staleAfter: 26 * 3600 },
   { feed: 'ecom_seo_health', label: 'SEO audit', staleAfter: 8 * DAY },
   { feed: 'compliance_findings', label: 'Compliance', staleAfter: 26 * 3600 },
+  { feed: 'merchant_status', label: 'Merchant', staleAfter: 26 * 3600 },
 ];
 
 const REFRESH_BUTTONS: { target: RefreshTarget; label: string; title: string }[] = [

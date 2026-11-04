@@ -291,6 +291,82 @@ export interface AdvisoryFinding extends ComplianceFinding {
   patch_id?: string;
 }
 
+// -- merchant_status (v1.26.1, hq 0025 D6): read-only, never a write ----------
+
+export interface MerchantVideoCoverage {
+  /** The clip-side keys are null until Foundry v2.12 carries `merchantVideo`. */
+  clips_in_feed: number | null;
+  offers_with_video: number | null;
+  products_with_video?: number | null;
+  clips_under_review: number | null;
+  products_clip_no_video: number | null;
+}
+
+export interface MerchantIssue {
+  code: string;
+  count: number;
+  /** DISAPPROVED, DEMOTED or NOT_IMPACTED; the feed orders by it. */
+  severity?: string;
+}
+
+/** One store's Merchant Center read. On a role other than READ_ONLY the
+ * counts are null and `role_confirmed` is what Hermes saw. */
+export interface MerchantStore {
+  store: string;
+  display_name?: string;
+  property_id?: string;
+  offers_total: number | null;
+  approved: number | null;
+  pending: number | null;
+  disapproved: number | null;
+  /** Approved somewhere, disapproved in some context: information, not red. */
+  limited?: number | null;
+  disapproved_by_context?: Record<string, number> | null;
+  with_video: number | null;
+  with_video_offers?: { offer_id: string; videos: number }[] | null;
+  video_coverage?: MerchantVideoCoverage | null;
+  top_issues?: MerchantIssue[] | null;
+  last_checked: string | null;
+  role_confirmed: string | null;
+  error?: string | null;
+}
+
+export interface MerchantStatus extends FeedMeta {
+  run_at: string;
+  stores: MerchantStore[];
+}
+
+// -- content_health.ads_hold (v1.21, v1.23, v1.26 merchant part) --------------
+
+export interface MerchantHoldItem {
+  handle: string;
+  codes: string[];
+  contexts: string[];
+  offers: number;
+  offers_total: number;
+  /** `block` holds the flight (no offer approved for Shopping); `fix` never holds. */
+  severity: Severity | string;
+}
+
+export interface AdsHoldFlight {
+  verdict: 'clear' | 'blocked' | string;
+  open: number;
+  items?: { finding_id?: string; location?: string; handle?: string; link?: string; rule?: string; severity?: string }[];
+  /** Whether the Merchant part is a live read or "the operator's check". */
+  scope: string;
+  targets?: { kind: string; target: string; product_id?: string; checked_at?: string | null }[];
+  unresolved?: string[];
+  pending_targets?: string[];
+  /** v1.26: only on a flight whose store has the Merchant module. */
+  merchant?: { last_checked: string | null; role_confirmed: string | null; items: MerchantHoldItem[] };
+}
+
+export interface AdsHold {
+  run_at: string;
+  findings_run_at?: string | null;
+  flights: Record<string, AdsHoldFlight>;
+}
+
 // -- calls --------------------------------------------------------------------
 
 export interface CommerceFeeds {
@@ -300,6 +376,7 @@ export interface CommerceFeeds {
   ecom_briefing: EcomBriefing;
   ecom_recommendations: EcomRecommendations;
   compliance_findings: ComplianceFindings;
+  merchant_status: MerchantStatus;
 }
 
 export type FeedName = keyof CommerceFeeds;
@@ -311,6 +388,7 @@ export const FEED_NAMES: FeedName[] = [
   'ecom_briefing',
   'ecom_recommendations',
   'compliance_findings',
+  'merchant_status',
 ];
 
 export type RefreshTarget =
