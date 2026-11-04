@@ -434,6 +434,32 @@ the card renders the patch's `images [{media_id, url, before, after}]` instead.
 
 Copy patches and unknown fields render as before.
 
+**Commerce: a read-only Merchant Center card** (contract v1.26.1, hq 0025
+D6). The Overview gains a full-width "Merchant Center" panel from Hermes's
+`merchant_status` feed, one card per store. It follows the store switcher.
+- **Counts:** offers, approved, pending and disapproved. Approved carries "N
+  limited" (approved somewhere, disapproved in some context) as plain
+  information, with the contexts in words.
+- **Video coverage:** offers with a video link and products with video. The
+  clip-side keys read "waiting on Foundry" while the feed has them `null`,
+  never 0.
+- **Also on the card:** the top issues with their severity, when the store was
+  last checked, and a failed read as an amber line.
+- **Role:** a green `READ_ONLY` chip. Any other `role_confirmed` gives a red
+  chip, a red border, greyed data and "Fix the principal in Merchant Center".
+- **No principal yet:** a store with no `merchant_status` row says so; its card
+  appears when Hermes adds the row.
+- **Ads hold by flight:** the panel also shows `content_health.ads_hold`, with
+  each flight's verdict, its `scope`, and the Merchant part when Hermes supplies
+  it. The Merchant part shows a block/fix chip, the product, codes, contexts,
+  "N of M offers" and the Merchant blockers. A held product links to its
+  catalog-fix card when one exists, preferring one waiting on the operator.
+- **Read only:** `merchant_status` is a GET feed on `/api/commerce`. Its refresh
+  is refused, there is no other route, and the panel has no control that
+  writes. The header lists its freshness (26 h).
+- **Desk:** the Commerce desk's `panel_feed` reads `merchant_status`, filterable
+  by store. Its shown Hermes allowlist adds the three `merchant_*` read tools.
+
 **Desks: the Content desk and the BD desk** (hq 0020 P2). A desk is one role
 you can talk to: a Chat thread with a desk id, a soul the operator owns, read-only
 tools, a default route and the pages it is bound to. It reads, explains, drafts
