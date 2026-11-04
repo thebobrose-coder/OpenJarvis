@@ -479,6 +479,22 @@ now reaches the app, read-only.
   refused. The "what's waiting on me?" answer names a notice as "company site
   notices"; there is no proactive speech and no chime for one.
 
+**Commerce: the ledger splits accepted recs into Needs you and In flight**
+(contract v1.28, hq 0027 D6). Hermes's rec-router puts a `route` on every
+accepted rec, and the Decision ledger panel reads it.
+- **Needs you:** recs routed `operator`, or not routed yet. "plan ready" rows
+  come first and open their work-order report. Every row keeps Done.
+- **In flight:** `fixes`, `findings` and `workorder` recs show Hermes's reason
+  and a link: the patch on Fixes (or the fixer's class), the Compliance panel,
+  or the order in the Reports drawer. They have no Done, because Hermes closes
+  them on evidence. A "waits on … run" reason gets a "waiting on a re-check" chip.
+- **History:** a rec Hermes closed shows its `auto:` note, duplicates included.
+- **Count:** the panel tag reads "N need you · M in flight". The Accepted tile,
+  the bell and the Waiting list are unchanged.
+- **Reports by id:** `GET /api/workorders/reports/{id}` reads one report at any
+  age, so a plan stays one click away after the 7-day list drops it. The
+  Commerce desk's ledger read names both counts.
+
 **Desks: the Content desk and the BD desk** (hq 0020 P2). A desk is one role
 you can talk to: a Chat thread with a desk id, a soul the operator owns, read-only
 tools, a default route and the pages it is bound to. It reads, explains, drafts
