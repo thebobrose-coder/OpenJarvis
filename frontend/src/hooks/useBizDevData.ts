@@ -53,21 +53,27 @@ export interface PendingMove {
   at: number;
   /** For a follow-up marked sent: the touch number it records. */
   touch?: number;
-  /** A send Forward Email didn't confirm: the follow-up stays on screen
-   * (read-only) and the move is never given up while it is checked. */
-  checking?: boolean;
 }
 
 const isSuppression = (s: string) => (SUPPRESSION_STAGES as readonly string[]).includes(s);
 
+/** Is a send of this touch on this card held unconfirmed (any address)? */
+export function isChecking(sendChecks: Record<string, LocalSendState>, id: number, touch: number): boolean {
+  const prefix = `${id}:${touch}:`;
+  return Object.entries(sendChecks).some(([k, v]) => v === 'unconfirmed' && k.startsWith(prefix));
+}
+
 /**
  * One line's board as the operator should see it: the pipeline with local,
  * not-yet-applied moves on top. A prospect moved to a suppression stage
- * leaves the board and counts toward `suppressed_count`.
+ * leaves the board and counts toward `suppressed_count`. A follow-up whose
+ * send is held unconfirmed (the send log, via `sendChecks`) stays in the
+ * strip, read-only.
  */
 export function applyMoves(
   line: PipelineLine | undefined,
   pending: Record<number, PendingMove>,
+  sendChecks: Record<string, LocalSendState> = {},
 ): { stages: Record<BoardStage, PipelineProspect[]>; suppressed: number; followUps: PipelineLine['follow_ups_due'] } {
   const stages = Object.fromEntries(BOARD_STAGES.map((s) => [s, [] as PipelineProspect[]])) as Record<
     BoardStage,
@@ -90,15 +96,15 @@ export function applyMoves(
   }
   const followUps = (line.follow_ups_due ?? []).filter((f) => {
     const move = pending[f.prospect_id];
-    return move?.touch !== f.touch || move.checking;
+    return move?.touch !== f.touch || isChecking(sendChecks, f.prospect_id, f.touch);
   });
   return { stages, suppressed, followUps };
 }
 
 /**
  * A send's local state on the pending moves: an unconfirmed send keeps its
- * move (fresh, never given up, `checking`), one that never reached Forward
- * Email undoes it, a confirmed one is an ordinary pending send again.
+ * move fresh (never given up while it is checked), one that never reached
+ * Forward Email undoes it, a confirmed one is an ordinary pending send.
  */
 export function applySendChecks(
   pending: Record<number, PendingMove>,
@@ -115,11 +121,9 @@ export function applySendChecks(
     const touch = move.touch ?? 1;
     const mine = sends.filter((s) => s.prospect_id === id && s.touch === touch);
     if (mine.some((s) => s.fe_status === 'unconfirmed')) {
-      next[id] = { ...move, at: now, checking: true };
-    } else if (mine.some((s) => s.fe_status === 'not_sent')) {
-      continue;
-    } else {
-      next[id] = move.checking ? { ...move, at: now, checking: false } : move;
+      next[id] = { ...move, at: now };
+    } else if (!mine.some((s) => s.fe_status === 'not_sent')) {
+      next[id] = move;
     }
   }
   return next;
@@ -315,7 +319,6 @@ export function useBizDevData() {
         const unconfirmed = result.fe_status === 'unconfirmed';
         // 202: Forward Email didn't answer. The move stays, the draft stays
         // on screen read-only, and the server checks it by Message-ID.
-        if (unconfirmed) setPending((p) => (p[id] ? { ...p, [id]: { ...p[id], checking: true } } : p));
         setSendChecks((c) => {
           const next = { ...c };
           if (unconfirmed) next[key] = 'unconfirmed';

@@ -426,13 +426,21 @@ export function sendCheckKey(id: number, touch: number, to: string): string {
   return `${id}:${touch}:${to.trim().toLowerCase()}`;
 }
 
-/** The send log's `to_key` for an address: sha256, first 16 hex digits. */
-export async function toKey(address: string): Promise<string> {
-  const bytes = new TextEncoder().encode(address.trim().toLowerCase());
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 16);
+const toKeys = new Map<string, Promise<string>>();
+
+/** The send log's `to_key` for an address: sha256, first 16 hex digits.
+ * Kept per address, so the 2-minute poll hashes each contact once. */
+export function toKey(address: string): Promise<string> {
+  const norm = address.trim().toLowerCase();
+  let key = toKeys.get(norm);
+  if (!key) {
+    key = crypto.subtle
+      .digest('SHA-256', new TextEncoder().encode(norm))
+      .then((d) => Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16));
+    toKeys.set(norm, key);
+    key.catch(() => toKeys.delete(norm)); // a failed hash is tried again
+  }
+  return key;
 }
 
 /** Local send states by `sendCheckKey`, each matched to a contact of its card. */

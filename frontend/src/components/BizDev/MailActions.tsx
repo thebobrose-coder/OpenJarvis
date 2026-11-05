@@ -106,10 +106,10 @@ export function MailActions({
   const [results, setResults] = useState<Record<string, SendResult>>({});
   const [checking, setChecking] = useState(false);
   const local = send?.local ?? null;
-  const held = results[to.toLowerCase()] ?? null;
-  // A send Forward Email never received no longer counts as sent here; one
-  // confirmed since (no local state left) reads as an ordinary send.
-  const result = held && held.fe_status === 'unconfirmed' && local === 'not_sent' ? null : held;
+  // The send log (`local`) decides: a send Forward Email never received is
+  // void here. This click's result covers only the gap until Hermes shows the
+  // touch (the log keeps no confirmed sends), so Send can't go twice.
+  const result = local === 'not_sent' ? null : (results[to.toLowerCase()] ?? null);
   const unconfirmed = local === 'unconfirmed';
   const mailto = buildMailto(to, subject, body);
   const sendOn = !!send?.config.enabled;

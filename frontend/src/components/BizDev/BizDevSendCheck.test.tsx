@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { applyMoves, applySendChecks, type PendingMove } from '../../hooks/useBizDevData';
 import {
   resolveLocalSends,
@@ -119,14 +119,23 @@ describe('local send states on the board', () => {
     expect(await resolveLocalSends(pipeline, [{ ...local('unconfirmed'), prospect_id: 8 }])).toEqual({});
   });
 
-  it('unconfirmed keeps the move fresh; not_sent undoes it; confirmed clears checking', () => {
+  it('unconfirmed keeps the move fresh; not_sent undoes it; confirmed leaves it', () => {
     const old: Record<number, PendingMove> = { 7: { stage: 'sent', at: 0, touch: 2 }, 9: { stage: 'lost', at: 0 } };
     const held = applySendChecks(old, [local('unconfirmed', 2)], 1000);
-    expect(held[7]).toEqual({ stage: 'sent', at: 1000, touch: 2, checking: true });
+    expect(held[7]).toEqual({ stage: 'sent', at: 1000, touch: 2 });
     expect(held[9]).toEqual(old[9]);
     expect(applySendChecks(old, [local('not_sent', 2)], 1000)[7]).toBeUndefined();
     expect(applySendChecks(old, [local('unconfirmed', 1)], 1000)[7]).toEqual(old[7]); // another touch
-    expect(applySendChecks(held, [], 2000)[7]).toEqual({ stage: 'sent', at: 2000, touch: 2, checking: false });
+    expect(applySendChecks(held, [], 2000)[7]).toEqual(held[7]);
+  });
+
+  it('toKey hashes each address once', async () => {
+    const digest = vi.spyOn(crypto.subtle, 'digest');
+    const before = digest.mock.calls.length;
+    await toKey('c.person@example.edu');
+    await toKey(' C.Person@example.edu');
+    expect(digest.mock.calls.length - before).toBe(1);
+    digest.mockRestore();
   });
 
   it('a follow-up being checked stays in the strip; a sent one leaves it', () => {
@@ -135,7 +144,11 @@ describe('local send states on the board', () => {
       stages: { sent: [card({ stage: 'sent' })] },
       follow_ups_due: [{ prospect_id: 7, touch: 2, due: '2026-11-03', draft: { subject: 'Re', body: 'Hi' } }],
     } as unknown as PipelineLine;
-    expect(applyMoves(line, { 7: { stage: 'sent', at: 0, touch: 2 } }).followUps).toEqual([]);
-    expect(applyMoves(line, { 7: { stage: 'sent', at: 0, touch: 2, checking: true } }).followUps).toHaveLength(1);
+    const move = { 7: { stage: 'sent' as const, at: 0, touch: 2 } };
+    expect(applyMoves(line, move).followUps).toEqual([]);
+    // Read-only while the send log holds the touch unconfirmed, for any address.
+    expect(applyMoves(line, move, { [sendCheckKey(7, 2, TO)]: 'unconfirmed' }).followUps).toHaveLength(1);
+    expect(applyMoves(line, move, { [sendCheckKey(7, 2, TO)]: 'not_sent' }).followUps).toEqual([]);
+    expect(applyMoves(line, move, { [sendCheckKey(7, 3, TO)]: 'unconfirmed' }).followUps).toEqual([]);
   });
 });

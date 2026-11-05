@@ -83,7 +83,7 @@ export function BizDevView(props: BizDevViewProps) {
   const lineId = props.selectedLine ?? lines[0]?.line ?? null;
   const line = pipeline?.lines.find((l) => l.line === lineId);
   const stats = feeds.bd_stats.data?.lines.find((l) => l.line === lineId) ?? (lines.length ? undefined : feeds.bd_stats.data?.lines[0]);
-  const { stages, suppressed, followUps } = applyMoves(line, pending);
+  const { stages, suppressed, followUps } = applyMoves(line, pending, props.sendChecks);
 
   const byId = new Map<number, PipelineProspect>();
   for (const s of BOARD_STAGES) for (const p of stages[s]) byId.set(p.id, p);
