@@ -118,6 +118,14 @@ _BOLD_END = re.compile(r"\*\*")
 _ALT = re.compile(r"[*_]{0,2}\bAlternatives?:[*_]{0,2}\s*", re.I)
 _DEFAULT = re.compile(r"[*_]{0,2}\bDefault:[*_]{0,2}\s*", re.I)
 _DECIDED = re.compile(r"\*\*DECIDED\b", re.I)
+# The third form, "**Dn.** Text. Default if unticked[: ...]." (the bold holds
+# only the number): the first sentence is the decision.
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z`*_(\"'])")
+_UNTICKED = re.compile(
+    r"\bDefault if unticked\b(?::\s*(?P<what>[^\n]*?))?\s*(?:\.\s|\.$|$)"
+    r"|\bunticked means (?P<means>[^\n]*?)\s*(?:\.\s|\.$|$)",
+    re.I,
+)
 
 
 def _title(text: str, fallback: str) -> str:
@@ -155,6 +163,32 @@ def _box(line: str) -> dict[str, Any] | None:
     # the default) and "**Dn. Topic.** *Default:* ... *Alternative:* ...".
     dflt = _DEFAULT.search(head)
     default = head[dflt.end() :].strip().rstrip(".;,_").strip() if dflt else ""
+    if not decision:
+        # Third form: the decision is the first sentence after the bold, and
+        # the default is what "Default if unticked" says ("Default if
+        # unticked." alone means this box is the default). No such words:
+        # no default, rather than a guess.
+        text = head.strip()
+        end = _SENTENCE_END.search(text)
+        decision = (text[: end.start()] if end else text).strip().rstrip(".").strip()
+        unticked = _UNTICKED.search(text)
+        if unticked and unticked.group("means"):
+            default = "Leave it: " + unticked.group("means").strip().rstrip(".;,")
+        elif unticked and unticked.group("what"):
+            default = unticked.group("what").strip().rstrip(".;,")
+        elif unticked:
+            default = decision
+        else:
+            default = ""
+        return {
+            "number": int(m.group(4)),
+            "ticked": m.group(2) != " ",
+            "decision": decision,
+            "default": default,
+            "alternative": alternative or None,
+            "text": rest.strip(),
+            "decided_note": after[decided.start() :].strip() if decided else None,
+        }
     return {
         "number": int(m.group(4)),
         "ticked": m.group(2) != " ",

@@ -891,3 +891,42 @@ def test_a_serve_failed_notice_is_in_the_answer_through_kind_words(wired, watch)
     answer = wr.format_answer(w)
     assert "Company site notices: Company site not serving" in answer
     assert wr.KIND_WORDS["notice"] == "company site notices"
+
+
+@pytest.mark.parametrize(
+    "line, decision, default",
+    [
+        (
+            "- [ ] **D1.** Split the sample in two. Status gets three lines. "
+            "Default if unticked.",
+            "Split the sample in two",
+            "Split the sample in two",
+        ),
+        (
+            "- [ ] **D2.** Keep one sample file; fix the headings. Smallest change.",
+            "Keep one sample file; fix the headings",
+            "",
+        ),
+        (
+            "  - [ ] **D3.** The tool exports `sample.lanes` (from `LANES`). "
+            "One line plus a test. Default if unticked: yes, on the next run; "
+            "one additive line.",
+            "The tool exports `sample.lanes` (from `LANES`)",
+            "yes, on the next run; one additive line",
+        ),
+        (
+            "  - [ ] **D4.** A rule exists but no row. Tick to add the row; "
+            "unticked means the rule stays unused.",
+            "A rule exists but no row",
+            "Leave it: the rule stays unused",
+        ),
+    ],
+)
+def test_a_box_whose_bold_holds_only_the_number(line, decision, default):
+    box = wr._box(line + "\r\n")
+    assert (box["decision"], box["default"], box["alternative"]) == (
+        decision,
+        default,
+        None,
+    )
+    assert box["text"].startswith("** ")

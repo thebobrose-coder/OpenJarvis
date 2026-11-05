@@ -959,6 +959,14 @@ themselves stay; upstream code still uses them.
 
 ### Fixed
 
+**Decisions drawer: boxes written `**Dn.** Text` no longer show blank.** A
+brief whose bold holds only the number (`- [ ] **D1.** Split the contract…`)
+gave an empty decision and default, so the drawer and the Waiting list showed
+"D1." and nothing else. The decision is now the first sentence after the bold,
+and the default is what the box says after "Default if unticked" (or "unticked
+means …"). A box that names no default shows no Default line rather than a
+guess.
+
 **A Forward Email timeout can no longer send a Business Development touch
 twice.** The client retried a timed-out `POST /v1/emails`, and a failed send
 recorded nothing, so a mail Forward Email had queued anyway could go out again

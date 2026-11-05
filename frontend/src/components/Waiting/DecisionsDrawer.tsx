@@ -64,9 +64,11 @@ function OpenBox({
       <span className="font-medium text-[13px]" style={{ color: 'var(--color-text)' }}>
         D{box.number}. {box.decision}
       </span>
-      <span>
-        <b>Default:</b> {box.default}
-      </span>
+      {box.default && (
+        <span>
+          <b>Default:</b> {box.default}
+        </span>
+      )}
       {box.alternative && (
         <span>
           <b>Alternative:</b> {box.alternative}

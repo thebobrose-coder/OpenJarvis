@@ -204,6 +204,14 @@ describe('DecisionsView', () => {
     expect(html).not.toContain('Confirm tick');
   });
 
+  it('leaves out the Default line when the brief names none', () => {
+    const html = renderToStaticMarkup(
+      <DecisionsView decisions={{ ...decisions, open: [{ ...box, default: '' }] }} loading={false} error={null} states={{}} notes={{}} message={null} now={NOW} onNote={noop} onArm={noop} onTick={noop} />,
+    );
+    expect(html).toContain('D1. Sample topic');
+    expect(html).not.toContain('Default:');
+  });
+
   it('asks for a confirm before writing', () => {
     expect(render({ 'sample/brief.md:4': 'armed' })).toContain('Confirm tick');
     expect(render({ 'sample/brief.md:4': 'done' })).toContain('Ticked');
