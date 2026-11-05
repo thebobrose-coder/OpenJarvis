@@ -882,6 +882,22 @@ the mic is open only while a conversation is active.
 
 ### Changed
 
+**One feed proxy, one clock, one send state** (the 2026-11-04 stack pass; no
+route shapes change, contract v1.28.1).
+- **Feeds:** the Commerce, Content, Business Development and Trading routes read
+  Hermes through one `FeedProxy` in `hermes_panel.py`. `entity_watch` is served
+  from its last copy for 10 minutes, so the Waiting poll no longer asks the
+  bridge for it every minute. The poll now reads it only for a notice whose
+  title it doesn't know.
+- **Times:** one `parse_time` (ISO 8601 and RFC 1123) serves Stack health,
+  Waiting, Studio and Send. An RFC 1123 time on the Waiting list now ages
+  instead of reading as no time.
+- **Send:** a follow-up held unconfirmed stays read-only from the send log
+  alone. Each contact's address is hashed once rather than on every poll.
+- **Ages:** one style everywhere ("45 min ago", "3 h old", "2 d ago"), so the
+  Company sites card matches its drawer. The Commerce page re-reads the
+  ads-hold verdict with its ledger poll.
+
 **Day Ahead and Weather read Hermes's feeds (wave 4).** `/api/day-ahead` and
 `/api/weather` proxy the agent's `day_ahead` and `weather` panel feeds in the
 panels' original shape plus `generated_at`, `age_seconds` and `stale` (the
