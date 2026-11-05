@@ -60,6 +60,8 @@ def _approvals(**over) -> dict:
                 "due": None,
                 "priority": 1,
                 "link": {"page": "/content", "focus": "p-1"},
+                "lane": "act",
+                "delegate": None,
             },
             {
                 "kind": "patch",
@@ -72,6 +74,8 @@ def _approvals(**over) -> dict:
                 "due": None,
                 "priority": None,
                 "link": {"page": "/commerce#fixes", "focus": "abcdef123456"},
+                "lane": "act",
+                "delegate": None,
             },
             {
                 "kind": "rec",
@@ -84,6 +88,8 @@ def _approvals(**over) -> dict:
                 "due": None,
                 "priority": 2,
                 "link": {"page": "/commerce", "focus": "r-9"},
+                "lane": "act",
+                "delegate": None,
             },
         ],
         "generated_at": _iso(NOW),
@@ -495,13 +501,22 @@ def test_lane_counts_add_the_local_rows(wired):
     assert all(i["lane"] == "act" for i in body["items"] if i["kind"] == "decision")
 
 
-def test_an_older_feed_without_lanes_is_act(wired):
+def test_hermes_counts_without_lanes_put_every_listed_item_in_act(wired):
     body = _client().get("/api/waiting").json()
     c = body["counts"]
     assert (c["act"], c["delegate"], c["fyi"]) == (3 + 2, 0, 0)
     hermes = [i for i in body["items"] if i["source_feed"] != "inbox"]
     assert all(i["lane"] == "act" and i["delegate"] is None for i in hermes)
     assert all(i["times_seen"] is None for i in hermes)
+
+
+def test_an_rfc_1123_trading_time_still_ages(wired):
+    """The one clock (server/_time.py): a time in the RFC 1123 form some
+    cloud rows carry ages like ISO; before, it parsed to no time at all."""
+    written = (NOW - timedelta(hours=3)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    wired["trading"] = _trading(written_at=written, age_seconds=60)
+    rows = [i for i in _client().get("/api/waiting").json()["items"]]
+    assert "Trading status is stale" in [i["title"] for i in rows]
 
 
 def _report(data: Path, folder: str, name: str, status: str, days: float = 1):
@@ -824,9 +839,9 @@ def test_notices_are_counted_listed_act_and_open_the_card(wired, watch):
     assert all(r["opens"] == "sites" for r in rows)
 
 
-def test_notice_kind_falls_back_to_the_title(wired, watch):
+def test_notice_kind_comes_from_the_title(wired, watch):
     wired["approvals"] = _with_notices()
-    watch["feed"] = None  # entity_watch unavailable
+    watch["feed"] = None  # entity_watch unavailable: the titles are enough
     rows = [
         i
         for i in _client().get("/api/waiting").json()["items"]
@@ -838,6 +853,25 @@ def test_notice_kind_falls_back_to_the_title(wired, watch):
 def test_no_notice_means_no_entity_watch_read(wired, watch):
     _client().get("/api/waiting")
     assert watch["calls"] == 0
+
+
+def test_known_notice_titles_need_no_entity_watch_read(wired, watch):
+    wired["approvals"] = _with_notices()
+    _client().get("/api/waiting")
+    assert watch["calls"] == 0
+
+
+def test_an_unknown_notice_title_reads_entity_watch_by_id(wired, watch):
+    a = _with_notices()
+    a["items"][-1]["title"] = "A company site notice with a new title"
+    wired["approvals"] = a
+    rows = [
+        i
+        for i in _client().get("/api/waiting").json()["items"]
+        if i["kind"] == "notice"
+    ]
+    assert watch["calls"] == 1
+    assert [r["notice_kind"] for r in rows] == ["serve_failed", "privacy_changed"]
 
 
 def test_notice_without_hermes_counts_is_in_the_fallback_total(wired, watch):

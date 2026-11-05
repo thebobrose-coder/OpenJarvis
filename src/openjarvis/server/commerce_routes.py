@@ -17,13 +17,14 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+from openjarvis.server.hermes_panel import FeedProxy
 
 commerce_router = APIRouter(prefix="/api/commerce", tags=["commerce"])
 
@@ -66,28 +67,16 @@ REFRESHABLE = frozenset(
 DECISIONS = frozenset({"accepted", "rejected", "done", "snoozed"})
 _ID = re.compile(r"^[0-9a-f]{12}$")
 _NOTE_MAX = 500
+# entity_watch is written once a day, and the Waiting list asks for it on its
+# 60 s poll: answer it from the last good copy for 10 minutes.
+ENTITY_WATCH_TTL_S = 600
 
-_cache: dict[str, dict] = {}
+_feeds = FeedProxy("commerce", FEEDS, ttl_s={"entity_watch": ENTITY_WATCH_TTL_S})
+_cache = _feeds.cache
 
 
 class DecisionBody(BaseModel):
     note: Optional[str] = Field(default=None, max_length=_NOTE_MAX)
-
-
-def _age_from(generated_at: str) -> int:
-    ts = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
-    return max(0, int((datetime.now(timezone.utc) - ts).total_seconds()))
-
-
-def _shape(payload: dict, age_seconds: int, stale: bool) -> dict:
-    return {
-        **payload["data"],
-        "generated_at": payload["generated_at"],
-        "age_seconds": age_seconds,
-        "stale": stale,
-    }
 
 
 async def _post(
@@ -108,30 +97,7 @@ async def _post(
         raise HTTPException(status_code=503, detail="Hermes bridge unavailable")
 
 
-@commerce_router.get("/{feed}")
-async def get_feed(feed: str) -> dict:
-    """Return one ecom feed's latest document, unwrapped."""
-    if feed not in FEEDS:
-        raise HTTPException(status_code=404, detail="Unknown commerce feed")
-
-    try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
-            resp = await client.get(f"{HERMES_BRIDGE_URL}/panels/{feed}")
-        if resp.status_code == 404:
-            raise HTTPException(status_code=404, detail="No data yet")
-        if resp.status_code == 200:
-            payload = resp.json()
-            payload["data"]  # validate before caching
-            age = int(payload.get("age_seconds") or _age_from(payload["generated_at"]))
-            _cache[feed] = payload
-            return _shape(payload, age, False)
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
-        pass
-
-    cached = _cache.get(feed)
-    if cached is None:
-        raise HTTPException(status_code=503, detail="Hermes feed unavailable")
-    return _shape(cached, _age_from(cached["generated_at"]), True)
+get_feed = commerce_router.get("/{feed}")(_feeds.get_feed)
 
 
 @commerce_router.post("/recommendations/{rec_id}/{decision}")

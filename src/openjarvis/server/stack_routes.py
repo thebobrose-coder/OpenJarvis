@@ -23,7 +23,6 @@ import json
 import subprocess
 import sys
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +30,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from openjarvis.core.credentials import get_tool_credential
+from openjarvis.server._time import parse_time
 
 stack_router = APIRouter(prefix="/api/stack", tags=["stack"])
 
@@ -52,22 +52,6 @@ def _local_only(request: Request) -> None:
     host = request.client.host if request.client else ""
     if host not in _LOOPBACK:
         raise HTTPException(status_code=403, detail="Only from this machine")
-
-
-def _parse_time(value: Any) -> datetime | None:
-    """ISO 8601, or the RFC 1123 form some AWS Health rows carry
-    (``Wed, 28 Oct 2026 03:51:13 GMT``): a row whose time does not parse has
-    no age, and a notice with no age never leaves its window."""
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        t = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        try:
-            t = parsedate_to_datetime(value)
-        except (TypeError, ValueError, IndexError):
-            return None
-    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
 def _age(t: datetime | None, now: datetime) -> int | None:
@@ -97,9 +81,7 @@ def _cloud_events(doc: Any, now: datetime) -> list[dict[str, Any]]:
         if not isinstance(e, dict) or str(e.get("statusCode", "")).lower() not in _OPEN:
             continue
         category = str(e.get("eventTypeCategory") or "")
-        updated = _parse_time(e.get("lastUpdatedTime")) or _parse_time(
-            e.get("startTime")
-        )
+        updated = parse_time(e.get("lastUpdatedTime")) or parse_time(e.get("startTime"))
         age = _age(updated, now)
         if category != "issue" and age is not None:
             google = e.get("eventTypeCode") == "GOOGLE_NOTICE"
@@ -145,7 +127,7 @@ def _plural(n: int, word: str) -> str:
 def speech_text(summary: dict[str, Any]) -> str:
     """What Speak reads: the counts, then each warning and failure by name."""
     counts = summary["counts"]
-    ran = _parse_time(summary.get("ran_at"))
+    ran = parse_time(summary.get("ran_at"))
     at = ran.astimezone().strftime("%H:%M") if ran else "an unknown time"
     parts = [
         f"Stack health at {at}: {counts.get('OK', 0)} OK, "
@@ -208,7 +190,7 @@ def read_summary(now: datetime | None = None) -> dict[str, Any]:
             )
         )
     ran_at = doc.get("ran_at")
-    age = _age(_parse_time(ran_at), now)
+    age = _age(parse_time(ran_at), now)
 
     cloud_events: list[dict[str, Any]] = []
     cloud_error = None

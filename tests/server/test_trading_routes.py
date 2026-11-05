@@ -78,7 +78,7 @@ def _client(handler):
         kwargs["transport"] = httpx.MockTransport(recording)
         return real_client(*args, **kwargs)
 
-    patcher = patch.object(tr.httpx, "AsyncClient", side_effect=fake_client)
+    patcher = patch.object(httpx, "AsyncClient", side_effect=fake_client)
     return TestClient(app), patcher, seen
 
 

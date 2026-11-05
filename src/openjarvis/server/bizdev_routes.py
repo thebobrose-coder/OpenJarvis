@@ -35,7 +35,6 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -43,6 +42,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from openjarvis.server import bizdev_send
+from openjarvis.server.hermes_panel import FeedProxy
 from openjarvis.server.stack_routes import _local_only
 
 bizdev_router = APIRouter(prefix="/api/bizdev", tags=["bizdev"])
@@ -71,23 +71,8 @@ _BODY_MAX = 2048
 _NOTE_MAX = 500
 _FIELD_MAX = 200
 
-_cache: dict[str, dict] = {}
-
-
-def _age_from(generated_at: str) -> int:
-    ts = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
-    return max(0, int((datetime.now(timezone.utc) - ts).total_seconds()))
-
-
-def _shape(payload: dict, age_seconds: int, stale: bool) -> dict:
-    return {
-        **payload["data"],
-        "generated_at": payload["generated_at"],
-        "age_seconds": age_seconds,
-        "stale": stale,
-    }
+_feeds = FeedProxy("bizdev", FEEDS)
+_cache = _feeds.cache
 
 
 async def _json_body(request: Request, *, required: bool) -> dict | None:
@@ -311,30 +296,7 @@ async def archive_template(template_id: str, request: Request) -> JSONResponse:
     return await _post(f"/bd/templates/{template_id}/archive")
 
 
-@bizdev_router.get("/{feed}")
-async def get_feed(feed: str) -> dict:
-    """Return one bd feed's latest document, unwrapped."""
-    if feed not in FEEDS:
-        raise HTTPException(status_code=404, detail="Unknown bizdev feed")
-
-    try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
-            resp = await client.get(f"{HERMES_BRIDGE_URL}/panels/{feed}")
-        if resp.status_code == 404:
-            raise HTTPException(status_code=404, detail="No data yet")
-        if resp.status_code == 200:
-            payload = resp.json()
-            payload["data"]  # validate before caching
-            age = int(payload.get("age_seconds") or _age_from(payload["generated_at"]))
-            _cache[feed] = payload
-            return _shape(payload, age, False)
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
-        pass
-
-    cached = _cache.get(feed)
-    if cached is None:
-        raise HTTPException(status_code=503, detail="Hermes feed unavailable")
-    return _shape(cached, _age_from(cached["generated_at"]), True)
+get_feed = bizdev_router.get("/{feed}")(_feeds.get_feed)
 
 
 @bizdev_router.post("/research/refresh")

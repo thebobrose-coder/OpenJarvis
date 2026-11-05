@@ -18,11 +18,13 @@ holds the mail as unconfirmed until its Message-ID settles it.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
+
+from openjarvis.server._time import parse_time
 
 API_URL = "https://api.forwardemail.net/v1"
 # Per call: a read gets one retry, a send none.
@@ -91,14 +93,6 @@ def _first_line(resp: httpx.Response) -> str:
 def bare_message_id(value: Any) -> str:
     """A Message-ID without its angle brackets, for comparing."""
     return str(value or "").strip().strip("<>").strip()
-
-
-def parse_time(value: Any) -> datetime | None:
-    try:
-        t = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
 class ForwardEmail:

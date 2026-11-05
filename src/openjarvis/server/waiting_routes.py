@@ -16,7 +16,7 @@ Sources, merged per request (the page polls every 60 s):
 Every row carries a lane (hq 0023, contract v1.22): ``act`` (only the operator
 can), ``delegate`` (the Dispatch action can hand it off) or ``fyi`` (counted
 and filed, never listed). Hermes assigns its own; the local kinds take theirs
-from ``LOCAL_LANES``. A Hermes item without a lane (an older feed) is ``act``.
+from ``LOCAL_LANES``. Hermes has sent a lane on every item since v1.22.
 
 The local folders come from one setting, the private workspace's data root
 (credentials.toml ``[desks] WORKSPACE_DATA_DIR``). Without it the local kinds
@@ -44,6 +44,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from openjarvis.core.credentials import get_tool_credential
+from openjarvis.server._time import parse_time
 from openjarvis.server.hermes_panel import HermesPanel
 from openjarvis.server.stack_routes import _local_only
 
@@ -60,8 +61,9 @@ DECIDED_MAX = 30
 NOTE_MAX = 500
 HERMES_KINDS = ("proposal", "thesis_prompt", "patch", "follow_up", "rec", "notice")
 # v1.27 (hq 0026 D5): a company-site notice. The approvals item says which
-# kind only in its title, so the kind is read from entity_watch's notices by
-# id, with Hermes's titles as the fallback. The row opens the Company sites
+# kind only in its title, so the kind is read from Hermes's titles first and
+# from entity_watch's notices by id only for a title not listed here (the
+# Waiting poll then reads entity_watch only when it has to). The row opens the Company sites
 # card here (Hermes's page, /ops, has no view in OpenJarvis) and has no action.
 NOTICE_KINDS = ("serve_failed", "privacy_changed", "last_modified_changed")
 NOTICE_TITLES = {
@@ -96,16 +98,6 @@ def _iso(dt: datetime) -> str:
 
 def _mtime(path: Path) -> datetime:
     return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
-
-
-def _parse_time(value: Any) -> datetime | None:
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        t = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
 def _source(at: datetime | None, now: datetime, **extra: Any) -> dict[str, Any]:
@@ -422,7 +414,7 @@ def read_reports(
                 doc = json.loads(report.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            at = _parse_time(doc.get("finishedAt")) if isinstance(doc, dict) else None
+            at = parse_time(doc.get("finishedAt")) if isinstance(doc, dict) else None
             at = at or _mtime(report)
             newest = max(newest, at) if newest else at
             if (
@@ -451,7 +443,7 @@ def read_report(data: Path, order_id: str) -> dict[str, Any] | None:
             continue
         if not isinstance(doc, dict) or doc.get("status") not in wanted:
             continue
-        at = _parse_time(doc.get("finishedAt")) or _mtime(path)
+        at = parse_time(doc.get("finishedAt")) or _mtime(path)
         return _report_entry(doc, path, at, read_dismissed(data))
     return None
 
@@ -565,7 +557,7 @@ def x402_items(status: dict[str, Any] | None, now: datetime) -> list[dict[str, A
     # The Trading view's rule: `alarm` is the CloudWatch state (OK / ALARM).
     if hb.get("last_ok") is False or hb.get("alarm") == "ALARM":
         rows.append(("heartbeat", "Trader heartbeat failing", "Not reporting to AWS"))
-    written = _parse_time(status.get("written_at"))
+    written = parse_time(status.get("written_at"))
     age = status.get("age_seconds")
     if (
         status.get("stale")
@@ -693,8 +685,8 @@ async def _entity_watch() -> dict[str, Any] | None:
 def notice_rows(
     items: list[dict[str, Any]], watch: dict[str, Any] | None
 ) -> list[dict[str, Any]]:
-    """Each ``notice`` item with its ``notice_kind`` (from the feed's notices
-    by id, else from Hermes's title; null when neither says) and ``opens``
+    """Each ``notice`` item with its ``notice_kind`` (from Hermes's title, else
+    from the feed's notices by id; null when neither says) and ``opens``
     set to the Company sites card. Other kinds pass through unchanged."""
     by_id = {
         str(n.get("id")): n.get("kind")
@@ -706,17 +698,19 @@ def notice_rows(
         if item.get("kind") != "notice":
             out.append(item)
             continue
-        kind = by_id.get(str(item.get("id"))) or NOTICE_TITLES.get(item.get("title"))
+        kind = NOTICE_TITLES.get(item.get("title")) or by_id.get(str(item.get("id")))
         out.append({**item, "notice_kind": kind, "opens": "sites", "delegate": None})
     return out
 
 
 def _hermes_lanes(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Hermes's items with the v1.22 fields always present: an item from an
-    older feed (no ``lane``) is ``act``, with no delegate."""
+    """Hermes's items with the v1.22 fields always present, ``delegate`` only on
+    the delegate lane. The v1.22 default (``act`` for a feed with no ``lane``) is gone: Hermes sends
+    a lane on every item at v1.28.1, and the only copy the proxy can serve is
+    one this process read from that bridge."""
     out = []
     for item in items:
-        lane = item.get("lane") if item.get("lane") in LANES else "act"
+        lane = item.get("lane")
         out.append(
             {
                 **item,
@@ -757,8 +751,13 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
         rows = _hermes_lanes(
             [i for i in hermes.get("items") or [] if isinstance(i, dict)]
         )
-        if any(r.get("kind") == "notice" for r in rows):
+        if any(
+            r.get("kind") == "notice" and r.get("title") not in NOTICE_TITLES
+            for r in rows
+        ):
             rows = notice_rows(rows, await _entity_watch())
+        else:
+            rows = notice_rows(rows, None)
         items += rows
         if all(isinstance(hc.get(k), int) for k in LANES):
             for k in LANES:
@@ -829,7 +828,7 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
         rows = _local_lane(g1_items(g1))
         counts["g1"] = len(rows)
         items += rows
-        at = _parse_time(g1.get("generatedAt"))
+        at = parse_time(g1.get("generatedAt"))
         sources["g1_mirror"] = _source(at or now, now)
     elif error:
         sources["g1_mirror"] = {"generated_at": None, "error": error}
@@ -976,7 +975,7 @@ _header_cache: dict[str, Any] = {"at": 0.0, "text": None}
 
 
 def _age_words(iso: Any, now: datetime) -> str:
-    at = _parse_time(iso)
+    at = parse_time(iso)
     if at is None:
         return "age unknown"
     m = max(0, int((now - at).total_seconds() // 60))
@@ -1064,7 +1063,7 @@ def is_waiting_request(text: str) -> bool:
 
 
 def _days_words(iso: Any, now: datetime) -> str:
-    at = _parse_time(iso)
+    at = parse_time(iso)
     if at is None:
         return ""
     days = max(0, (now - at).days)

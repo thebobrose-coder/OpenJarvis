@@ -41,6 +41,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+from openjarvis.server._time import parse_time
 from openjarvis.server.stack_routes import _local_only
 from openjarvis.server.waiting_routes import _data_dir
 
@@ -110,16 +111,6 @@ def _iso(dt: datetime) -> str:
     return (
         dt.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     )
-
-
-def _parse_time(value: Any) -> datetime | None:
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        t = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
 def _root() -> Path:
@@ -223,7 +214,7 @@ def _version(folder: Path) -> str:
 
 def _edited(folder: Path, m: dict[str, Any]) -> bool:
     """Did script.md or claims.json change after the studio put it at G0?"""
-    at = _parse_time(_since(m)) if m.get("stage") == "awaiting-g0" else None
+    at = parse_time(_since(m)) if m.get("stage") == "awaiting-g0" else None
     if at is None:
         return False
     for name in ("script.md", "claims.json"):
@@ -364,7 +355,7 @@ def status_doc() -> dict[str, Any]:
     if not isinstance(status, dict):
         raise HTTPException(status_code=404, detail="No studio run yet")
     now = datetime.now(timezone.utc)
-    at = _parse_time(status.get("generatedAt"))
+    at = parse_time(status.get("generatedAt"))
     age = None if at is None else max(0, int((now - at).total_seconds()))
     channels = _channels(root)
     ids = sorted(

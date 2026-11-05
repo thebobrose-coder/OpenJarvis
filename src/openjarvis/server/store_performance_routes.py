@@ -15,10 +15,11 @@ refresh degrades to a stale-flagged copy rather than an empty panel.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, HTTPException
+
+from openjarvis.server._time import age_seconds as _age_of
 
 store_performance_router = APIRouter(
     prefix="/api/store-performance", tags=["store-performance"]
@@ -32,13 +33,6 @@ _TIMEOUT_S = 10.0
 _STALE_AFTER_S = 7200
 
 _cache: dict | None = None
-
-
-def _age_from(generated_at: str) -> int:
-    ts = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
-    return max(0, int((datetime.now(timezone.utc) - ts).total_seconds()))
 
 
 def _shape(payload: dict, age_seconds: int, stale: bool) -> dict:
@@ -69,4 +63,4 @@ async def get_store_performance() -> dict:
 
     if _cache is None:
         raise HTTPException(status_code=503, detail="Hermes panel feed unavailable")
-    return _shape(_cache, _age_from(_cache["generated_at"]), True)
+    return _shape(_cache, _age_of(_cache["generated_at"]) or 0, True)

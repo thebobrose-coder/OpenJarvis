@@ -39,6 +39,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from openjarvis.server.hermes_panel import FeedProxy
 from openjarvis.server.stack_routes import _local_only
 
 content_router = APIRouter(prefix="/api/content", tags=["content"])
@@ -114,23 +115,8 @@ INTAKE_TASK = r"\Foundry\ProposalIntake"
 INTAKE_COOLDOWN_S = 120
 _intake_last_run: float | None = None
 
-_cache: dict[str, dict] = {}
-
-
-def _age_from(generated_at: str) -> int:
-    ts = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
-    return max(0, int((datetime.now(timezone.utc) - ts).total_seconds()))
-
-
-def _shape(payload: dict, age_seconds: int, stale: bool) -> dict:
-    return {
-        **payload["data"],
-        "generated_at": payload["generated_at"],
-        "age_seconds": age_seconds,
-        "stale": stale,
-    }
+_feeds = FeedProxy("content", FEEDS)
+_cache = _feeds.cache
 
 
 async def _json_body(request: Request, limit: int = _BODY_MAX) -> dict | None:
@@ -456,30 +442,7 @@ async def verify_product(request: Request, property: str = "", handle: str = "")
         raise HTTPException(status_code=503, detail="Hermes bridge unavailable")
 
 
-@content_router.get("/{feed}")
-async def get_feed(feed: str) -> dict:
-    """Return one content feed's latest document, unwrapped."""
-    if feed not in FEEDS:
-        raise HTTPException(status_code=404, detail="Unknown content feed")
-
-    try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
-            resp = await client.get(f"{HERMES_BRIDGE_URL}/panels/{feed}")
-        if resp.status_code == 404:
-            raise HTTPException(status_code=404, detail="No data yet")
-        if resp.status_code == 200:
-            payload = resp.json()
-            payload["data"]  # validate before caching
-            age = int(payload.get("age_seconds") or _age_from(payload["generated_at"]))
-            _cache[feed] = payload
-            return _shape(payload, age, False)
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
-        pass
-
-    cached = _cache.get(feed)
-    if cached is None:
-        raise HTTPException(status_code=503, detail="Hermes feed unavailable")
-    return _shape(cached, _age_from(cached["generated_at"]), True)
+get_feed = content_router.get("/{feed}")(_feeds.get_feed)
 
 
 @content_router.post("/ideation/refresh")
