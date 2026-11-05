@@ -60,7 +60,7 @@ export interface EntityWatch {
 }
 
 /** A `checked_at` older than this reads stale, in amber. */
-export const SITE_STALE_S = 36 * 3600;
+const SITE_STALE_S = 36 * 3600;
 export const HASH_CHARS = 12;
 export const PRIVACY_NOTE = "Google's OAuth verification reads this page.";
 
@@ -110,8 +110,6 @@ export function ga4Text(g: SiteRow['ga4']): string {
 }
 
 // -- the Waiting row (kind `notice`) ------------------------------------------
-
-export type NoticeKind = 'serve_failed' | 'privacy_changed' | 'last_modified_changed';
 
 /** Hermes's notice detail is `<url>: <rest>`. */
 function splitDetail(detail: string | null | undefined): { url: string | null; rest: string } {

@@ -8,6 +8,7 @@
 import type { FeedMeta } from './commerce-api';
 import type { SpeechBlock } from './voice-api';
 import { apiFetch } from './api';
+import { fetchFeed } from './http';
 
 export type HaltState = 'NORMAL' | 'DEGRADED' | 'KILL' | (string & {});
 
@@ -350,10 +351,7 @@ export function recentEvents(status: TradingStatus): (TradeEvent & { sleeve: str
 }
 
 export async function fetchTradingFeed<T extends TradingStatus | TradingDay>(feed: TradingFeedName): Promise<T | null> {
-  const res = await apiFetch(`/api/trading/${feed}`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(res.status === 503 ? 'Hermes is unreachable' : `Failed: ${res.status}`);
-  return res.json();
+  return fetchFeed<T>('trading', feed);
 }
 
 export async function fetchTradingConfig(): Promise<TradingConfig> {

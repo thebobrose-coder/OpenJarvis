@@ -159,7 +159,7 @@ describe('rows', () => {
     const html = renderToStaticMarkup(<WaitingListView groups={groupItems(laned(), 'act')} now={NOW} onOpen={noop} />);
     expect(html).toContain('seen 3 times');
     expect(html).not.toContain('seen 1 times');
-    expect(html).toContain('30m ago'); // last_seen, not created_at
+    expect(html).toContain('30 min ago'); // last_seen, not created_at
   });
 
   it('says what came back after an action', () => {
@@ -258,7 +258,7 @@ describe('Compliance by rule (v1.22)', () => {
     expect((html.match(/<details data-rule-group="store-a"/g) ?? []).length).toBe(2);
     expect(html).toContain('Rule 9: Sample claims');
     expect(html).toContain('9. Sample claims'); // not merged in the app
-    expect(html).toContain('newest 2h ago');
+    expect(html).toContain('newest 2 h ago');
     expect(groupFindings(findings.by_rule![0], findings).map((f) => f.id)).toEqual(['f1', 'f2']);
     expect(groupFindings(findings.by_rule![1], findings).map((f) => f.id)).toEqual(['f3']);
   });

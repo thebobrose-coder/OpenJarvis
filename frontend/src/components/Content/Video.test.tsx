@@ -15,6 +15,7 @@ import { ApproveEditor, DecidedItem, ProposalCard, approvalEdits } from './Propo
 import { SeedComposer, seedBody, seedProblems, seedVideoAllowed, type SeedForm } from './SeedComposer';
 import { assetKeyProblem, skippedLabel, videoAllowed } from './Video';
 import { WinnersPanel, reelsLine } from './WinnersPanel';
+import { lane } from '../../test/fixtures';
 
 // Neutral fixtures only: this repo is public, and real proposals name the
 // operator's properties, products, pillars and topics.
@@ -23,22 +24,6 @@ const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')
 const MOTION: PropertyMotion = { lanes: ['short'], release: 'instagram' };
 const KEY = 'assets/alpha/sample-clip.mp4';
 
-function lane(over: Partial<Lane>): Lane {
-  return {
-    lane: 'short',
-    content_type: 'short',
-    cadence_per_week: 7,
-    seedable: true,
-    operator_only: false,
-    feed_lane: false,
-    queued: 3,
-    in_flight: 0,
-    pending: 0,
-    runway_days: 3,
-    status: 'ok',
-    ...over,
-  };
-}
 
 const SEEDBANK: ContentSeedbank = {
   ...META,

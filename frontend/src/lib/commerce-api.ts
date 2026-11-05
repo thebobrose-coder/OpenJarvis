@@ -5,6 +5,7 @@
  */
 import type { SpeechBlock } from './voice-api';
 import { apiFetch } from './api';
+import { fetchFeed } from './http';
 
 /** Freshness metadata the proxy adds to every feed document. */
 export interface FeedMeta {
@@ -335,7 +336,6 @@ export interface MerchantStore {
   limited?: number | null;
   disapproved_by_context?: Record<string, number> | null;
   with_video: number | null;
-  with_video_offers?: { offer_id: string; videos: number }[] | null;
   video_coverage?: MerchantVideoCoverage | null;
   top_issues?: MerchantIssue[] | null;
   last_checked: string | null;
@@ -413,10 +413,7 @@ export type RefreshTarget =
 export async function fetchCommerceFeed<F extends FeedName>(
   feed: F,
 ): Promise<CommerceFeeds[F] | null> {
-  const res = await apiFetch(`/api/commerce/${feed}`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(res.status === 503 ? 'Hermes is unreachable' : `Failed: ${res.status}`);
-  return res.json();
+  return fetchFeed<CommerceFeeds[F]>('commerce', feed);
 }
 
 export async function requestCommerceRefresh(target: RefreshTarget): Promise<void> {

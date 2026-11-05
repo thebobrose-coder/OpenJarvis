@@ -19,17 +19,11 @@ import { EngagementStatsBlock, sourceLabel } from './InsightsPanel';
 import { EngagementChips } from './PipelineBoard';
 import { EngagementTimeline } from './ProspectDrawer';
 import { TemplatesPanel, templateProblem } from './Templates';
+import { SEND_CONFIG } from '../../test/fixtures';
 
 // Engagement and templates (hq 0018, Parts B and C). Neutral fixtures only:
 // this repo is public.
-const CONFIG: SendConfig = {
-  enabled: true,
-  sender_name: 'Sample Sender',
-  sender_address: 'sender@example.org',
-  reply_to: 'sender@example.org',
-  sender_title: 'Founder',
-  missing: [],
-};
+const CONFIG: SendConfig = { ...SEND_CONFIG, sender_title: 'Founder' };
 const FOOTER = '\n\n--\n[Your name]\nSample Org · [postal address]\nReply "no thanks" to stop.';
 const SCREEN: Screen = {
   patterns: [

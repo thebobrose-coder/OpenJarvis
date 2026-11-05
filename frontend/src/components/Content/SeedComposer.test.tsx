@@ -19,6 +19,7 @@ import {
   seedableLanes,
   type SeedForm,
 } from './SeedComposer';
+import { lane } from '../../test/fixtures';
 
 // Neutral fixtures only: this repo is public, and real seeds name the
 // operator's properties, pillars, products and topics.
@@ -26,22 +27,6 @@ const META = { generated_at: '2026-10-22T12:00:00Z', age_seconds: 60, stale: fal
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const NOW = Date.parse('2026-10-22T12:00:00Z');
 
-function lane(over: Partial<Lane>): Lane {
-  return {
-    lane: 'short',
-    content_type: 'short',
-    cadence_per_week: 7,
-    seedable: true,
-    operator_only: false,
-    feed_lane: false,
-    queued: 3,
-    in_flight: 0,
-    pending: 0,
-    runway_days: 3,
-    status: 'ok',
-    ...over,
-  };
-}
 
 const SEEDBANK: ContentSeedbank = {
   ...META,

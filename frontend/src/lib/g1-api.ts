@@ -6,6 +6,7 @@
  * /api/g1/approvals/<id>/media/<still|clip> as blobs.
  */
 import { apiFetch } from './api';
+import { detail } from './http';
 
 export interface G1Item {
   approvalId: string;
@@ -35,11 +36,6 @@ export type G1Outcome =
   | { kind: 'decided'; status: string }
   | { kind: 'already'; status: string }
   | { kind: 'error'; message: string };
-
-async function detail(res: Response, fallback: string): Promise<string> {
-  const body = await res.json().catch(() => null);
-  return typeof body?.detail === 'string' ? body.detail : fallback;
-}
 
 export async function fetchG1(): Promise<G1Item[]> {
   const res = await apiFetch('/api/g1/approvals');

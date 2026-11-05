@@ -11,18 +11,15 @@
  */
 
 import { useEffect, useState } from 'react';
+import { formatAge } from '../../lib/age';
+
+export { formatAge };
 
 const TICK_MS = 60_000;
 
 /** `staleAfterSeconds` for the once-a-day digests: a missed 06:00 run reads amber. */
 export const DAILY_LATE_AFTER_S = 26 * 3600;
 
-export function formatAge(seconds: number): string {
-  const min = Math.floor(seconds / 60);
-  if (min < 1) return 'just now';
-  if (min < 120) return `${min} min ago`;
-  return `${Math.floor(min / 60)} h ago`;
-}
 
 /** Age now, given the age it had at `receivedAt` (both clocks in ms). */
 export function liveAgeSeconds(ageSeconds: number, receivedAt: number, now: number): number {

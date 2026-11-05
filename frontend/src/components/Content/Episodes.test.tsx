@@ -19,6 +19,7 @@ import {
 } from './SeedComposer';
 import { ThesisPrompts } from './ThesisPrompts';
 import { ALL_PROPERTIES } from './format';
+import { lane as baseLane } from '../../test/fixtures';
 
 // Invented fixtures only: this repo is public.
 const NOW = Date.parse('2026-10-24T06:00:00Z');
@@ -382,22 +383,7 @@ describe('the episode drawer', () => {
 
 // -- the composer's episode lane (v1.17) ---------------------------------------
 
-function lane(over: Partial<Lane>): Lane {
-  return {
-    lane: 'short',
-    content_type: 'short',
-    cadence_per_week: 7,
-    seedable: true,
-    operator_only: false,
-    feed_lane: false,
-    queued: 0,
-    in_flight: 0,
-    pending: 0,
-    runway_days: 0,
-    status: 'ok',
-    ...over,
-  };
-}
+const lane = (over: Partial<Lane>): Lane => baseLane({ queued: 0, runway_days: 0, ...over });
 
 const EPISODE_LANE = lane({ lane: 'episode', content_type: 'episode', cadence_per_week: 1 });
 const SEEDBANK: ContentSeedbank = {
@@ -654,7 +640,7 @@ describe('v0.4.5 episode actions', () => {
     expect(html).toContain('1.</span>');
     expect(html).toContain('Sample queued topic');
     expect(html).toContain('operator');
-    expect(html).toContain('2h ago');
+    expect(html).toContain('2 h ago');
     expect(html).toMatch(/Sample companion topic[\s\S]*waiting for its post/);
     expect(html).not.toMatch(/Sample queued topic[\s\S]*?waiting for its post[\s\S]*?Sample companion topic/);
     expect(html).toContain('Seeds held by ended episodes: 1');

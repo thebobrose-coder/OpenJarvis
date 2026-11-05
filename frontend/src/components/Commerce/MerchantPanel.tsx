@@ -14,7 +14,7 @@ import { SeverityChip } from './CompliancePanel';
  * Merchant action, and a disapproval links only to its existing Fixes entry.
  */
 
-export const READ_ONLY = 'READ_ONLY';
+const READ_ONLY = 'READ_ONLY';
 
 /** The principal is right only when Hermes read exactly READ_ONLY. */
 export const roleOk = (role: string | null | undefined) => role === READ_ONLY;
@@ -24,7 +24,7 @@ export const WAITING_ON_FOUNDRY = 'waiting on Foundry';
 export const clipCount = (n: number | null | undefined) => (n == null ? WAITING_ON_FOUNDRY : num(n));
 
 /** An issue code or reporting context in words ("used or refurbished offers"). */
-export const codeWords = (code: string) => code.replace(/_/g, ' ').toLowerCase();
+const codeWords = (code: string) => code.replace(/_/g, ' ').toLowerCase();
 
 const count = (n: number | null | undefined) => (n == null ? '—' : num(n));
 

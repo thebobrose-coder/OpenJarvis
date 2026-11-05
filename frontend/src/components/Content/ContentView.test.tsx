@@ -18,6 +18,7 @@ import { socialLine } from './PerformancePanel';
 import { ThesisLane, laneQueue, queueGroups, weeksOut } from './ThesisLane';
 import { ApproveEditor, ProposalCard, RejectConfirm, approvalEdits, classOptions, deskLabel, deskLanes, episodeEditProblems, isDeskProposal, tagAllowed } from './ProposalsQueue';
 import { SeedbankStrip } from './SeedbankStrip';
+import { lane as baseLane } from '../../test/fixtures';
 
 // Neutral fixtures only: this repo is public, and real proposals name the
 // operator's properties, products, pillars and topics.
@@ -25,22 +26,9 @@ const META = { generated_at: '2026-09-29T12:00:00Z', age_seconds: 600, stale: fa
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const NOW = Date.parse('2026-09-29T12:00:00Z');
 
-function lane(over: Partial<Lane>): Lane {
-  return {
-    lane: 'short',
-    content_type: 'short',
-    cadence_per_week: 7,
-    seedable: true,
-    operator_only: false,
-    feed_lane: false,
-    queued: null,
-    in_flight: 0,
-    pending: 2,
-    runway_days: null,
-    status: 'unknown',
-    ...over,
-  };
-}
+// This file's lanes default to an unseeded, unknown lane.
+const lane = (over: Partial<Lane>): Lane =>
+  baseLane({ queued: null, pending: 2, runway_days: null, status: 'unknown', ...over });
 
 const SEEDBANK: ContentSeedbank = {
   ...META,
@@ -655,9 +643,7 @@ describe('desk proposals (v1.24)', () => {
     expect(html).toContain('>1 Hermes seeds waiting<');
     expect(html).toContain('>0 Hermes seeds waiting<');
     expect(html).toContain('Fresh news </span><span class="tabular-nums" style="color:var(--color-text)">18<');
-    expect(html).not.toContain('News items');
     expect(html).toContain('Hermes proposes here; the feed queues news items');
-    expect(html).not.toContain('Automatic (RSS)');
     // The satire lane is a plain seedable row.
     expect(html).toContain('Queued </span><span class="tabular-nums" style="color:var(--color-text)">5<');
   });

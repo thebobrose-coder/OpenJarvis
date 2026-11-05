@@ -126,7 +126,7 @@ describe('WaitingListView', () => {
   });
 
   it('shows ages, due dates and group counts', () => {
-    expect(html).toContain('1h ago');
+    expect(html).toContain('90 min ago');
     expect(html).toContain('1d overdue');
     expect(html).toMatch(/data-group="rec".*?data-count="true">1</s);
   });
@@ -154,8 +154,8 @@ describe('WaitingPanelView', () => {
     );
     expect(html).toContain('Waiting on you');
     expect(html).toContain('6 for you');
-    expect(html).toContain('Hermes index: 45m old');
-    expect(html).toContain('Hermes index 45m old');
+    expect(html).toContain('Hermes index: 45 min old');
+    expect(html).toContain('Hermes index 45 min old');
   });
 
   it('is empty without errors when nothing waits', () => {

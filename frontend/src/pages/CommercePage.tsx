@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { CommerceView } from '../components/Commerce/CommerceView';
 import { ALL_STORES } from '../components/Commerce/format';
 import { useCatalogFixes } from '../hooks/useCatalogFixes';
-import { useCommerceData } from '../hooks/useCommerceData';
+import { LEDGER_POLL_MS, useCommerceData } from '../hooks/useCommerceData';
 import type { AdsHold, ComplianceFinding, DailyStore, LedgerItem } from '../lib/commerce-api';
 import { fetchContentFeed } from '../lib/content-api';
 import { contextBlock, fetchPrecheckProperties, runPrecheck, type PrecheckResult } from '../lib/desks-api';
@@ -88,10 +88,15 @@ export function CommercePage() {
   useEffect(() => {
     fetchPrecheckProperties().then(setProperties, () => setProperties([]));
   }, []);
-  // The ads-hold verdict per flight lives on content_health (v1.21); read once.
+  // The ads-hold verdict per flight lives on content_health (v1.21); read
+  // with the Commerce ledger poll, so a new publish shows without a reload.
   const [adsHold, setAdsHold] = useState<AdsHold | null>(null);
   useEffect(() => {
-    fetchContentFeed('content_health').then((h) => setAdsHold(h?.ads_hold ?? null), () => setAdsHold(null));
+    const load = () =>
+      fetchContentFeed('content_health').then((h) => setAdsHold(h?.ads_hold ?? null), () => {}); // a failed read keeps the last verdict
+    void load();
+    const poll = window.setInterval(() => void load(), LEDGER_POLL_MS);
+    return () => window.clearInterval(poll);
   }, []);
 
   return (

@@ -5,6 +5,7 @@
  * operator's files: the G0 edit and decision, publish.json and the pause flag.
  */
 import { apiFetch } from './api';
+import { failure } from './http';
 
 export type EpisodeStage =
   | 'queued'
@@ -259,11 +260,6 @@ export const G0_NOTE_MAX = 1000;
 export const ACTION_NOTE_MAX = 1000;
 export const MAX_REWRITES = 2;
 export const PUBLISH_LIMITS = { titleMin: 2, titleMax: 100, description: 5000, tags: 500 } as const;
-
-async function failure(res: Response, what: string): Promise<Error> {
-  const detail = await res.json().then((b) => b?.detail).catch(() => null);
-  return new Error(detail ? String(detail) : `${what} failed: ${res.status}`);
-}
 
 const json = (method: string, body: object): RequestInit => ({
   method,

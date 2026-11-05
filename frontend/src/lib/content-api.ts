@@ -11,6 +11,7 @@
  */
 import type { SpeechBlock } from './voice-api';
 import { apiFetch } from './api';
+import { failure, fetchFeed } from './http';
 import type { AdsHold } from './commerce-api';
 
 export interface FeedMeta {
@@ -497,19 +498,7 @@ export const LIMITS = {
 } as const;
 
 /** A failed action, with the status so a 503 (Hermes's store unreadable) can offer a retry. */
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-async function failure(res: Response, what: string): Promise<Error> {
-  const detail = await res.json().then((b) => b?.detail ?? b?.error).catch(() => null);
-  return new ApiError(res.status, detail ? String(detail) : `${what} failed: ${res.status}`);
-}
+export { ApiError } from './http';
 
 function jsonInit(body: object | undefined): RequestInit {
   return body && Object.keys(body).length
@@ -519,10 +508,7 @@ function jsonInit(body: object | undefined): RequestInit {
 
 /** A feed's document, or null when Hermes hasn't produced it yet (404). */
 export async function fetchContentFeed<F extends ContentFeedName>(feed: F): Promise<ContentFeeds[F] | null> {
-  const res = await apiFetch(`/api/content/${feed}`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(res.status === 503 ? 'Hermes is unreachable' : `Failed: ${res.status}`);
-  return res.json();
+  return fetchFeed<ContentFeeds[F]>('content', feed);
 }
 
 export async function approveProposal(id: string, edits: ApprovalEdits = {}): Promise<void> {

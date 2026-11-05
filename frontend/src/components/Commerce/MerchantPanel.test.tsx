@@ -20,7 +20,6 @@ function row(over: Partial<MerchantStore> = {}): MerchantStore {
     limited: 30,
     disapproved_by_context: { DEMAND_GEN_ADS: 12 },
     with_video: 7,
-    with_video_offers: [{ offer_id: 'offer-1', videos: 1 }],
     video_coverage: {
       clips_in_feed: null,
       offers_with_video: 7,

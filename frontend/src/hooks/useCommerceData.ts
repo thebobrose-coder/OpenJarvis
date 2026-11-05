@@ -13,7 +13,7 @@ import {
   type RefreshTarget,
 } from '../lib/commerce-api';
 
-const LEDGER_POLL_MS = 5 * 60 * 1000;
+export const LEDGER_POLL_MS = 5 * 60 * 1000;
 // Hermes's ecom_requests job runs every 2 minutes; check back after one pass.
 const LEDGER_RECHECK_MS = 150 * 1000;
 // A refresh regenerates in a few minutes; an SEO audit takes longer.

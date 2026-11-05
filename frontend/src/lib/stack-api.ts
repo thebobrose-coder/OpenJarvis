@@ -7,6 +7,10 @@
  * a DOM.
  */
 import { apiFetch } from './api';
+import { ApiError, detail } from './http';
+import { ageWords } from './age';
+
+export { ageWords };
 import type { SpeechBlock } from './voice-api';
 
 export type CheckStatus = 'OK' | 'WARN' | 'FAIL' | 'SKIP';
@@ -54,20 +58,7 @@ export const STALE_AFTER_S = 7 * 3600;
 export const NO_RUN = 'No stack-health run yet';
 export const ALL_CLEAR = 'All systems operating nominally.';
 
-export class StackHealthError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-async function detail(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = await res.json();
-    return typeof body?.detail === 'string' ? body.detail : fallback;
-  } catch {
-    return fallback;
-  }
-}
+export class StackHealthError extends ApiError {}
 
 export async function fetchStackHealth(): Promise<StackHealth> {
   const res = await apiFetch('/api/stack/health');
@@ -126,13 +117,6 @@ export function headline(h: StackHealth): string {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-/** "12 min", "9 h": an age without "ago". */
-export function ageWords(seconds: number): string {
-  const min = Math.floor(seconds / 60);
-  if (min < 1) return 'under a minute';
-  if (min < 120) return `${min} min`;
-  return `${Math.floor(min / 60)} h`;
-}
 
 /** The strip's two lines when the dock isn't green. */
 export function stripLines(h: StackHealth, ageSeconds: number | null): [string, string] {

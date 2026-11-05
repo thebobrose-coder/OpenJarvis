@@ -13,16 +13,11 @@ import {
 } from '../../lib/bizdev-api';
 import { MailActions, notSentNote, SendChecks, UNCONFIRMED_NOTE, type SendMode } from './MailActions';
 import { ProspectDrawer } from './ProspectDrawer';
+import { SEND_CONFIG } from '../../test/fixtures';
 
 // The 2026-11-03 follow-up: a send Forward Email didn't answer is held
 // unconfirmed and settled by Message-ID. Neutral fixtures only.
-const CONFIG: SendConfig = {
-  enabled: true,
-  sender_name: 'Sample Sender',
-  sender_address: 'sender@example.org',
-  reply_to: 'sender@example.org',
-  missing: [],
-};
+const CONFIG: SendConfig = SEND_CONFIG;
 const TO = 'a.person@example.edu';
 const CONTACTS = [{ name: 'A. Person', email: TO }];
 const noSend = async () => ({ fe_id: 'x', message_id: 'y', fe_status: 'queued' as const, recorded: true });

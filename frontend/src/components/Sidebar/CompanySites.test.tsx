@@ -140,7 +140,7 @@ describe('Company sites card', () => {
     expect(html).toContain('31 sessions / 28 d');
     expect(html).toContain('not configured');
     expect(html).toContain('no property id');
-    expect(html).toContain('checked 2h ago');
+    expect(html).toContain('checked 2 h ago');
     expect(html).not.toContain('<button');
   });
 

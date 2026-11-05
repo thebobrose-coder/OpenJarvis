@@ -11,16 +11,11 @@ import {
 import { FollowUpsStrip } from './FollowUpsStrip';
 import { MailActions, type SendMode } from './MailActions';
 import { ProspectDrawer } from './ProspectDrawer';
+import { SEND_CONFIG } from '../../test/fixtures';
 
 // Send through Forward Email (hq 0018, Part A). Neutral fixtures only: this
 // repo is public.
-const CONFIG: SendConfig = {
-  enabled: true,
-  sender_name: 'Sample Sender',
-  sender_address: 'sender@example.org',
-  reply_to: 'sender@example.org',
-  missing: [],
-};
+const CONFIG: SendConfig = SEND_CONFIG;
 const FIRST = '<bd-7-1-abcdef01@example.org>';
 const CONTACTS = [{ name: 'A. Person', title: 'SID', email: 'a.person@example.edu' }];
 

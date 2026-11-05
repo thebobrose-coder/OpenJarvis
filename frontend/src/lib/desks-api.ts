@@ -5,6 +5,7 @@
  * /v1/chat/completions with `desk` and `desk_session` set.
  */
 import { apiFetch } from './api';
+import { detail } from './http';
 
 export type DeskId = 'content' | 'bd' | 'commerce' | 'ops' | 'compliance';
 export type CardKind = 'open' | 'tick' | 'proposal_decision' | 'ruling';
@@ -77,11 +78,6 @@ export const DESK_DEFAULTS: Record<DeskId, Pick<DeskInfo, 'id' | 'name' | 'defau
 export const LOCAL_ONLY: DeskId[] = ['ops', 'compliance'];
 
 export const isDeskId = (v: unknown): v is DeskId => typeof v === 'string' && v in DESK_DEFAULTS;
-
-async function detail(res: Response, fallback: string): Promise<string> {
-  const body = await res.json().catch(() => null);
-  return typeof body?.detail === 'string' ? body.detail : fallback;
-}
 
 export async function fetchDesks(): Promise<{ desks: DeskInfo[]; data_configured: boolean }> {
   const res = await apiFetch('/api/desks');

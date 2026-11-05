@@ -14,6 +14,7 @@
  * is counted, never listed.
  */
 import { apiFetch } from './api';
+import { ApiError, detail } from './http';
 
 export type WaitingKind =
   | 'proposal'
@@ -178,20 +179,7 @@ export const SOURCE_LABEL: Record<string, string> = {
   entity_watch: 'Company sites',
 };
 
-export class WaitingError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-async function detail(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = await res.json();
-    return typeof body?.detail === 'string' ? body.detail : fallback;
-  } catch {
-    return fallback;
-  }
-}
+export class WaitingError extends ApiError {}
 
 export async function fetchWaiting(): Promise<Waiting> {
   const res = await apiFetch('/api/waiting');
@@ -257,17 +245,7 @@ export function linkFor(item: Pick<WaitingItem, 'link'>): string | null {
   return `${path}${query}${hash ? `#${hash}` : ''}`;
 }
 
-export function ago(iso: string | null | undefined, now = Date.now()): string {
-  if (!iso) return '';
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return '';
-  const m = Math.floor(Math.max(0, now - t) / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
+export { ago, fmtAge } from './age';
 
 /** "due today", "due in 2d", "3d overdue" on the Central-agnostic local date. */
 export function dueLabel(due: string | null | undefined, now = Date.now()): string | null {
@@ -319,13 +297,6 @@ export function sourceAges(w: Pick<Waiting, 'sources'> | null, now = Date.now())
   return out;
 }
 
-export function fmtAge(seconds: number | null): string {
-  if (seconds == null) return 'missing';
-  const m = Math.floor(seconds / 60);
-  if (m < 60) return `${m}m old`;
-  const h = Math.floor(m / 60);
-  return h < 48 ? `${h}h old` : `${Math.floor(h / 24)}d old`;
-}
 
 /** Scroll a deep-linked item into view once its page has rendered it, and
  * outline it briefly. Gives up after `timeoutMs` (the feed may still be loading). */

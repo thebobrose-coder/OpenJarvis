@@ -8,6 +8,7 @@
  */
 import type { SpeechBlock } from './voice-api';
 import { apiFetch } from './api';
+import { failure, fetchFeed } from './http';
 
 export interface FeedMeta {
   generated_at: string;
@@ -333,17 +334,9 @@ export interface BizDevFeeds {
 export type BdFeedName = keyof BizDevFeeds;
 export const BD_FEEDS: BdFeedName[] = ['bd_pipeline', 'bd_stats', 'bd_prospects'];
 
-async function failure(res: Response, what: string): Promise<Error> {
-  const detail = await res.json().then((b) => b?.detail).catch(() => null);
-  return new Error(detail ? String(detail) : `${what} failed: ${res.status}`);
-}
-
 /** A feed's document, or null when Hermes hasn't produced it yet (404). */
 export async function fetchBizDevFeed<F extends BdFeedName>(feed: F): Promise<BizDevFeeds[F] | null> {
-  const res = await apiFetch(`/api/bizdev/${feed}`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(res.status === 503 ? 'Hermes is unreachable' : `Failed: ${res.status}`);
-  return res.json();
+  return fetchFeed<BizDevFeeds[F]>('bizdev', feed);
 }
 
 export async function moveProspect(id: number, stage: StageAction, note?: string): Promise<void> {

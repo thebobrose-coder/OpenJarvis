@@ -26,19 +26,14 @@ import { FollowUpsStrip, followUpRecipient } from './FollowUpsStrip';
 import { EngagementStatsBlock } from './InsightsPanel';
 import { EngagementChips, MeetingChip } from './PipelineBoard';
 import { AddRecipientForm, EngagementTimeline, ProspectDrawer } from './ProspectDrawer';
+import { SEND_CONFIG } from '../../test/fixtures';
 
 // Add recipient and several recipients per card (hq 0018 A3 + A2, contract
 // v0.10.7), and Part D (v0.10.6). Neutral fixtures only: this repo is public.
 const fetchMock = vi.mocked(apiFetch);
 afterEach(() => fetchMock.mockReset());
 
-const CONFIG: SendConfig = {
-  enabled: true,
-  sender_name: 'Sample Sender',
-  sender_address: 'sender@example.org',
-  reply_to: 'sender@example.org',
-  missing: [],
-};
+const CONFIG: SendConfig = SEND_CONFIG;
 const A = 'a.person@example.edu';
 const B = 'b.person@example.edu';
 const C = 'c.person@example.org';

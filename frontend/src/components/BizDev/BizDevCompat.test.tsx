@@ -4,17 +4,12 @@ import type { FollowUp, PipelineProspect, SendConfig } from '../../lib/bizdev-ap
 import { FollowUpsStrip } from './FollowUpsStrip';
 import { EngagementChips } from './PipelineBoard';
 import { EngagementTimeline, ProspectDrawer } from './ProspectDrawer';
+import { SEND_CONFIG } from '../../test/fixtures';
 
 // A pre-v0.10.7 feed (no `engagement.recipients`, no `contacts[].source`) on a
 // one-contact card renders exactly as it did before A2/A3: the snapshot was
 // recorded on the code before them. Neutral fixtures only: this repo is public.
-const CONFIG: SendConfig = {
-  enabled: true,
-  sender_name: 'Sample Sender',
-  sender_address: 'sender@example.org',
-  reply_to: 'sender@example.org',
-  missing: [],
-};
+const CONFIG: SendConfig = SEND_CONFIG;
 
 const CARD: PipelineProspect = {
   id: 9,
