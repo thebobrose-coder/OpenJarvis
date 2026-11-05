@@ -112,6 +112,10 @@ export interface DecisionBox {
   modified_at: string;
   number: number;
   ticked: boolean;
+  /** open, decided (ticked), declined (default kept, unticked) or deferred. */
+  status?: DecisionStatus;
+  /** The date a deferred box comes back, YYYY-MM-DD (kept once it is due). */
+  deferred_until?: string | null;
   decision: string;
   default: string;
   alternative: string | null;
@@ -127,6 +131,22 @@ export interface Decisions {
   open: DecisionBox[];
   waiting_briefs: { file: string; folder: string; title: string; modified_at: string }[];
   recently_decided: DecisionBox[];
+  /** Boxes deferred to a later date, soonest first (absent from older servers). */
+  deferred?: DecisionBox[];
+}
+
+export type DecisionStatus = 'open' | 'decided' | 'declined' | 'deferred';
+/** What the drawer can write on a box: the A5 tick, the default kept, or a deferral. */
+export type DecisionChoice = 'tick' | 'decline' | 'defer';
+export const DEFER_DAYS = [1, 3, 7, 14, 30] as const;
+export const DEFER_DEFAULT = 7;
+
+/** The local calendar day `days` from now, YYYY-MM-DD, as the server reads it. */
+export function deferUntil(days: number, now: number = Date.now()): string {
+  const d = new Date(now);
+  d.setDate(d.getDate() + days);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export const POLL_MS = 60 * 1000;
@@ -193,15 +213,29 @@ export async function fetchDecisions(): Promise<Decisions> {
   return res.json();
 }
 
-/** Tick one box (0020 A5). A 409 means the brief changed or it was already decided. */
-export async function tickDecision(box: Pick<DecisionBox, 'file' | 'line' | 'hash'>, note: string): Promise<void> {
-  const res = await apiFetch('/api/decisions/tick', {
+/**
+ * Stamp one box (0020 A5 and its amendment): `tick` writes `- [x]` plus
+ * DECIDED; `decline` keeps `- [ ]` and writes DECLINED (the default, on
+ * purpose); `defer` keeps `- [ ]` and writes DEFERRED until `until`. A 409
+ * means the brief changed or the box was already settled.
+ */
+export async function decideDecision(
+  box: Pick<DecisionBox, 'file' | 'line' | 'hash'>,
+  choice: DecisionChoice,
+  note: string,
+  until?: string,
+): Promise<void> {
+  const res = await apiFetch('/api/decisions/decide', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ file: box.file, line: box.line, hash: box.hash, note }),
+    body: JSON.stringify({ file: box.file, line: box.line, hash: box.hash, note, choice, until: until ?? null }),
   });
   if (!res.ok) throw new WaitingError(res.status, await detail(res, `Failed: ${res.status}`));
 }
+
+/** Tick one box (0020 A5). */
+export const tickDecision = (box: Pick<DecisionBox, 'file' | 'line' | 'hash'>, note: string) =>
+  decideDecision(box, 'tick', note);
 
 export interface WaitingGroup {
   kind: string;

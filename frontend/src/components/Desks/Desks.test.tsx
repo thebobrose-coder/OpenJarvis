@@ -174,7 +174,7 @@ describe('the tick card meets the Decisions drawer', () => {
     const html = renderToStaticMarkup(
       <DecisionsView
         decisions={decisions} loading={false} error={null} states={{}} notes={{ 'openjarvis/sample.md:9': 'from the desk' }}
-        message={null} now={Date.now()} onNote={vi.fn()} onArm={vi.fn()} onTick={vi.fn()}
+        message={null} now={Date.now()} onNote={vi.fn()} onArm={vi.fn()} onDecide={vi.fn()}
         highlight="openjarvis/sample.md:9"
       />,
     );

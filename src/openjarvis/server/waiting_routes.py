@@ -23,10 +23,12 @@ The local folders come from one setting, the private workspace's data root
 are simply absent. A missing or broken source never fails the list: its
 entry in ``sources`` carries the error instead.
 
-Two writes: ``POST /api/decisions/tick`` ticks one decision box in exactly the
-A5 form, and ``POST /api/workorders/<id>/dismiss`` records that the operator
-has read a work-order report (hq 0024 J4). Every route answers only requests
-from this machine.
+Two writes: ``POST /api/decisions/decide`` stamps one decision box (tick in
+exactly the A5 form; decline, which keeps the box unticked and records that
+the default was kept; defer, unticked until a date; ``/decisions/tick`` is the
+tick alone), and ``POST /api/workorders/<id>/dismiss`` records that the
+operator has read a work-order report (hq 0024 J4). Every route answers only
+requests from this machine.
 """
 
 from __future__ import annotations
@@ -117,7 +119,15 @@ BOX = re.compile(r"^(\s*[-*]\s+)\[([ xX])\](\s+\*\*D(\d+)\.)")
 _BOLD_END = re.compile(r"\*\*")
 _ALT = re.compile(r"[*_]{0,2}\bAlternatives?:[*_]{0,2}\s*", re.I)
 _DEFAULT = re.compile(r"[*_]{0,2}\bDefault:[*_]{0,2}\s*", re.I)
-_DECIDED = re.compile(r"\*\*DECIDED\b", re.I)
+# The stamps the app writes (A5 and its amendment): DECIDED on a ticked box,
+# DECLINED (the default kept) and DEFERRED on an unticked one. A line may
+# carry more than one (a deferral that was later decided); the last one rules.
+_STAMP = re.compile(
+    r"\*\*(?P<verb>DECIDED|DECLINED|DEFERRED)\b(?:\s+until\s+(?P<until>\d{4}-\d{2}-\d{2}))?",
+    re.I,
+)
+_DECIDED = _STAMP
+DEFER_MAX_DAYS = 90
 # The third form, "**Dn.** Text. Default if unticked[: ...]." (the bold holds
 # only the number): the first sentence is the decision.
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z`*_(\"'])")
@@ -154,8 +164,19 @@ def _box(line: str) -> dict[str, Any] | None:
     close = _BOLD_END.search(rest)
     decision = (rest[: close.start()] if close else rest).strip().rstrip(".").strip()
     after = rest[close.end() :] if close else ""
-    decided = _DECIDED.search(after)
+    stamps = list(_STAMP.finditer(after))
+    decided = stamps[0] if stamps else None
+    last = stamps[-1] if stamps else None
     body = after[: decided.start()] if decided else after
+    ticked = m.group(2) != " "
+    # The box's standing: the tick rules; else the last stamp.
+    status, until = ("decided" if ticked else "open"), None
+    if not ticked and last:
+        verb = last.group("verb").upper()
+        if verb == "DECLINED":
+            status = "declined"
+        elif verb == "DEFERRED" and last.group("until"):
+            status, until = "deferred", last.group("until")
     alt = _ALT.search(body)
     alternative = body[alt.end() :].strip().rstrip(".;,_").strip() if alt else ""
     head = body[: alt.start()] if alt else body
@@ -180,24 +201,27 @@ def _box(line: str) -> dict[str, Any] | None:
             default = decision
         else:
             default = ""
-        return {
-            "number": int(m.group(4)),
-            "ticked": m.group(2) != " ",
-            "decision": decision,
-            "default": default,
-            "alternative": alternative or None,
-            "text": rest.strip(),
-            "decided_note": after[decided.start() :].strip() if decided else None,
-        }
+    else:
+        default = default or decision
     return {
         "number": int(m.group(4)),
-        "ticked": m.group(2) != " ",
+        "ticked": ticked,
+        "status": status,
+        "deferred_until": until,
         "decision": decision,
-        "default": default or decision,
+        "default": default,
         "alternative": alternative or None,
         "text": rest.strip(),
         "decided_note": after[decided.start() :].strip() if decided else None,
     }
+
+
+def _settled(box: dict[str, Any], today: str) -> str:
+    """``open``, ``decided``, ``declined`` or ``deferred`` as of ``today``: a
+    deferral whose date has come is open again."""
+    if box["status"] == "deferred" and box["deferred_until"] <= today:
+        return "open"
+    return box["status"]
 
 
 def _md_files(root: Path) -> list[Path]:
@@ -217,10 +241,17 @@ def _result_empty(lines: list[str]) -> bool:
     return True
 
 
-def read_decisions(data: Path, now: datetime | None = None) -> dict[str, Any]:
+def _today() -> str:
+    return datetime.now().astimezone().strftime("%Y-%m-%d")
+
+
+def read_decisions(
+    data: Path, now: datetime | None = None, today: str | None = None
+) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
+    today = today or _today()
     inbox, archive = data / "inbox", data / "archive"
-    open_boxes, decided, waiting = [], [], []
+    open_boxes, decided, deferred, waiting = [], [], [], []
     for path in _md_files(inbox) if inbox.is_dir() else []:
         raw = path.read_bytes()
         text = raw.decode("utf-8", errors="replace")
@@ -238,8 +269,11 @@ def read_decisions(data: Path, now: datetime | None = None) -> dict[str, Any]:
             if box is None:
                 continue
             row = {**brief, **box, "line": i + 1, "hash": sha}
-            if box["ticked"]:
+            standing = _settled(box, today)
+            if standing in ("decided", "declined"):
                 decided.append({**row, "archived": False})
+            elif standing == "deferred":
+                deferred.append(row)
             else:
                 open_boxes.append({**row, "paragraph": _paragraph(lines, i)})
         if _result_empty(lines):
@@ -251,7 +285,7 @@ def read_decisions(data: Path, now: datetime | None = None) -> dict[str, Any]:
         text = path.read_text(encoding="utf-8", errors="replace")
         for i, line in enumerate(text.splitlines()):
             box = _box(line)
-            if box and box["ticked"]:
+            if box and box["status"] in ("decided", "declined"):
                 decided.append(
                     {
                         "file": path.relative_to(archive).as_posix(),
@@ -264,29 +298,80 @@ def read_decisions(data: Path, now: datetime | None = None) -> dict[str, Any]:
                     }
                 )
     decided.sort(key=lambda r: r["modified_at"], reverse=True)
+    deferred.sort(key=lambda r: r["deferred_until"])
     return {
         "open": open_boxes,
         "waiting_briefs": waiting,
         "recently_decided": decided[:DECIDED_MAX],
+        "deferred": deferred,
     }
 
 
-def tick_line(line: str, today: str, note: str) -> str:
-    """``- [ ]`` to ``- [x]`` on one box line, plus the A5 stamp."""
+CHOICES = ("tick", "decline", "defer")
+
+
+def stamp_line(
+    line: str, choice: str, today: str, note: str, until: str | None = None
+) -> str:
+    """One box line, stamped. ``tick``: ``- [ ]`` to ``- [x]`` plus
+    ``**DECIDED <today> (app)**`` (A5). ``decline``: the box stays unticked and
+    gains ``**DECLINED <today> (app)**`` (the default, kept on purpose).
+    ``defer``: unticked, ``**DEFERRED until <until> (app)**``. The note, when
+    given, follows the stamp."""
     m = BOX.match(line)
     if not m or m.group(2) != " ":
         raise ValueError("not an unticked decision box")
     body = line.rstrip("\r\n")
     ending = line[len(body) :]
-    stamp = f" **DECIDED {today} (app)**" + (f" {note}" if note else "")
-    return f"{m.group(1)}[x]{body[m.end(2) + 1 :]}{stamp}{ending}"
+    if choice == "tick":
+        mark, verb = "[x]", f"DECIDED {today}"
+    elif choice == "decline":
+        mark, verb = "[ ]", f"DECLINED {today}"
+    elif choice == "defer" and until:
+        mark, verb = "[ ]", f"DEFERRED until {until}"
+    else:
+        raise ValueError("choice is tick, decline or defer (with a date)")
+    stamp = f" **{verb} (app)**" + (f" {note}" if note else "")
+    return f"{m.group(1)}{mark}{body[m.end(2) + 1 :]}{stamp}{ending}"
 
 
-def tick_box(
-    data: Path, file: str, line_no: int, expected_hash: str, note: str, today: str
+def tick_line(line: str, today: str, note: str) -> str:
+    return stamp_line(line, "tick", today, note)
+
+
+def _check_until(until: str | None, today: str) -> str:
+    try:
+        day = datetime.strptime(until or "", "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="Defer needs a date, YYYY-MM-DD"
+        ) from None
+    first = datetime.strptime(today, "%Y-%m-%d").date()
+    if not first < day <= first + timedelta(days=DEFER_MAX_DAYS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Defer to a later day, at most {DEFER_MAX_DAYS} days out",
+        )
+    return until
+
+
+def decide_box(
+    data: Path,
+    file: str,
+    line_no: int,
+    expected_hash: str,
+    choice: str,
+    note: str,
+    today: str,
+    until: str | None = None,
 ) -> dict[str, Any]:
-    """Tick one box under ``<data>/inbox``; 409 when the file changed or the
-    box is already ticked, 400 for anything outside the inbox."""
+    """Stamp one box under ``<data>/inbox`` (tick, decline or defer); 409 when
+    the file changed or the box is already settled, 400 for anything outside
+    the inbox or a bad choice."""
+    if choice not in CHOICES:
+        raise HTTPException(status_code=400, detail="choice is tick, decline or defer")
+    if choice == "defer":
+        until = _check_until(until, today)
     inbox = (data / "inbox").resolve()
     rel = Path(file)
     if (
@@ -322,9 +407,16 @@ def tick_box(
         raise HTTPException(
             status_code=409, detail="That line is not a decision box; reload"
         )
-    if box["ticked"]:
+    standing = _settled(box, today)
+    if standing == "decided":
         raise HTTPException(status_code=409, detail="Already decided")
-    lines[line_no - 1] = tick_line(lines[line_no - 1], today, note)
+    if standing == "declined":
+        raise HTTPException(status_code=409, detail="Already declined; reload")
+    if standing == "deferred":
+        raise HTTPException(
+            status_code=409, detail=f"Deferred until {box['deferred_until']}; reload"
+        )
+    lines[line_no - 1] = stamp_line(lines[line_no - 1], choice, today, note, until)
     out = "".join(lines).encode("utf-8")
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     tmp.write_bytes(out)
@@ -332,9 +424,16 @@ def tick_box(
     return {
         "file": file,
         "line": line_no,
+        "choice": choice,
         "text": lines[line_no - 1].rstrip("\r\n"),
         "hash": hashlib.sha256(out).hexdigest(),
     }
+
+
+def tick_box(
+    data: Path, file: str, line_no: int, expected_hash: str, note: str, today: str
+) -> dict[str, Any]:
+    return decide_box(data, file, line_no, expected_hash, "tick", note, today)
 
 
 # ---------- local kinds ----------
@@ -963,16 +1062,40 @@ class TickBody(BaseModel):
     note: str = ""
 
 
-@waiting_router.post("/decisions/tick")
-def post_tick(body: TickBody, request: Request):
+class DecideBody(TickBody):
+    choice: str = "tick"
+    until: str | None = None
+
+
+def _decide(body: DecideBody, request: Request):
     _local_only(request)
     data = _data_dir()
     if data is None:
         raise HTTPException(
             status_code=404, detail="Workspace data folder not configured"
         )
-    today = datetime.now().astimezone().strftime("%Y-%m-%d")
-    return tick_box(data, body.file, body.line, body.hash, body.note, today)
+    return decide_box(
+        data,
+        body.file,
+        body.line,
+        body.hash,
+        body.choice,
+        body.note,
+        _today(),
+        body.until,
+    )
+
+
+@waiting_router.post("/decisions/tick")
+def post_tick(body: TickBody, request: Request):
+    """A5's tick alone, kept for older callers."""
+    return _decide(DecideBody(**body.model_dump(), choice="tick"), request)
+
+
+@waiting_router.post("/decisions/decide")
+def post_decide(body: DecideBody, request: Request):
+    """Tick, decline (keep the default) or defer (``until``) one box."""
+    return _decide(body, request)
 
 
 # ---------- the local chat's grounding header (0023 D8) ----------

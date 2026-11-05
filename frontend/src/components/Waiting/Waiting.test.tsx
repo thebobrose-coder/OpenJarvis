@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { EMPTY, WaitingListView, isOpenable } from './WaitingListView';
-import { DEFAULT_HINT, DecisionsView } from './DecisionsDrawer';
+import { DEFAULT_HINT, DecisionsView, decidedLabel } from './DecisionsDrawer';
 import { WaitingPanelView } from '../Dashboard/WaitingPanel';
 import {
   dueLabel,
@@ -191,7 +191,7 @@ describe('DecisionsView', () => {
   };
   const render = (states = {}) =>
     renderToStaticMarkup(
-      <DecisionsView decisions={decisions} loading={false} error={null} states={states} notes={{}} message={null} now={NOW} onNote={noop} onArm={noop} onTick={noop} />,
+      <DecisionsView decisions={decisions} loading={false} error={null} states={states} notes={{}} message={null} now={NOW} onNote={noop} onArm={noop} onDecide={noop} />,
     );
 
   it('lists each box with its default, alternative and the unticked-means-default hint', () => {
@@ -206,15 +206,56 @@ describe('DecisionsView', () => {
 
   it('leaves out the Default line when the brief names none', () => {
     const html = renderToStaticMarkup(
-      <DecisionsView decisions={{ ...decisions, open: [{ ...box, default: '' }] }} loading={false} error={null} states={{}} notes={{}} message={null} now={NOW} onNote={noop} onArm={noop} onTick={noop} />,
+      <DecisionsView decisions={{ ...decisions, open: [{ ...box, default: '' }] }} loading={false} error={null} states={{}} notes={{}} message={null} now={NOW} onNote={noop} onArm={noop} onDecide={noop} />,
     );
     expect(html).toContain('D1. Sample topic');
     expect(html).not.toContain('Default:');
   });
 
   it('asks for a confirm before writing', () => {
-    expect(render({ 'sample/brief.md:4': 'armed' })).toContain('Confirm tick');
-    expect(render({ 'sample/brief.md:4': 'done' })).toContain('Ticked');
+    expect(render({ 'sample/brief.md:4': 'armed:tick' })).toContain('Confirm tick');
+    expect(render({ 'sample/brief.md:4': 'done:tick' })).toContain('Ticked');
+  });
+
+  it('offers Keep default and Defer beside the tick, each behind its own confirm', () => {
+    const idle = render();
+    expect(idle).toContain('Keep default');
+    expect(idle).toContain('Defer…');
+    const decline = render({ 'sample/brief.md:4': 'armed:decline' });
+    expect(decline).toContain('Confirm: keep the default');
+    expect(decline).not.toContain('Tick D1');
+    const defer = render({ 'sample/brief.md:4': 'armed:defer' });
+    expect(defer).toContain('Confirm defer');
+    expect(defer).toContain('aria-label="Defer D1 for"');
+    expect(defer).toContain('7 days');
+    expect(render({ 'sample/brief.md:4': 'done:decline' })).toContain('Default kept');
+    expect(render({ 'sample/brief.md:4': 'done:defer' })).toContain('Deferred until');
+  });
+
+  it('lists deferred boxes with their date, and a due one back among the open', () => {
+    const d: Decisions = {
+      ...decisions,
+      open: [{ ...box, deferred_until: '2026-10-20', status: 'open' }],
+      deferred: [{ ...box, number: 3, decision: 'Later', status: 'deferred', deferred_until: '2026-11-01', line: 9 }],
+    };
+    const html = renderToStaticMarkup(
+      <DecisionsView decisions={d} loading={false} error={null} states={{}} notes={{}} message={null} now={NOW} onNote={noop} onArm={noop} onDecide={noop} />,
+    );
+    expect(html).toContain('Deferred (1)');
+    expect(html).toContain('D3. Later');
+    expect(html).toContain('back on 2026-11-01');
+    expect(html).toContain('deferred until 2026-10-20, due');
+    expect(html).toContain('Tick D1');
+  });
+
+  it('labels a declined box as the default kept', () => {
+    expect(decidedLabel({ status: 'declined', decided_note: '**DECLINED 2026-10-02 (app)** no' })).toBe('default kept · DECLINED 2026-10-02 (app) no');
+    expect(decidedLabel({ status: 'decided', decided_note: '**DECIDED 2026-10-01 (app)** ok' })).toBe('DECIDED 2026-10-01 (app) ok');
+    const d: Decisions = { ...decisions, recently_decided: [{ ...box, number: 4, status: 'declined', decided_note: '**DECLINED 2026-10-02 (app)**' }] };
+    const html = renderToStaticMarkup(
+      <DecisionsView decisions={d} loading={false} error={null} states={{}} notes={{}} message={null} now={NOW} onNote={noop} onArm={noop} onDecide={noop} />,
+    );
+    expect(html).toContain('default kept');
   });
 
   it('shows briefs waiting on a session and the recently decided', () => {

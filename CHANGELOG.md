@@ -560,6 +560,27 @@ new widget. No Trading desk (P3 D1).
   exit with a CLI error says why. A clean plain check now says that claims and
   promises are judged only by "Check with judge".
 
+**Decisions drawer: Keep default and Defer** (hq 0020 A5, amended). The
+drawer had one action, the tick, so "no" meant leaving the box listed as open
+with nothing to show that the operator had looked. Each open box now carries
+three choices, each behind the same confirm step and optional one-line note:
+- **Tick Dn** writes the A5 form as before (`- [x] … **DECIDED date (app)**`).
+- **Keep default** leaves the box unticked and appends
+  `**DECLINED date (app)** <note>`: the default, chosen on purpose. The box
+  moves to Recently decided as "default kept" and leaves the bell's count. A
+  session that has not learned the stamp still reads the file correctly,
+  since an unticked box means the default under A5.
+- **Defer…** leaves the box unticked and appends
+  `**DEFERRED until YYYY-MM-DD (app)** <note>` (1, 3, 7, 14 or 30 days; the
+  server takes any later date within 90). The box sits in a new Deferred
+  section until that day, then comes back among the open ones with a "due"
+  chip; a second stamp settles it and the first stays on the line as history.
+- **Server:** `POST /api/decisions/decide` takes `choice` (`tick` | `decline`
+  | `defer`) and `until`; `/api/decisions/tick` remains the tick alone. The
+  parser reads the last stamp on a line; an already settled box answers 409
+  with its state. `GET /api/decisions` gains `status`, `deferred_until` and
+  the `deferred` list. The desk `tick` card is unchanged.
+
 **The G1 mirror in "Waiting on you"** (hq 0020 D4; Foundry's approval
 mirror). Open content approvals now show in the bell and the Dashboard panel
 as "Posts to approve (G1)", right after Trading, and open a G1 drawer.

@@ -4,6 +4,7 @@ The Hermes feeds are mocked; nothing reaches a bridge."""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
@@ -418,6 +419,131 @@ def test_tick_line_keeps_its_ending():
     )
     with pytest.raises(ValueError):
         wr.tick_line("- [x] **D9. X** y\n", "2026-01-01", "")
+
+
+def _decide(choice, line=4, note="", until=None, data=None):
+    return {**_tick(line=line, note=note, data=data), "choice": choice, "until": until}
+
+
+def _brief_line(data, n):
+    raw = (data / "inbox" / "sample" / "brief.md").read_bytes()
+    return raw.split(b"\r\n")[n].decode()
+
+
+def _local_today():
+    return datetime.now().astimezone().date()
+
+
+def test_decide_tick_is_the_a5_form(wired, data):
+    r = _client().post(
+        "/api/decisions/decide", json=_decide("tick", note="yes", data=data)
+    )
+    assert r.status_code == 200 and r.json()["choice"] == "tick"
+    assert _brief_line(data, 3).endswith(f"**DECIDED {_local_today()} (app)** yes")
+    assert _brief_line(data, 3).startswith("- [x] ")
+
+
+def test_decline_keeps_the_box_unticked_and_lists_it_as_decided(wired, data):
+    r = _client().post(
+        "/api/decisions/decide", json=_decide("decline", note="not now", data=data)
+    )
+    assert r.status_code == 200, r.text
+    assert _brief_line(data, 3) == (
+        "- [ ] **D1. Keep the sample default** (why). Alternative: the other way."
+        f" **DECLINED {_local_today()} (app)** not now"
+    )
+    body = _client().get("/api/decisions").json()
+    assert [b["number"] for b in body["open"]] == [2]
+    declined = next(b for b in body["recently_decided"] if b["number"] == 1)
+    assert declined["status"] == "declined" and declined["ticked"] is False
+    assert declined["decided_note"].startswith("**DECLINED")
+    # the Waiting list no longer counts it
+    assert asyncio.run(wr.build_waiting())["counts"]["decision"] == 1
+    # and it cannot be stamped again
+    again = _client().post("/api/decisions/decide", json=_decide("tick", data=data))
+    assert again.status_code == 409 and "declined" in again.json()["detail"]
+
+
+def test_defer_hides_the_box_until_its_date(wired, data):
+    until = (_local_today() + timedelta(days=7)).isoformat()
+    r = _client().post(
+        "/api/decisions/decide",
+        json=_decide("defer", until=until, note="after the run", data=data),
+    )
+    assert r.status_code == 200, r.text
+    assert _brief_line(data, 3).endswith(
+        f"**DEFERRED until {until} (app)** after the run"
+    )
+    assert _brief_line(data, 3).startswith("- [ ] ")
+    body = _client().get("/api/decisions").json()
+    assert [b["number"] for b in body["open"]] == [2]
+    assert [(b["number"], b["deferred_until"]) for b in body["deferred"]] == [
+        (1, until)
+    ]
+    assert not [
+        b
+        for b in body["recently_decided"]
+        if (b["file"], b["number"]) == ("sample/brief.md", 1)
+    ]
+    again = _client().post("/api/decisions/decide", json=_decide("decline", data=data))
+    assert again.status_code == 409 and until in again.json()["detail"]
+    # the day it falls due it is open again, and a second stamp settles it
+    due = wr.read_decisions(data, today=until)
+    d1 = next(b for b in due["open"] if b["number"] == 1)
+    assert d1["deferred_until"] == until and due["deferred"] == []
+    stamped = wr.stamp_line(_brief_line(data, 3) + "\r\n", "tick", until, "now")
+    assert stamped.startswith("- [x] ") and stamped.count("(app)**") == 2
+    assert wr._box(stamped)["status"] == "decided"
+    assert wr._box(stamped)["decided_note"].startswith("**DEFERRED until")
+
+
+@pytest.mark.parametrize("until", [None, "", "soon", "2026-13-01", "2020-01-01"])
+def test_defer_needs_a_later_date(wired, data, until):
+    r = _client().post(
+        "/api/decisions/decide", json=_decide("defer", until=until, data=data)
+    )
+    assert r.status_code == 400
+    assert b"DEFERRED" not in (data / "inbox" / "sample" / "brief.md").read_bytes()
+
+
+def test_defer_is_capped(wired, data):
+    far = (_local_today() + timedelta(days=91)).isoformat()
+    r = _client().post(
+        "/api/decisions/decide", json=_decide("defer", until=far, data=data)
+    )
+    assert r.status_code == 400 and "90" in r.json()["detail"]
+
+
+def test_decide_refuses_an_unknown_choice(wired, data):
+    r = _client().post("/api/decisions/decide", json=_decide("maybe", data=data))
+    assert r.status_code == 400
+
+
+def test_a_declined_box_in_the_archive_is_recently_decided(wired, data):
+    old = data / "archive" / "sample" / "old.md"
+    with old.open("a", encoding="utf-8") as fh:
+        fh.write("- [ ] **D7. Kept as is** x. **DECLINED 2026-01-03 (app)** no\n")
+    body = _client().get("/api/decisions").json()
+    row = next(b for b in body["recently_decided"] if b["number"] == 7)
+    assert row["archived"] and row["status"] == "declined"
+
+
+def test_stamp_line_forms():
+    nl = chr(10)
+    assert (
+        wr.stamp_line(f"- [ ] **D9. X** y{nl}", "decline", "2026-01-01", "")
+        == f"- [ ] **D9. X** y **DECLINED 2026-01-01 (app)**{nl}"
+    )
+    assert (
+        wr.stamp_line(
+            f"- [ ] **D9. X** y{nl}", "defer", "2026-01-01", "n", "2026-01-08"
+        )
+        == f"- [ ] **D9. X** y **DEFERRED until 2026-01-08 (app)** n{nl}"
+    )
+    with pytest.raises(ValueError):
+        wr.stamp_line(f"- [ ] **D9. X** y{nl}", "defer", "2026-01-01", "")
+    with pytest.raises(ValueError):
+        wr.stamp_line(f"- [ ] **D9. X** y{nl}", "shrug", "2026-01-01", "")
 
 
 def test_tick_box_without_config_is_404(monkeypatch):

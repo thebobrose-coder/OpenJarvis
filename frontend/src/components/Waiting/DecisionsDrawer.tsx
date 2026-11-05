@@ -4,15 +4,41 @@ import { X } from 'lucide-react';
 import { Chip, Quiet, SmallButton } from '../shared/ui';
 import { useWaiting } from '../../lib/WaitingContext';
 import { useAppStore } from '../../lib/store';
-import { NOTE_MAX, ago, fetchDecisions, tickDecision, type DecisionBox, type Decisions } from '../../lib/waiting-api';
+import {
+  DEFER_DAYS,
+  DEFER_DEFAULT,
+  NOTE_MAX,
+  ago,
+  decideDecision,
+  deferUntil,
+  fetchDecisions,
+  type DecisionBox,
+  type DecisionChoice,
+  type Decisions,
+} from '../../lib/waiting-api';
 
-export const DEFAULT_HINT = 'Unticked means the default: leaving it alone is a choice too.';
+export const DEFAULT_HINT = 'Unticked means the default. Keep default records that choice in the brief; Defer hides the box until a date.';
 
 const boxKey = (b: Pick<DecisionBox, 'file' | 'line'>) => `${b.file}:${b.line}`;
+
+/** One box's place in the two-click flow: idle, armed for one choice, posting, or done with one. */
+export type BoxState = 'idle' | 'posting' | `armed:${DecisionChoice}` | `done:${DecisionChoice}`;
+
+export const CHOICE_LABEL: Record<DecisionChoice, { confirm: string; done: string }> = {
+  tick: { confirm: 'Confirm tick', done: 'Ticked' },
+  decline: { confirm: 'Confirm: keep the default', done: 'Default kept' },
+  defer: { confirm: 'Confirm defer', done: 'Deferred' },
+};
 
 /** The open box a desk's `tick` card names (hq 0020 P2), by brief and number. */
 export function findCardBox(decisions: Decisions | null, file: string, box: number): DecisionBox | null {
   return decisions?.open.find((b) => b.file === file && b.number === box) ?? null;
+}
+
+/** "default kept" on a declined box, else the stamp text without its bold marks. */
+export function decidedLabel(b: Pick<DecisionBox, 'status' | 'decided_note'>): string {
+  const note = b.decided_note ? b.decided_note.replace(/\*\*/g, '') : '';
+  return b.status === 'declined' ? `default kept · ${note}` : note;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -30,19 +56,25 @@ function OpenBox({
   box,
   state,
   note,
+  days,
   onNote,
+  onDays,
   onArm,
-  onTick,
+  onDecide,
   fromDesk = false,
 }: {
   box: DecisionBox;
   fromDesk?: boolean;
-  state: 'idle' | 'armed' | 'posting' | 'done';
+  state: BoxState;
   note: string;
+  days: number;
   onNote: (note: string) => void;
-  onArm: (armed: boolean) => void;
-  onTick: () => void;
+  onDays: (days: number) => void;
+  onArm: (choice: DecisionChoice | null) => void;
+  onDecide: (choice: DecisionChoice) => void;
 }) {
+  const armed = state.startsWith('armed:') ? (state.slice('armed:'.length) as DecisionChoice) : null;
+  const done = state.startsWith('done:') ? (state.slice('done:'.length) as DecisionChoice) : null;
   return (
     <li
       id={fromDesk ? 'desk-card-box' : undefined}
@@ -52,7 +84,7 @@ function OpenBox({
     >
       {fromDesk && (
         <span role="note" className="text-[11px]" style={{ color: 'var(--color-accent)' }}>
-          A desk proposed this tick. Tick, then Confirm, to write it; or leave it.
+          A desk proposed this tick. Tick, then Confirm, to write it; or keep the default.
         </span>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
@@ -60,6 +92,7 @@ function OpenBox({
         <span className="text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
           {box.title}
         </span>
+        {box.deferred_until && <Chip tone="muted">deferred until {box.deferred_until}, due</Chip>}
       </div>
       <span className="font-medium text-[13px]" style={{ color: 'var(--color-text)' }}>
         D{box.number}. {box.decision}
@@ -85,8 +118,8 @@ function OpenBox({
           </pre>
         </details>
       )}
-      {state === 'done' ? (
-        <Chip tone="success">Ticked</Chip>
+      {done ? (
+        <Chip tone="success">{done === 'defer' ? `Deferred until ${deferUntil(days)}` : CHOICE_LABEL[done].done}</Chip>
       ) : (
         <div className="flex flex-wrap items-center gap-1.5">
           <input
@@ -100,15 +133,44 @@ function OpenBox({
             style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
           {state === 'idle' ? (
-            <SmallButton tone="accent" onClick={() => onArm(true)} title="Tick this box in the brief">
-              Tick D{box.number}
-            </SmallButton>
+            <>
+              <SmallButton tone="accent" onClick={() => onArm('tick')} title="Tick this box in the brief">
+                Tick D{box.number}
+              </SmallButton>
+              <SmallButton onClick={() => onArm('decline')} title="Leave the box unticked and record that the default is kept">
+                Keep default
+              </SmallButton>
+              <SmallButton onClick={() => onArm('defer')} title="Hide this box until a later date">
+                Defer…
+              </SmallButton>
+            </>
           ) : (
             <>
-              <SmallButton tone="success" disabled={state === 'posting'} onClick={onTick} title="Write the tick into the brief">
-                Confirm tick
+              {armed === 'defer' && (
+                <select
+                  value={days}
+                  onChange={(e) => onDays(Number(e.target.value))}
+                  aria-label={`Defer D${box.number} for`}
+                  disabled={state === 'posting'}
+                  className="rounded-md px-1.5 py-1 text-[12px]"
+                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                >
+                  {DEFER_DAYS.map((d) => (
+                    <option key={d} value={d}>
+                      {d} day{d === 1 ? '' : 's'} (to {deferUntil(d)})
+                    </option>
+                  ))}
+                </select>
+              )}
+              <SmallButton
+                tone="success"
+                disabled={state === 'posting'}
+                onClick={() => onDecide(armed ?? 'tick')}
+                title="Write this into the brief"
+              >
+                {CHOICE_LABEL[armed ?? 'tick'].confirm}
               </SmallButton>
-              <SmallButton disabled={state === 'posting'} onClick={() => onArm(false)}>
+              <SmallButton disabled={state === 'posting'} onClick={() => onArm(null)}>
                 Cancel
               </SmallButton>
             </>
@@ -121,9 +183,10 @@ function OpenBox({
 
 /**
  * The Decisions drawer's body (hq 0020 A5): the inbox briefs' open decision
- * boxes with their default and alternative as written, the briefs still
- * waiting on a session (read-only), and the recently decided boxes. Pure:
- * DecisionsDrawer passes the data and the tick in.
+ * boxes with their default and alternative as written, the boxes deferred to
+ * a later date, the briefs still waiting on a session (read-only), and the
+ * recently decided boxes. Pure: DecisionsDrawer passes the data and the
+ * write in.
  */
 export function DecisionsView({
   decisions,
@@ -131,11 +194,13 @@ export function DecisionsView({
   error,
   states,
   notes,
+  days = {},
   message,
   now,
   onNote,
+  onDays = () => {},
   onArm,
-  onTick,
+  onDecide,
   highlight = null,
 }: {
   decisions: Decisions | null;
@@ -143,15 +208,19 @@ export function DecisionsView({
   highlight?: string | null;
   loading: boolean;
   error: string | null;
-  states: Record<string, 'idle' | 'armed' | 'posting' | 'done'>;
+  states: Record<string, BoxState>;
   notes: Record<string, string>;
+  /** The defer length picked per box, in days (the default when absent). */
+  days?: Record<string, number>;
   message: string | null;
   now: number;
   onNote: (key: string, note: string) => void;
-  onArm: (key: string, armed: boolean) => void;
-  onTick: (box: DecisionBox) => void;
+  onDays?: (key: string, days: number) => void;
+  onArm: (key: string, choice: DecisionChoice | null) => void;
+  onDecide: (box: DecisionBox, choice: DecisionChoice) => void;
 }) {
   if (!decisions) return <Quiet>{loading ? 'Loading…' : error ?? 'Nothing to show.'}</Quiet>;
+  const deferred = decisions.deferred ?? [];
   return (
     <div className="flex flex-col gap-5">
       {message && (
@@ -170,15 +239,33 @@ export function DecisionsView({
                 box={b}
                 state={states[boxKey(b)] ?? 'idle'}
                 note={notes[boxKey(b)] ?? ''}
+                days={days[boxKey(b)] ?? DEFER_DEFAULT}
                 onNote={(n) => onNote(boxKey(b), n)}
-                onArm={(a) => onArm(boxKey(b), a)}
-                onTick={() => onTick(b)}
+                onDays={(d) => onDays(boxKey(b), d)}
+                onArm={(c) => onArm(boxKey(b), c)}
+                onDecide={(c) => onDecide(b, c)}
                 fromDesk={highlight === boxKey(b)}
               />
             ))}
           </ul>
         )}
       </Section>
+      {deferred.length > 0 && (
+        <Section title={`Deferred (${deferred.length})`}>
+          <ul className="flex flex-col gap-1">
+            {deferred.map((b) => (
+              <li key={boxKey(b)} className="flex flex-col">
+                <span style={{ color: 'var(--color-text)' }}>
+                  D{b.number}. {b.decision}
+                </span>
+                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  {b.folder} · {b.title} · back on {b.deferred_until}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
       <Section title={`Briefs waiting on a session (${decisions.waiting_briefs.length})`}>
         {decisions.waiting_briefs.length === 0 ? (
           <Quiet>Every inbox brief has its Result.</Quiet>
@@ -209,7 +296,7 @@ export function DecisionsView({
                 <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
                   {b.folder} · {b.title}
                   {b.archived ? ' · archived' : ''}
-                  {b.decided_note ? ` · ${b.decided_note.replace(/\*\*/g, '')}` : ''}
+                  {b.decided_note || b.status === 'declined' ? ` · ${decidedLabel(b)}` : ''}
                 </span>
               </li>
             ))}
@@ -220,15 +307,17 @@ export function DecisionsView({
   );
 }
 
-/** The drawer shell: loads /api/decisions when opened, ticks one box at a
- * time (with a confirm step), and refreshes the bell's list afterwards. */
+/** The drawer shell: loads /api/decisions when opened, writes one box at a
+ * time (tick, keep default or defer, each behind a confirm step), and
+ * refreshes the bell's list afterwards. */
 export function DecisionsDrawer() {
   const { decisionsOpen, setDecisionsOpen, refresh } = useWaiting();
   const [decisions, setDecisions] = useState<Decisions | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [states, setStates] = useState<Record<string, 'idle' | 'armed' | 'posting' | 'done'>>({});
+  const [states, setStates] = useState<Record<string, BoxState>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [days, setDays] = useState<Record<string, number>>({});
   const [message, setMessage] = useState<string | null>(null);
   // A desk's tick card: the box it names gets the card's note, and the
   // operator's own two clicks write it (hq 0020 P2).
@@ -288,15 +377,17 @@ export function DecisionsDrawer() {
 
   if (!decisionsOpen) return null;
 
-  const tick = async (box: DecisionBox) => {
+  const decide = async (box: DecisionBox, choice: DecisionChoice) => {
     const key = boxKey(box);
+    const until = choice === 'defer' ? deferUntil(days[key] ?? DEFER_DEFAULT) : undefined;
     setStates((s) => ({ ...s, [key]: 'posting' }));
     try {
-      await tickDecision(box, (notes[key] ?? '').trim());
-      setStates((s) => ({ ...s, [key]: 'done' }));
+      await decideDecision(box, choice, (notes[key] ?? '').trim(), until);
+      setStates((s) => ({ ...s, [key]: `done:${choice}` }));
       setMessage(null);
       if (card && cardBox && boxKey(cardBox) === key) {
-        addOutcome(card.thread, `Ticked D${box.number} on ${box.title}`);
+        const what = choice === 'tick' ? 'Ticked' : choice === 'decline' ? 'Kept the default on' : `Deferred to ${until}`;
+        addOutcome(card.thread, `${what} D${box.number} on ${box.title}`);
         setDeskHandoff(null);
       }
       void refresh();
@@ -330,11 +421,13 @@ export function DecisionsDrawer() {
           error={error}
           states={states}
           notes={notes}
+          days={days}
           message={message}
           now={Date.now()}
           onNote={(k, n) => setNotes((s) => ({ ...s, [k]: n }))}
-          onArm={(k, a) => setStates((s) => ({ ...s, [k]: a ? 'armed' : 'idle' }))}
-          onTick={(b) => void tick(b)}
+          onDays={(k, d) => setDays((s) => ({ ...s, [k]: d }))}
+          onArm={(k, c) => setStates((s) => ({ ...s, [k]: c ? `armed:${c}` : 'idle' }))}
+          onDecide={(b, c) => void decide(b, c)}
           highlight={cardBox ? boxKey(cardBox) : null}
         />
       </aside>
