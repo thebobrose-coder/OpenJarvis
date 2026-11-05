@@ -63,8 +63,9 @@ HERMES_KINDS = ("proposal", "thesis_prompt", "patch", "follow_up", "rec", "notic
 # v1.27 (hq 0026 D5): a company-site notice. The approvals item says which
 # kind only in its title, so the kind is read from Hermes's titles first and
 # from entity_watch's notices by id only for a title not listed here (the
-# Waiting poll then reads entity_watch only when it has to). The row opens the Company sites
-# card here (Hermes's page, /ops, has no view in OpenJarvis) and has no action.
+# Waiting poll then reads entity_watch only when it has to). The row opens the
+# Company sites card here (Hermes's page, /ops, has no view in OpenJarvis) and
+# has no action.
 NOTICE_KINDS = ("serve_failed", "privacy_changed", "last_modified_changed")
 NOTICE_TITLES = {
     "Company site not serving": "serve_failed",
@@ -705,9 +706,9 @@ def notice_rows(
 
 def _hermes_lanes(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Hermes's items with the v1.22 fields always present, ``delegate`` only on
-    the delegate lane. The v1.22 default (``act`` for a feed with no ``lane``) is gone: Hermes sends
-    a lane on every item at v1.28.1, and the only copy the proxy can serve is
-    one this process read from that bridge."""
+    the delegate lane. The v1.22 default (``act`` for a feed with no ``lane``)
+    is gone: Hermes sends a lane on every item at v1.28.1, and the only copy
+    the proxy can serve is one this process read from that bridge."""
     out = []
     for item in items:
         lane = item.get("lane")
