@@ -56,6 +56,10 @@ FEEDS = frozenset(
         "content_performance",
         "content_health",
         "content_winners",
+        # v1.29 (hq 0028 Part 3): the channels' last 28 days and the spark
+        # pick, read-only for the panel. GET only, no refresh; no desk turn
+        # reads it (0028 A2.3).
+        "youtube_performance",
     }
 )
 PROPOSAL_ACTIONS = frozenset({"approve", "reject"})

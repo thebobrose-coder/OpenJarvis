@@ -62,7 +62,8 @@ export function ContentPage() {
     if (!focus) return undefined;
     setProperty(ALL_PROPERTIES);
     if (isEpisodeId(focus)) openEpisode(focus);
-    return scrollToWhenReady([`proposal-${focus}`, `prompt-${focus}`, `episode-${focus}`]);
+    // v1.29: a spark row's focus is the block's own id (`spark-<flight>`).
+    return scrollToWhenReady([`proposal-${focus}`, `prompt-${focus}`, `episode-${focus}`, focus]);
   }, [focus, location.key, openEpisode]);
 
   return (

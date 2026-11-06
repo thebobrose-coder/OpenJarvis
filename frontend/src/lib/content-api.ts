@@ -441,12 +441,70 @@ export interface ContentWinners extends FeedMeta {
   errors?: unknown;
 }
 
+// -- youtube_performance (v1.29, hq 0028 Part 3): read-only panel feed --------
+
+export interface YouTubeVideo {
+  video_id: string;
+  title: string;
+  /** `short` or `long`, by `kind_source` (the duration rule today). */
+  kind: 'short' | 'long' | string;
+  kind_source?: string;
+  published_at: string;
+  duration_s: number | null;
+  views: number | null;
+  avg_view_duration_s: number | null;
+  avg_view_pct: number | null;
+  last_28d?: { views: number | null; avg_view_duration_s: number | null; avg_view_pct: number | null } | null;
+  traffic_sources?: { source: string; views: number }[] | null;
+  /** A Short whose description links its full episode on the same channel. */
+  episode_video_id?: string | null;
+  /** v1.29.1 (0028 A2): the studio episode and beat, once Hermes reads `_data\studio`. */
+  episode_id?: string | null;
+  beat?: number | null;
+}
+
+export interface YouTubeChannel {
+  property: string;
+  channel_id?: string;
+  channel_title?: string;
+  kind_rule?: string;
+  error?: string | null;
+  videos: YouTubeVideo[];
+}
+
+export interface SparkCandidate {
+  video_id: string;
+  title: string;
+  published_at?: string;
+  views: number | null;
+  avg_view_pct: number | null;
+  avg_view_duration_s?: number | null;
+}
+
+export interface Spark {
+  flight: string;
+  rule?: string;
+  candidates: SparkCandidate[];
+  /** A video id: a recommendation; the swap is the operator's, in Google Ads. */
+  pick?: string | null;
+  reason: string;
+}
+
+export interface YouTubePerformance extends FeedMeta {
+  run_at: string;
+  quota?: { used_today: number; cap: number; stopped: boolean } | null;
+  channels: YouTubeChannel[];
+  spark: Spark[];
+  not_available?: string[];
+}
+
 export interface ContentFeeds {
   content_seedbank: ContentSeedbank;
   content_proposals: ContentProposals;
   content_performance: ContentPerformance;
   content_health: ContentHealth;
   content_winners: ContentWinners;
+  youtube_performance: YouTubePerformance;
 }
 
 export type ContentFeedName = keyof ContentFeeds;
@@ -456,6 +514,7 @@ export const CONTENT_FEEDS: ContentFeedName[] = [
   'content_performance',
   'content_health',
   'content_winners',
+  'youtube_performance',
 ];
 
 /** The operator's edits on approval; only changed fields are sent. */

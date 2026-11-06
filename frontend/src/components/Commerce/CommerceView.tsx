@@ -13,6 +13,7 @@ import { MerchantPanel } from './MerchantPanel';
 import { ProductsTable } from './ProductsTable';
 import { RecommendationsQueue } from './RecommendationsQueue';
 import { SeoHealthPanel } from './SeoHealthPanel';
+import { SpendLedgerPanel } from './SpendLedgerPanel';
 import { Segmented } from '../shared/ui';
 import type { CatalogFixesState } from '../../hooks/useCatalogFixes';
 import { FixesTab, waitingCount } from './fixes/FixesTab';
@@ -128,7 +129,8 @@ export function CommerceView({
     }
     if (focus?.rec) {
       setTab('overview');
-      return scrollToWhenReady([`rec-${focus.rec}`]);
+      // A rec, or a block by its own id (a v1.29 spend_cap row: `spend-<line>`).
+      return scrollToWhenReady([`rec-${focus.rec}`, focus.rec]);
     }
     return undefined;
     // Once per navigation: not on every fixes poll.
@@ -283,6 +285,10 @@ export function CommerceView({
               loading={feeds.merchant_status.loading}
               error={feeds.merchant_status.error}
             />
+          </div>
+
+          <div className="grid grid-cols-12 gap-4 mb-4">
+            <SpendLedgerPanel ledger={feeds.spend_ledger?.data ?? null} loading={feeds.spend_ledger?.loading} error={feeds.spend_ledger?.error} />
           </div>
 
           <div id="commerce-compliance" className="grid grid-cols-12 gap-4 mb-10">

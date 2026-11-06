@@ -1056,3 +1056,62 @@ def test_a_box_whose_bold_holds_only_the_number(line, decision, default):
         None,
     )
     assert box["text"].startswith("** ")
+
+
+# -- v1.29: spend_cap and spark ------------------------------------------------
+
+
+def _ledger_item(kind: str, iid: str, scope: str | None, page: str = "/ops") -> dict:
+    return {
+        "kind": kind,
+        "id": iid,
+        "source_feed": "spend_ledger" if kind == "spend_cap" else "youtube_performance",
+        "scope": scope,
+        "title": "A sample alert",
+        "detail": None,
+        "created_at": _iso(NOW),
+        "due": None,
+        "priority": None,
+        "link": {"page": page, "focus": iid},
+        "lane": "act",
+        "delegate": None,
+    }
+
+
+def test_spend_cap_and_spark_rows_open_their_blocks_here(wired):
+    doc = _approvals()
+    doc["counts"].update({"spend_cap": 1, "spark": 1})
+    doc["items"] += [
+        _ledger_item(
+            "spend_cap", "spend_cap:aws-total:2026-01:studio_paused", "aws-total"
+        ),
+        _ledger_item("spark", "spark:flight-a:vid123", "flight-a"),
+    ]
+    wired["approvals"] = doc
+    body = _client().get("/api/waiting").json()
+    assert body["counts"]["spend_cap"] == 1 and body["counts"]["spark"] == 1
+    rows = {r["kind"]: r for r in body["items"] if r["kind"] in ("spend_cap", "spark")}
+    assert rows["spend_cap"]["link"] == {
+        "page": "/commerce",
+        "focus": "spend-aws-total",
+    }
+    assert rows["spark"]["link"] == {"page": "/content", "focus": "spark-flight-a"}
+    assert rows["spend_cap"]["hermes_page"] == "/ops"
+
+
+def test_a_page_openjarvis_serves_is_kept(wired):
+    doc = _approvals()
+    doc["items"] += [_ledger_item("spend_cap", "x", "aws-total", page="/commerce")]
+    wired["approvals"] = doc
+    body = _client().get("/api/waiting").json()
+    row = next(r for r in body["items"] if r["kind"] == "spend_cap")
+    assert row["link"] == {"page": "/commerce", "focus": "x"}
+    assert "hermes_page" not in row
+
+
+def test_ledger_links_leave_other_kinds_alone():
+    item = _ledger_item("spend_cap", "x", None)
+    other = {**item, "kind": "notice"}
+    out = wr.ledger_links([item, other])
+    assert out[0]["link"]["focus"] == "spend-block"
+    assert out[1] == other

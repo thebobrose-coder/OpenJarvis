@@ -465,7 +465,7 @@ describe('FixesTab', () => {
   it('puts a Fixes tab with the waiting count beside the overview', () => {
     const empty = { data: null, loading: false, error: null };
     const feeds = Object.fromEntries(
-      ['ecom_daily', 'ecom_products', 'ecom_seo_health', 'ecom_briefing', 'ecom_recommendations', 'compliance_findings', 'merchant_status'].map((f) => [f, empty]),
+      ['ecom_daily', 'ecom_products', 'ecom_seo_health', 'ecom_briefing', 'ecom_recommendations', 'compliance_findings', 'merchant_status', 'spend_ledger'].map((f) => [f, empty]),
     ) as unknown as FeedStates;
     const fixes: FixesProps = {
       data: feed([patch(ids(1), 'proposed'), patch(ids(2), 'invalid'), patch(ids(3), 'rejected')]),

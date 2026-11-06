@@ -17,6 +17,7 @@ import { SeedComposer, draftFromPrompt, emptyDraft, episodeDraftFromPrompt, prom
 import { ThesisLane } from './ThesisLane';
 import { ThesisPrompts } from './ThesisPrompts';
 import { WinnersPanel } from './WinnersPanel';
+import { YouTubePanel } from './YouTubePanel';
 
 export interface ContentViewProps {
   feeds: ContentFeedStates;
@@ -218,6 +219,17 @@ export function ContentView(props: ContentViewProps) {
           />
         </div>
       )}
+
+      {/* v1.29: the channels' last 28 days and the spark pick (read only). */}
+      <div className="grid grid-cols-12 gap-4 mb-4">
+        <YouTubePanel
+          feed={feeds.youtube_performance?.data ?? null}
+          selectedProperty={selected}
+          now={props.now ?? Date.now()}
+          loading={feeds.youtube_performance?.loading}
+          error={feeds.youtube_performance?.error}
+        />
+      </div>
 
       <div className="grid grid-cols-12 gap-4 mb-4 items-start">
         <ProposalsQueue

@@ -105,6 +105,7 @@ function feeds(over: Partial<ContentFeedStates> = {}): ContentFeedStates {
     content_performance: s(PERFORMANCE_EMPTY),
     content_health: s(HEALTH),
     content_winners: s(null),
+    youtube_performance: s(null),
     ...over,
   };
 }

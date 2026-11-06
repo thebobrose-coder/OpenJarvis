@@ -163,6 +163,7 @@ def test_refresh_passes_allowed_flags_through(feed):
         "compliance_findings",
         "merchant_status",
         "entity_watch",
+        "spend_ledger",
         "x",
     ],
 )

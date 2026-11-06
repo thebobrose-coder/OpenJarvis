@@ -61,7 +61,21 @@ WORKORDER_DAYS = 7
 DECIDED_DAYS = 14
 DECIDED_MAX = 30
 NOTE_MAX = 500
-HERMES_KINDS = ("proposal", "thesis_prompt", "patch", "follow_up", "rec", "notice")
+HERMES_KINDS = (
+    "proposal",
+    "thesis_prompt",
+    "patch",
+    "follow_up",
+    "rec",
+    "notice",
+    "spend_cap",
+    "spark",
+)
+# v1.29 (hq 0028): a spend_cap item opens its line in the Commerce page's spend
+# ledger, a spark item the Content page's spark block. Hermes links both to
+# its own /ops, which has no view here; a page OpenJarvis serves is kept.
+OWN_PAGES = ("/content", "/commerce", "/bizdev", "/trading", "/dashboard")
+LEDGER_LINKS = {"spend_cap": "/commerce", "spark": "/content"}
 # v1.27 (hq 0026 D5): a company-site notice. The approvals item says which
 # kind only in its title, so the kind is read from Hermes's titles first and
 # from entity_watch's notices by id only for a title not listed here (the
@@ -837,6 +851,34 @@ def notice_rows(
     return out
 
 
+def ledger_links(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """v1.29: point a ``spend_cap`` row at its ledger line on /commerce
+    (``spend-<line>``) and a ``spark`` row at its flight's spark block on
+    /content (``spark-<flight>``), when Hermes's page is not one of ours.
+    Hermes's own page stays in ``hermes_page``. Other kinds pass through."""
+    out = []
+    for item in items:
+        page = LEDGER_LINKS.get(str(item.get("kind")))
+        link = item.get("link") if isinstance(item.get("link"), dict) else {}
+        theirs = str(link.get("page") or "")
+        if page is None or theirs.split("#")[0].split("?")[0] in OWN_PAGES:
+            out.append(item)
+            continue
+        prefix = "spend" if item["kind"] == "spend_cap" else "spark"
+        scope = item.get("scope")
+        out.append(
+            {
+                **item,
+                "link": {
+                    "page": page,
+                    "focus": f"{prefix}-{scope}" if scope else f"{prefix}-block",
+                },
+                "hermes_page": theirs or None,
+            }
+        )
+    return out
+
+
 def _hermes_lanes(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Hermes's items with the v1.22 fields always present, ``delegate`` only on
     the delegate lane. The v1.22 default (``act`` for a feed with no ``lane``)
@@ -882,8 +924,8 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
         for k in HERMES_KINDS:
             counts[k] = int(hc.get(k) or 0)
         counts["patch_class"] = int(hc.get("patch_class") or 0)
-        rows = _hermes_lanes(
-            [i for i in hermes.get("items") or [] if isinstance(i, dict)]
+        rows = ledger_links(
+            _hermes_lanes([i for i in hermes.get("items") or [] if isinstance(i, dict)])
         )
         if any(
             r.get("kind") == "notice" and r.get("title") not in NOTICE_TITLES

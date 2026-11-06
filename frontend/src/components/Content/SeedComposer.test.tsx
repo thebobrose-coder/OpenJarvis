@@ -307,6 +307,7 @@ function view(over: Partial<ContentViewProps> = {}) {
     content_performance: s(null),
     content_health: s(null),
     content_winners: s(null),
+    youtube_performance: s(null),
   };
   return renderToStaticMarkup(
     <ContentView

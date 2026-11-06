@@ -48,6 +48,9 @@ FEEDS = frozenset(
         # v1.27 (hq 0026 D5): the company-site watch, read-only. GET only, for
         # the Company sites card; its refresh is refused (not in REFRESHABLE).
         "entity_watch",
+        # v1.29 (hq 0028 Part 6): the operator's spend ledger with its actuals,
+        # read-only. GET only: Hermes has no refresh route for it.
+        "spend_ledger",
     }
 )
 # Refresh flags the bridge accepts for the ecom feeds (v0.6.1): the three

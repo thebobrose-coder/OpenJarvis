@@ -28,7 +28,9 @@ export type WaitingKind =
   | 'x402'
   | 'workorder'
   | 'g1'
-  | 'notice';
+  | 'notice'
+  | 'spend_cap'
+  | 'spark';
 
 export interface WaitingItem {
   kind: WaitingKind | (string & {});
@@ -57,6 +59,9 @@ export interface WaitingItem {
   fix?: boolean;
   /** v1.23: the newest patch addressing the rec ("patch ready"). */
   fix_patch_id?: string | null;
+  /** v1.29: Hermes's own page when the server pointed a spend_cap or spark
+   * row at its block here instead (Hermes links both to /ops). */
+  hermes_page?: string | null;
   /** v1.23, `patch_class` only: the evidence Dispatch writes into the order. */
   examples?: PatchExample[];
 }
@@ -157,6 +162,7 @@ export const SOURCE_STALE_S = 30 * 60;
 /** The groups, in the order the bell and the panel show them. */
 export const KIND_ORDER: WaitingKind[] = [
   'x402',
+  'spend_cap',
   'g1',
   'decision',
   'g0',
@@ -166,6 +172,7 @@ export const KIND_ORDER: WaitingKind[] = [
   'patch',
   'patch_class',
   'rec',
+  'spark',
   'notice',
   'workorder',
 ];
@@ -182,6 +189,8 @@ export const KIND_LABEL: Record<string, string> = {
   patch_class: 'Invalid patches, by class',
   rec: 'Store recommendations',
   notice: 'Company sites',
+  spend_cap: 'Spend caps',
+  spark: 'Spark swap (Google Ads)',
   workorder: 'Work orders',
 };
 
@@ -197,6 +206,8 @@ export const SOURCE_LABEL: Record<string, string> = {
   bd_pipeline: 'BD pipeline',
   ecom_recommendations: 'Recommendations',
   entity_watch: 'Company sites',
+  spend_ledger: 'Spend ledger',
+  youtube_performance: 'YouTube',
 };
 
 export class WaitingError extends ApiError {}

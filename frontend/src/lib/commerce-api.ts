@@ -379,6 +379,70 @@ export interface AdsHold {
   flights: Record<string, AdsHoldFlight>;
 }
 
+// -- spend_ledger (v1.29, hq 0028 Part 6 and A1): read-only, never a write ----
+
+/** `ok` neutral, `warn` amber, `at_cap` red; `untracked` and `not_read` muted, word shown. */
+export type SpendStatus = 'ok' | 'warn' | 'at_cap' | 'untracked' | 'not_read';
+
+export interface SpendLine {
+  id: string;
+  scope?: string;
+  cap: number | null;
+  unit: string;
+  /** flight, month, day, episode, … */
+  period: string;
+  actual: number | null;
+  pct: number | null;
+  enforced?: string;
+  status: SpendStatus | string;
+  /** Why Hermes can't read the line (on `not_read`). */
+  not_read?: string | null;
+  /** `campaign_cap`: the ads lines' alerts come from campaign_daily, not spend_cap. */
+  alerts?: string | null;
+  /** v1.29.1 (0028 A2): the episode lines may name their top episode. */
+  top_episode?: string | null;
+  [key: string]: unknown;
+}
+
+export interface SpendAlert {
+  kind: 'spend_cap' | string;
+  line: string;
+  level: 80 | 100 | number | null;
+  pct: number | null;
+  severity?: string;
+  lane: 'act' | 'fyi' | string;
+  period: string;
+  action?: 'studio_paused' | 'budget_filter' | string;
+  paused?: string[];
+  message: string;
+  raised_at: string;
+}
+
+export interface CostReader {
+  configured: boolean;
+  read_at?: string | null;
+  month?: string | null;
+  total?: number | null;
+  bedrock?: number | null;
+  forecast_total?: number | null;
+  forecast_bedrock?: number | null;
+  bedrock_services?: string[];
+  calls_today?: number | null;
+  calls_month?: number | null;
+  error?: string | null;
+}
+
+export interface SpendLedger extends FeedMeta {
+  run_at: string;
+  ledger_mtime?: string | null;
+  status: 'ok' | 'no_ledger' | string;
+  lines: SpendLine[];
+  parse_errors: string[];
+  alerts: SpendAlert[];
+  new_alerts?: number;
+  cost_reader?: CostReader | null;
+}
+
 // -- calls --------------------------------------------------------------------
 
 export interface CommerceFeeds {
@@ -389,6 +453,7 @@ export interface CommerceFeeds {
   ecom_recommendations: EcomRecommendations;
   compliance_findings: ComplianceFindings;
   merchant_status: MerchantStatus;
+  spend_ledger: SpendLedger;
 }
 
 export type FeedName = keyof CommerceFeeds;
@@ -401,6 +466,7 @@ export const FEED_NAMES: FeedName[] = [
   'ecom_recommendations',
   'compliance_findings',
   'merchant_status',
+  'spend_ledger',
 ];
 
 export type RefreshTarget =

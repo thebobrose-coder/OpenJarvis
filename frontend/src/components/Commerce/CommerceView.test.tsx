@@ -215,6 +215,7 @@ function feeds(over: Partial<FeedStates> = {}): FeedStates {
     ecom_recommendations: state(LEDGER),
     compliance_findings: state(COMPLIANCE),
     merchant_status: state(null),
+    spend_ledger: state(null),
     ...over,
   };
 }

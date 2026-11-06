@@ -560,6 +560,30 @@ new widget. No Trading desk (P3 D1).
   exit with a CLI error says why. A clean plain check now says that claims and
   promises are judged only by "Check with judge".
 
+**Spend ledger and YouTube performance** (contract v1.29 §4.8, §4.9, §10.1; hq
+0028). Two read-only Hermes feeds, GET only through the bridge (no refresh, no
+write route).
+- **Spend ledger** (Commerce page): one tile per line of the operator's ledger,
+  grouped by period, with actual / cap, the percentage and the status (`ok`
+  neutral, `warn` amber, `at_cap` red, `untracked` and `not_read` muted with
+  the word and the `not_read` reason). Parse errors show on one line at the
+  top. The cost reader's month to date and forecast sit under the AWS lines,
+  with its error in amber or "cost reader not configured". The current alerts
+  are listed; a studio pause is red and names the paused properties and the
+  flag folder. The tile says the ledger is the operator's file in hq.
+- **YouTube** (Content page, under Episodes): per channel, the last 28 days'
+  uploads with long-form and Shorts apart (views, average viewed, average
+  duration), the `kind_rule` in small print and a channel error in amber, with
+  the authorize hint on a token error. A Short shows its studio episode and
+  beat when the feed carries them, else links to its full episode's row. The
+  spark block ranks the candidates and marks the pick, or shows the reason.
+  The quota line and what YouTube doesn't expose are in small print. No desk
+  turn reads this feed.
+- **Waiting on you:** the `spend_cap` and `spark` kinds get labels. Hermes links
+  both to `/ops`, which has no view here, so `/api/waiting` points them at the
+  ledger line (`/commerce?focus=spend-<line>`) and the spark block
+  (`/content?focus=spark-<flight>`) and keeps Hermes's page in `hermes_page`.
+
 **Episodes: canon claims, the Link action and per-beat Shorts** (foundry-studio
 v0.5, hq 0022 A1 F3–F4).
 - **Canon claims:** a `claims.json` item of `kind: "canon"` cites
