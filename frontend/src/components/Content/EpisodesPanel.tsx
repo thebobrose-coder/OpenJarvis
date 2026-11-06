@@ -1,4 +1,4 @@
-import { Clapperboard, Pause, Play, PlayCircle, RotateCcw, Undo2, X } from 'lucide-react';
+import { Clapperboard, Link2, Pause, Play, PlayCircle, RotateCcw, Undo2, X } from 'lucide-react';
 import type { EpisodeAction, EpisodeSummary, HeldSeed, QueuedSeed, StudioSpend, StudioStatus } from '../../lib/studio-api';
 import { ago } from '../../lib/waiting-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
@@ -11,7 +11,7 @@ export type RunStatus = 'idle' | 'running' | 'started' | 'ran_recently' | 'error
 /** Open an episode's drawer, armed with an action's confirm when one is given (v0.4.5). */
 export type OpenEpisode = (id: string, action?: EpisodeAction) => void;
 
-const ACTION_ICON: Record<EpisodeAction, typeof RotateCcw> = { retry: RotateCcw, reject: X, requeue: Undo2 };
+const ACTION_ICON: Record<EpisodeAction, typeof RotateCcw> = { retry: RotateCcw, reject: X, requeue: Undo2, link: Link2 };
 
 function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
@@ -247,6 +247,11 @@ export function EpisodesPanel({
                     </span>
                     {(showProperty || channel?.channelName) && <Chip tone="accent">{lane.propertyId}</Chip>}
                     {paused && <Chip tone="warning">paused</Chip>}
+                    {paused && status.pauseReasons?.[lane.propertyId] && (
+                      <span className="text-[11px] truncate min-w-0" style={{ color: 'var(--color-warning)' }} title="The pause flag's first line" data-pause-reason>
+                        {status.pauseReasons[lane.propertyId]}
+                      </span>
+                    )}
                     <span className="flex-1" />
                     <SmallButton
                       onClick={() => onPause(lane.propertyId, !paused)}

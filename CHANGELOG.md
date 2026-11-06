@@ -560,6 +560,30 @@ new widget. No Trading desk (P3 D1).
   exit with a CLI error says why. A clean plain check now says that claims and
   promises are judged only by "Check with judge".
 
+**Episodes: canon claims, the Link action and per-beat Shorts** (foundry-studio
+v0.5, hq 0022 A1 F3–F4).
+- **Canon claims:** a `claims.json` item of `kind: "canon"` cites
+  `canon:<repo path>[#heading]`. The G0 drawer gives it a "canon" chip and
+  shows the path as text (no link, never "unsourced"); an edit changes its text
+  only. The script route accepts the kind and keeps it, provided the source is
+  one of the episode's own canon sources. Before this, any claim edit on a lore
+  episode was refused. The header lists the manifest's `canonSources` muted,
+  and a canon entry in the source-copy list is named as text.
+- **Link full episode:** `POST /api/studio/episodes/{id}/action` takes
+  `{action: "link", url}` on a published episode whose `manifest.shorts[]` is
+  non-empty and not yet linked. The URL must match the studio's own rule (a
+  youtube.com watch or youtu.be link); a `/shorts/` URL is refused on the page
+  and on the server. It sits behind the same confirm as the other actions.
+- **Retry on a published episode** is offered when any Short is `failed`; the
+  studio resends the held Shorts.
+- **Shorts in the episode detail:** one row per `manifest.shorts[]` entry with
+  the beat, heading, state as written, length, attempt and run name
+  (`<property>-episode-<id>-short-<beat>`); a failed one reads "failed, use
+  Retry on the episode". The linked `episodeUrl` shows as a link. The media
+  allowlist adds `shorts/*`, so each Short and its end card preview inline.
+- **Pause reasons:** `GET /api/studio/status` adds `pauseReasons`, the flag
+  file's first line, which the lane card shows beside "paused".
+
 **Decisions drawer: Keep default and Defer** (hq 0020 A5, amended). The
 drawer had one action, the tick, so "no" meant leaving the box listed as open
 with nothing to show that the operator had looked. Each open box now carries

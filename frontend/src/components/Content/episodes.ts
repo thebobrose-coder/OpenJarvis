@@ -47,19 +47,63 @@ const WITH_PIPELINE = new Set(['scanning', 'at-g1', 'publishing']);
  * or stopped episode whose seed is still held. `hint` says why Reject is
  * missing while the pipeline has the episode.
  */
-export function actionsFor(ep: { stage: string; seedHeld: boolean }): { actions: EpisodeAction[]; hint: string | null } {
+export function actionsFor(ep: {
+  stage: string;
+  seedHeld: boolean;
+  shortStates?: string[] | null;
+  episodeUrl?: string | null;
+}): { actions: EpisodeAction[]; hint: string | null } {
   const actions: EpisodeAction[] = [];
-  if (ep.stage === 'stopped') actions.push('retry');
+  const shorts = ep.shortStates ?? [];
+  const published = ep.stage === 'published';
+  // v0.5: Retry on a published episode resends its failed Shorts.
+  if (ep.stage === 'stopped' || (published && shorts.includes('failed'))) actions.push('retry');
   if (PRE_PIPELINE.has(ep.stage) || ep.stage === 'stopped') actions.push('reject');
   if ((ep.stage === 'rejected' || ep.stage === 'stopped') && ep.seedHeld) actions.push('requeue');
+  // v0.5: a published episode with Short beats waits for its own URL.
+  if (published && shorts.length > 0 && !ep.episodeUrl) actions.push('link');
   return { actions, hint: WITH_PIPELINE.has(ep.stage) ? 'The pipeline has this episode: reject it at G1.' : null };
 }
 
-export const ACTION_LABEL: Record<EpisodeAction, string> = { retry: 'Retry', reject: 'Reject', requeue: 'Requeue seed' };
+export const ACTION_LABEL: Record<EpisodeAction, string> = { retry: 'Retry', reject: 'Reject', requeue: 'Requeue seed', link: 'Link full episode' };
+
+/**
+ * The full episode's URL as the studio accepts it (v0.5 `EPISODE_URL_RE`): a
+ * youtube.com watch link or a youtu.be link. A Shorts URL is refused.
+ */
+const EPISODE_URL = /^https:\/\/(?:(?:www\.)?youtube\.com\/watch\?v=|youtu\.be\/)[A-Za-z0-9_-]{6,}(?:[&?#].*)?$/;
+
+/** Why the Link field can't be sent yet, or null when it can. */
+export function linkProblem(url: string): string | null {
+  const u = url.trim();
+  if (!u) return 'Paste the full episode’s YouTube URL.';
+  if (u.includes('/shorts/')) return 'That is a Shorts URL: link the full episode’s watch or youtu.be URL.';
+  if (!EPISODE_URL.test(u) || u.length > 500) return 'Only a youtube.com/watch?v=… or youtu.be/… URL.';
+  return null;
+}
+
+/** A canon source (v0.5): a repo path the studio read, shown as text, never fetched. */
+export const isCanonSource = (source: string | null | undefined) => !!source && source.startsWith('canon:');
+export const canonPath = (source: string) => source.replace(/^canon:/, '');
+
+/** A per-beat Short's state chip (v0.5 `manifest.shorts[].state`), shown as written. */
+export const SHORT_TONE: Record<string, Tone> = {
+  pending: 'muted',
+  submitted: 'accent',
+  'at-g1': 'warning',
+  published: 'success',
+  rejected: 'muted',
+  failed: 'error',
+};
+
+/** The Short's pipeline run name: `<property>-episode-<id>-short-<beat>`. */
+export const shortRunName = (propertyId: string, episodeId: string, beat: number) => `${propertyId}-episode-${episodeId}-short-${beat}`;
 
 /** The one-line confirm for an action, naming what the studio will do on its next run. */
 export function actionConfirm(action: EpisodeAction, ep: { stage: string; stoppedReason?: string | null }): string {
   const stopped = ep.stoppedReason ? ` (${ep.stoppedReason})` : '';
+  if (action === 'link') return 'Record this as the full episode’s URL? The studio starts cutting its Shorts on its next run, one at a time, each to G1.';
+  if (action === 'retry' && ep.stage === 'published') return 'Send the failed Shorts again? The studio puts them back to pending on its next run.';
   if (action === 'retry') return `Retry from the stage that failed${stopped}? The studio resumes it on its next run.`;
   if (action === 'reject') return `Reject this episode${ep.stage === 'stopped' ? stopped : ''}? It ends here; the seed stays claimed until you requeue it.`;
   return `${ep.stage === 'stopped' ? 'Reject this episode first, then send' : 'Send'} the topic back to its lane? The studio builds it again from the plan stage.`;
@@ -69,7 +113,7 @@ export function actionConfirm(action: EpisodeAction, ep: { stage: string; stoppe
 export function actionOutcome(m: Pick<Manifest, 'stages'>): { note: string; refused: boolean } | null {
   const stages = m.stages ?? [];
   const note = stages[stages.length - 1]?.note ?? '';
-  if (!/^(retried\b|operator reject at |seed requeued\b|action \w+ refused\b)/i.test(note)) return null;
+  if (!/^(retried\b|operator reject at |seed requeued\b|action \w+ refused\b|episode link recorded\b|retry: \d+ failed Short)/i.test(note)) return null;
   return { note, refused: /^action \w+ refused/i.test(note) };
 }
 

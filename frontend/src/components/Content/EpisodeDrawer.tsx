@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Film, PlayCircle, RotateCcw, Save, Undo2, X } from 'lucide-react';
+import { Check, Film, Link2, PlayCircle, RotateCcw, Save, Undo2, X } from 'lucide-react';
 import {
   ACTION_NOTE_MAX,
   G0_NOTE_MAX,
@@ -14,6 +14,7 @@ import {
   type Plan,
   type PlanBeat,
   type PublishFile,
+  type ShortEntry,
   type SourceCopyHit,
 } from '../../lib/studio-api';
 import { ago } from '../../lib/waiting-api';
@@ -25,17 +26,22 @@ import {
   actionsFor,
   beatMarks,
   beatVisual,
+  canonPath,
   fmtBytes,
   fmtDuration,
   fmtMinutes,
   fmtUsd,
   g0Body,
   g0Notes,
+  isCanonSource,
+  linkProblem,
   needsRuling,
   parseTags,
   publishEditable,
   publishProblems,
   scriptSections,
+  SHORT_TONE,
+  shortRunName,
   stageInfo,
   stageNotes,
   untilRun,
@@ -53,8 +59,8 @@ export interface EpisodeActions {
   onSaveScript: (edit: { script?: string; claims?: Claim[] }) => Promise<void>;
   onG0: (body: G0Body) => Promise<G0File>;
   onSavePublish: (body: PublishFile) => Promise<void>;
-  /** v0.4.5: write action.json (retry, reject, requeue); the page reloads the episode. */
-  onAction: (body: { action: EpisodeAction; note?: string }) => Promise<ActionFile>;
+  /** v0.4.5: write action.json (retry, reject, requeue; v0.5 link with `url`); the page reloads the episode. */
+  onAction: (body: { action: EpisodeAction; note?: string; url?: string }) => Promise<ActionFile>;
   /** A media file of this episode as an object URL (the caller revokes it on close). */
   loadMedia: (name: string) => Promise<string>;
 }
@@ -66,7 +72,7 @@ export interface RunControl {
   availableAt: number | null;
 }
 
-const ACTION_ICON: Record<EpisodeAction, typeof RotateCcw> = { retry: RotateCcw, reject: X, requeue: Undo2 };
+const ACTION_ICON: Record<EpisodeAction, typeof RotateCcw> = { retry: RotateCcw, reject: X, requeue: Undo2, link: Link2 };
 
 /**
  * The operator's episode actions (foundry-studio.md v0.4.5): Retry on a
@@ -97,23 +103,28 @@ export function EpisodeActionsBar({
   const m = detail.manifest;
   const [arm, setArm] = useState<EpisodeAction | null>(initialAction);
   const [note, setNote] = useState('');
+  const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [sent, setSent] = useState<ActionFile | null>(null);
   const atG0 = m.stage === 'awaiting-g0' && !detail.g0Pending;
-  const offered = actionsFor(ep).actions.filter((a) => !(atG0 && a === 'reject'));
-  const hint = actionsFor(ep).hint;
+  // The manifest is the fuller read; the summary carries the same v0.5 keys.
+  const state = { ...ep, shortStates: m.shorts ? m.shorts.map((s) => s.state) : ep.shortStates, episodeUrl: m.episodeUrl ?? ep.episodeUrl };
+  const offered = actionsFor(state).actions.filter((a) => !(atG0 && a === 'reject'));
+  const hint = actionsFor(state).hint;
   const pending = detail.summary.actionPending ?? sent;
   const outcome = pending ? null : actionOutcome(m);
   const armed = arm && offered.includes(arm) ? arm : null;
+  const urlProblem = armed === 'link' ? linkProblem(url) : null;
 
   const send = async (action: EpisodeAction) => {
     setBusy(true);
     setMessage(null);
     try {
-      setSent(await actions.onAction({ action, ...(note.trim() ? { note: note.trim() } : {}) }));
+      setSent(await actions.onAction({ action, ...(action === 'link' ? { url: url.trim() } : {}), ...(note.trim() ? { note: note.trim() } : {}) }));
       setArm(null);
       setNote('');
+      setUrl('');
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
@@ -129,7 +140,8 @@ export function EpisodeActionsBar({
         <p role="status" className="flex flex-wrap items-center gap-1.5">
           <Chip tone="accent">waiting for the studio</Chip>
           <span style={{ color: 'var(--color-text)' }}>{ACTION_LABEL[pending.action].toLowerCase()}</span>
-          {pending.note && <span style={{ color: 'var(--color-text-tertiary)' }}>“{pending.note}”</span>}
+          {pending.url && <span style={{ color: 'var(--color-text-secondary)' }}>{pending.url}</span>}
+          {pending.note &&<span style={{ color: 'var(--color-text-tertiary)' }}>“{pending.note}”</span>}
           <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
             sent {ago(pending.at, now)}
             {untilRun(nextRunAt, now) ? ` · next run ${untilRun(nextRunAt, now)}` : ''}
@@ -156,6 +168,23 @@ export function EpisodeActionsBar({
         armed ? (
           <div className="flex flex-col gap-1.5">
             <span style={{ color: 'var(--color-text)' }}>{actionConfirm(armed, { stage: ep.stage, stoppedReason: m.stoppedReason ?? ep.stoppedReason })}</span>
+            {armed === 'link' && (
+              <>
+                <input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value.slice(0, 500))}
+                  placeholder="https://www.youtube.com/watch?v=… or https://youtu.be/…"
+                  aria-label="Full episode URL"
+                  className="w-full rounded-md px-2 py-1 text-[12px]"
+                  style={field}
+                />
+                {url.trim() && urlProblem && (
+                  <span role="alert" className="text-[11.5px]" style={{ color: 'var(--color-warning)' }}>
+                    {urlProblem}
+                  </span>
+                )}
+              </>
+            )}
             <input
               value={note}
               onChange={(e) => setNote(e.target.value.slice(0, ACTION_NOTE_MAX))}
@@ -165,7 +194,7 @@ export function EpisodeActionsBar({
               style={field}
             />
             <div className="flex flex-wrap gap-1.5">
-              <SmallButton tone={armed === 'reject' ? 'error' : 'accent'} onClick={() => void send(armed)} disabled={busy}>
+              <SmallButton tone={armed === 'reject' ? 'error' : 'accent'} onClick={() => void send(armed)} disabled={busy || !!urlProblem}>
                 Confirm {ACTION_LABEL[armed].toLowerCase()}
               </SmallButton>
               <SmallButton onClick={() => setArm(null)} disabled={busy}>
@@ -273,7 +302,9 @@ export function SourceCopy({
                   <span className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
                     <Chip tone={h.kind === 'run' ? 'warning' : 'muted'}>{h.kind === 'run' ? 'copied run' : 'dense overlap'}</Chip>
                     <span>shared: “{h.run}”</span>
-                    {url ? (
+                    {url && isCanonSource(url) ? (
+                      <span title={canonPath(url)}>source {h.sourceN} (canon)</span>
+                    ) : url ? (
                       <span style={{ color: 'var(--color-accent)' }}>
                         <ExtLink url={url}>source {h.sourceN}</ExtLink>
                       </span>
@@ -339,7 +370,12 @@ export function PlanTable({ beats, copyHits, pullQuote }: { beats: PlanBeat[]; c
   );
 }
 
-/** The claims, one check box each; Approve waits for all of them. */
+/**
+ * The claims, one check box each; Approve waits for all of them. A v0.5
+ * `canon` claim has its own chip and shows its repo path as text (never a
+ * link, never "unsourced"); an edit changes its text only, so its kind and
+ * source reach claims.json as the studio wrote them.
+ */
 export function ClaimsTable({
   claims,
   checked,
@@ -371,7 +407,11 @@ export function ClaimsTable({
             <span className="flex flex-wrap items-center gap-1.5">
               <code className="text-[11px]">{c.id}</code>
               <Chip tone="muted">beat {c.beat}</Chip>
-              {editing ? (
+              {c.kind === 'canon' ? (
+                <Chip tone="success" title="Read from the company's canon, not the web">
+                  canon
+                </Chip>
+              ) : editing ? (
                 <select value={c.kind} onChange={(e) => onEdit({ ...c, kind: e.target.value as Claim['kind'] })} className="rounded px-1 text-[11px]" style={field} aria-label={`Kind ${c.id}`}>
                   <option value="fact">fact</option>
                   <option value="lore">lore</option>
@@ -388,18 +428,23 @@ export function ClaimsTable({
             {editing ? (
               <>
                 <textarea value={c.text} onChange={(e) => onEdit({ ...c, text: e.target.value })} rows={2} className="w-full rounded px-1.5 py-1 text-[12px] resize-y" style={field} aria-label={`Text ${c.id}`} />
-                <input
-                  value={c.source}
-                  onChange={(e) => onEdit({ ...c, source: e.target.value.trim() })}
-                  placeholder="https:// source, unsourced, or empty for lore"
-                  className="w-full rounded px-1.5 py-1 text-[11.5px]"
-                  style={field}
-                  aria-label={`Source ${c.id}`}
-                />
+                {c.kind === 'canon' ? (
+                  <CanonPath source={c.source} />
+                ) : (
+                  <input
+                    value={c.source}
+                    onChange={(e) => onEdit({ ...c, source: e.target.value.trim() })}
+                    placeholder="https:// source, unsourced, or empty for lore"
+                    className="w-full rounded px-1.5 py-1 text-[11.5px]"
+                    style={field}
+                    aria-label={`Source ${c.id}`}
+                  />
+                )}
               </>
             ) : (
               <>
                 <span style={{ color: 'var(--color-text)' }}>{c.text}</span>
+                {isCanonSource(c.source) && <CanonPath source={c.source} />}
                 {c.source.startsWith('https://') && (
                   <span className="text-[11px] truncate" style={{ color: 'var(--color-accent)' }}>
                     <ExtLink url={c.source}>{c.source}</ExtLink>
@@ -411,6 +456,15 @@ export function ClaimsTable({
         </li>
       ))}
     </ul>
+  );
+}
+
+/** A canon source's repo path, as text: the studio read it from disk, so there is nothing to open. */
+function CanonPath({ source }: { source: string }) {
+  return (
+    <span className="text-[11px] truncate" style={{ color: 'var(--color-text-tertiary)' }} data-canon-source>
+      {canonPath(source)}
+    </span>
   );
 }
 
@@ -656,6 +710,90 @@ function Clip({ name, label, size, loadMedia }: { name: string; label: string; s
   );
 }
 
+/** An image from the episode folder, loaded on demand (a Short's end card). */
+function Still({ name, label, loadMedia }: { name: string; label: string; loadMedia: EpisodeActions['loadMedia'] }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
+  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
+  if (url) return <img src={url} alt={label} className="w-full max-w-[12rem] rounded-md" />;
+  return (
+    <SmallButton
+      onClick={() => {
+        setState('loading');
+        loadMedia(name).then(setUrl, () => setState('error'));
+      }}
+      disabled={state === 'loading'}
+    >
+      {state === 'loading' ? 'Loading…' : state === 'error' ? `${label}: failed, retry` : label}
+    </SmallButton>
+  );
+}
+
+/**
+ * The per-beat Shorts of a published episode (v0.5 `manifest.shorts[]`): one
+ * row per beat with its state as written, heading, length and run name, and
+ * a preview of the cut and its end card once they exist. A failed Short is
+ * resent by Retry on the episode. Each Short's G1 card carries its own
+ * "set the related video" reminder, so it isn't repeated here.
+ */
+export function ShortsList({ detail, actions }: { detail: EpisodeDetail; actions: EpisodeActions }) {
+  const m = detail.manifest;
+  const shorts: ShortEntry[] = m.shorts ?? [];
+  const media = detail.media.shorts ?? {};
+  return (
+    <div className="flex flex-col gap-2">
+      {m.episodeUrl ? (
+        <p>
+          Full episode:{' '}
+          <span style={{ color: 'var(--color-accent)' }}>
+            <ExtLink url={m.episodeUrl}>{m.episodeUrl}</ExtLink>
+          </span>
+        </p>
+      ) : (
+        <Quiet>Not linked yet: the Shorts wait for the full episode’s URL (Link full episode, above).</Quiet>
+      )}
+      <ol className="flex flex-col gap-1.5" aria-label="Shorts">
+        {shorts.map((s) => {
+          const video = `beat-${s.beat}.mp4`;
+          const card = `beat-${s.beat}-card.png`;
+          return (
+            <li key={s.beat} className="flex flex-col gap-1 rounded-md px-2 py-1.5" style={{ background: 'var(--color-bg-secondary)' }} data-short-beat={s.beat}>
+              <span className="flex flex-wrap items-center gap-1.5">
+                <span className="font-medium" style={{ color: 'var(--color-text)' }}>
+                  Beat {s.beat}
+                  {s.heading ? `: ${s.heading}` : ''}
+                </span>
+                <Chip tone={SHORT_TONE[s.state] ?? 'neutral'}>{s.state}</Chip>
+                {s.durationSeconds != null && <Chip tone="muted">{fmtDuration(s.durationSeconds)}</Chip>}
+                {s.attempt > 1 && <Chip tone="muted">attempt {s.attempt}</Chip>}
+                <code className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  {shortRunName(m.propertyId, m.episodeId, s.beat)}
+                </code>
+              </span>
+              {s.state === 'failed' && (
+                <span className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+                  failed, use Retry on the episode{s.note ? `: ${s.note}` : ''}
+                </span>
+              )}
+              {s.state !== 'failed' && s.note && (
+                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  {s.note}
+                </span>
+              )}
+              {(video in media || card in media) && (
+                <div className="flex flex-col gap-1.5">
+                  {video in media && <Clip name={`shorts/${video}`} label={`Short, beat ${s.beat}`} size={media[video] ?? 0} loadMedia={actions.loadMedia} />}
+                  {card in media && <Still name={`shorts/${card}`} label={`End card, beat ${s.beat}`} loadMedia={actions.loadMedia} />}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 /** The three thumbnails, loaded as blobs; the operator picks one. */
 function ThumbPicker({
   names,
@@ -818,6 +956,12 @@ export function EpisodeInfo({ detail, actions, now }: { detail: EpisodeDetail; a
         </Section>
       )}
 
+      {(m.shorts ?? []).length > 0 && (
+        <Section title={`Shorts (${(m.shorts ?? []).length})`}>
+          <ShortsList detail={detail} actions={actions} />
+        </Section>
+      )}
+
       <Section title="Checks and spend">
         <div className="flex flex-wrap gap-1.5">
           {m.prescreen && <Chip tone={m.prescreen.verdict === 'pass' ? 'success' : 'error'}>pre-screen {m.prescreen.verdict}</Chip>}
@@ -928,6 +1072,15 @@ export function EpisodeDrawerView({
               <ExtLink key={i} url={u}>
                 Source {i + 1}
               </ExtLink>
+            ))}
+          </span>
+        )}
+        {(m.canonSources ?? []).length > 0 && (
+          <span className="flex flex-wrap gap-x-3 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }} data-canon-sources>
+            {(m.canonSources ?? []).map((p) => (
+              <span key={p} title="Canon: read from the repo, never fetched">
+                canon: {p}
+              </span>
             ))}
           </span>
         )}

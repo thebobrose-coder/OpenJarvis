@@ -239,7 +239,7 @@ def test_episode_detail(studio):
     assert body["claims"] == CLAIMS
     assert body["edited"] is False
     assert body["visibility"] == {"visibility": "unlisted", "number": 1, "first": 5}
-    assert body["media"] == {"cut": None, "short": None, "thumbs": []}
+    assert body["media"] == {"cut": None, "short": None, "thumbs": [], "shorts": {}}
     assert len(body["version"]) == 64
 
 
@@ -794,3 +794,191 @@ def test_status_passes_the_lane_queue_and_held_seeds_through(studio):
     lane = _client().get("/api/studio/status").json()["lanes"][0]
     assert lane["queue"][0]["waitingForPost"] is True
     assert lane["heldSeeds"][0]["episodeId"] == EID
+
+
+# -- v0.5: canon claims, the link action, per-beat Shorts, pause reasons ------
+
+CANON = "canon:kernel/sample-canon.md#Sample heading"
+
+
+def _canon_episode(folder: Path) -> list[dict]:
+    """An episode with one web fact and one canon claim (v0.5 F3)."""
+    claims = [CLAIMS[0], {**CLAIMS[1], "source": CANON, "kind": "canon"}]
+    (folder / "claims.json").write_text(json.dumps(claims), encoding="utf-8")
+    _old(folder / "claims.json")
+    _set_stage(folder, "awaiting-g0", canonSources=[CANON.removeprefix("canon:")])
+    (folder / "sources").mkdir(exist_ok=True)
+    (folder / "sources" / "index.json").write_text(
+        json.dumps(
+            [
+                {"n": 1, "url": CANON, "fetchedAt": _iso(NOW), "chars": 10},
+                {"n": 2, "url": "https://example.com/a", "fetchedAt": _iso(NOW)},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return claims
+
+
+def test_a_canon_claim_keeps_its_kind_and_source_through_an_edit(studio):
+    claims = _canon_episode(studio)
+    client = _client()
+    detail = client.get(f"/api/studio/episodes/{EID}").json()
+    assert detail["claims"][1]["kind"] == "canon"
+    assert {"n": 1, "url": CANON} in detail["sourceIndex"]
+    edited = [claims[0], {**claims[1], "text": "An edited canon line."}]
+    resp = client.put(
+        f"/api/studio/episodes/{EID}/script",
+        json={"version": _version(client), "claims": edited, "script": SCRIPT + "x"},
+    )
+    assert resp.status_code == 200
+    saved = json.loads((studio / "claims.json").read_text(encoding="utf-8"))
+    assert saved[1] == {
+        "id": "c2",
+        "beat": 2,
+        "text": "An edited canon line.",
+        "source": CANON,
+        "kind": "canon",
+    }
+    resp = _g0(client, decision="approve", claimsChecked=["c1", "c2"])
+    assert resp.status_code == 200
+    assert json.loads((studio / "claims.json").read_text())[1]["kind"] == "canon"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"kind": "fact"},  # a canon: source with another kind
+        {"kind": "lore"},
+        {"source": "canon:kernel/elsewhere.md"},  # not this episode's canon
+        {"source": "https://example.com/a"},  # canon needs a canon: source
+    ],
+)
+def test_bad_canon_edits_are_400(studio, change):
+    claims = _canon_episode(studio)
+    client = _client()
+    resp = client.put(
+        f"/api/studio/episodes/{EID}/script",
+        json={
+            "version": _version(client),
+            "claims": [claims[0], {**claims[1], **change}],
+        },
+    )
+    assert resp.status_code == 400
+    assert json.loads((studio / "claims.json").read_text()) == claims
+
+
+def test_a_fact_may_become_canon_on_one_of_the_episodes_canon_sources(studio):
+    claims = _canon_episode(studio)
+    client = _client()
+    fact = {**claims[0], "kind": "canon", "source": CANON}
+    resp = client.put(
+        f"/api/studio/episodes/{EID}/script",
+        json={"version": _version(client), "claims": [fact, claims[1]]},
+    )
+    assert resp.status_code == 200
+
+
+SHORTS = [
+    {"beat": 2, "heading": "TWO", "state": "pending", "attempt": 0, "at": "x"},
+    {"beat": 3, "heading": "THREE", "state": "failed", "attempt": 1, "at": "x"},
+]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.youtube.com/watch?v=abc123XYZ",
+        "https://youtube.com/watch?v=abc123XYZ&t=4",
+        "https://youtu.be/abc123XYZ",
+    ],
+)
+def test_link_writes_the_url_on_a_published_episode_with_shorts(studio, url):
+    _set_stage(studio, "published", shorts=SHORTS)
+    resp = _action(_client(), action="link", url=f" {url} ")
+    assert resp.status_code == 200
+    doc = json.loads((studio / "action.json").read_text(encoding="utf-8"))
+    assert list(doc) == ["action", "url", "at"]
+    assert doc["action"] == "link" and doc["url"] == url
+
+
+@pytest.mark.parametrize(
+    "url,why",
+    [
+        ("https://www.youtube.com/shorts/abc123XYZ", "Shorts URL"),
+        ("https://example.com/watch?v=abc123XYZ", "watch or youtu.be"),
+        ("http://youtu.be/abc123XYZ", "watch or youtu.be"),
+        ("https://www.youtube.com/watch?v=", "watch or youtu.be"),
+        ("", "watch or youtu.be"),
+    ],
+)
+def test_link_refuses_shorts_and_non_youtube_urls(studio, url, why):
+    _set_stage(studio, "published", shorts=SHORTS)
+    resp = _action(_client(), action="link", url=url)
+    assert resp.status_code == 400 and why in resp.json()["detail"]
+    assert not (studio / "action.json").exists()
+
+
+@pytest.mark.parametrize(
+    "stage,over,why",
+    [
+        ("at-g1", {"shorts": SHORTS}, "only a published episode"),
+        ("published", {}, "no Short beats"),
+        (
+            "published",
+            {"shorts": SHORTS, "episodeUrl": "https://youtu.be/a1b2c3"},
+            "already linked",
+        ),
+    ],
+)
+def test_link_is_offered_only_on_an_unlinked_published_episode(
+    studio, stage, over, why
+):
+    _set_stage(studio, stage, **over)
+    resp = _action(_client(), action="link", url="https://youtu.be/abc123XYZ")
+    assert resp.status_code == 400 and why in resp.json()["detail"]
+
+
+def test_retry_on_a_published_episode_needs_a_failed_short(studio):
+    client = _client()
+    _set_stage(studio, "published", shorts=[SHORTS[0]])
+    resp = _action(client, action="retry")
+    assert resp.status_code == 400 and "no failed Short" in resp.json()["detail"]
+    _set_stage(studio, "published", shorts=SHORTS)
+    assert _action(client, action="retry").status_code == 200
+
+
+def test_shorts_media_is_listed_and_served(studio):
+    shorts = studio / "shorts"
+    shorts.mkdir()
+    (shorts / "beat-2.mp4").write_bytes(b"short-two")
+    (shorts / "beat-2-card.png").write_bytes(b"\x89PNG")
+    (shorts / "notes.txt").write_text("no")
+    client = _client()
+    _set_stage(studio, "published", shorts=SHORTS, episodeUrl="https://youtu.be/a1b2c3")
+    detail = client.get(f"/api/studio/episodes/{EID}").json()
+    assert detail["media"]["shorts"] == {"beat-2-card.png": 4, "beat-2.mp4": 9}
+    assert detail["summary"]["shortStates"] == ["pending", "failed"]
+    assert detail["summary"]["episodeUrl"] == "https://youtu.be/a1b2c3"
+    resp = client.get(f"/api/studio/episodes/{EID}/media/shorts/beat-2.mp4")
+    assert resp.status_code == 200 and resp.content == b"short-two"
+    resp = client.get(f"/api/studio/episodes/{EID}/media/shorts/beat-2-card.png")
+    assert resp.headers["content-type"] == "image/png"
+    for bad in ("shorts/notes.txt", "shorts/../manifest.json", "shorts/a/b.mp4"):
+        assert client.get(f"/api/studio/episodes/{EID}/media/{bad}").status_code in (
+            400,
+            404,
+        ), bad
+
+
+def test_status_carries_the_pause_flags_first_line(studio):
+    root = studio.parent.parent
+    client = _client()
+    assert client.get("/api/studio/status").json()["pauseReasons"] == {}
+    (root / "pause").mkdir()
+    (root / "pause" / "alpha").write_text(
+        "\n2026-01-20 sample-ledger-line 81%\nmore\n", encoding="utf-8"
+    )
+    doc = client.get("/api/studio/status").json()
+    assert doc["paused"]["alpha"] is True
+    assert doc["pauseReasons"] == {"alpha": "2026-01-20 sample-ledger-line 81%"}

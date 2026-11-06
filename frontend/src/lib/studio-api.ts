@@ -77,6 +77,8 @@ export interface StudioStatus {
   inFlight: { episodeId: string; propertyId: string; stage: EpisodeStage | string; since: string; stoppedReason?: string }[];
   spend: { month: string } & Record<string, StudioSpend | string>;
   lastRun: { at: string; ok: boolean; advanced: number; note?: string };
+  /** v0.5: a paused channel's flag, first line (Hermes's 80 % pause: "date, ledger line, percent"). */
+  pauseReasons?: Record<string, string>;
   published: Record<string, number>;
   channels: Record<string, StudioChannel>;
   age_seconds: number | null;
@@ -108,14 +110,21 @@ export interface EpisodeSummary {
   actionPending: ActionFile | null;
   /** v0.4.5: the episode ended or stopped but still holds its seed (Requeue seed applies). */
   seedHeld: boolean;
+  /** v0.5: the full episode's YouTube URL, once linked. */
+  episodeUrl?: string | null;
+  /** v0.5: the state of each per-beat Short, in `manifest.shorts[]` order. */
+  shortStates?: (ShortState | string)[];
 }
 
-export type EpisodeAction = 'retry' | 'reject' | 'requeue';
+/** v0.5 adds `link`: the published episode's URL, which its Shorts wait for. */
+export type EpisodeAction = 'retry' | 'reject' | 'requeue' | 'link';
 
 /** `action.json` (v0.4.5): consumed once per run, renamed `action.<at>.json`. */
 export interface ActionFile {
   action: EpisodeAction;
   note?: string;
+  /** `link` only. */
+  url?: string;
   at: string;
 }
 
@@ -123,9 +132,24 @@ export interface Claim {
   id: string;
   beat: number;
   text: string;
-  /** An https link, "unsourced" (the studio's audit) or "" (lore). */
+  /** An https link, "unsourced" (the studio's audit), "" (lore) or `canon:<repo path>[#heading]` (v0.5). */
   source: string;
-  kind: 'fact' | 'lore';
+  kind: 'fact' | 'lore' | 'canon';
+}
+
+export type ShortState = 'pending' | 'submitted' | 'at-g1' | 'published' | 'rejected' | 'failed';
+
+/** One per-beat Short of a published episode (v0.5 `manifest.shorts[]`). */
+export interface ShortEntry {
+  beat: number;
+  heading: string;
+  state: ShortState | string;
+  attempt: number;
+  at: string;
+  executionArn?: string;
+  postId?: string;
+  durationSeconds?: number;
+  note?: string;
 }
 
 /** An overlay panel over a scene beat (v0.4): a chart or a timeline. */
@@ -197,6 +221,14 @@ export interface Manifest {
   sourceCopy?: SourceCopyHit[];
   /** v0.4.5: set when a requeue freed the seed back to its lane. */
   seedReleasedAt?: string;
+  /** v0.5: repo paths the studio read as canon (never fetched). */
+  canonSources?: string[];
+  /** v0.5: the beats cut as Shorts once the episode is linked. */
+  shortBeats?: number[];
+  /** v0.5: set by the `link` action. */
+  episodeUrl?: string;
+  /** v0.5: one entry per Short beat, once the episode is published. */
+  shorts?: ShortEntry[];
 }
 
 /** A stretch of narration in a source's wording (v0.1.4): a note for G0, never a block. */
@@ -242,7 +274,8 @@ export interface EpisodeDetail {
   g0History: G0File[];
   /** v0.4.5: the actions the studio consumed, oldest first. */
   actionHistory: ActionFile[];
-  media: { cut: number | null; short: number | null; thumbs: string[] };
+  /** `shorts` (v0.5): `beat-<n>.mp4` and `beat-<n>-card.png` by name, with sizes. */
+  media: { cut: number | null; short: number | null; thumbs: string[]; shorts?: Record<string, number | null> };
   /** Hash of script.md + claims.json, sent back with an edit. */
   version: string;
   edited: boolean;
@@ -319,7 +352,7 @@ export async function sendG0(id: string, body: G0Body): Promise<G0File> {
  * (400) and refuses a second action while one waits (409); the studio
  * consumes the file on its next run and leaves the outcome as a stage note.
  */
-export async function sendAction(id: string, body: { action: EpisodeAction; note?: string }): Promise<ActionFile> {
+export async function sendAction(id: string, body: { action: EpisodeAction; note?: string; url?: string }): Promise<ActionFile> {
   const res = await apiFetch(`/api/studio/episodes/${encodeURIComponent(id)}/action`, json('POST', body));
   if (!res.ok) throw await failure(res, 'Action');
   return res.json();

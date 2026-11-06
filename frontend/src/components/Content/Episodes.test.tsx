@@ -4,7 +4,7 @@ import type { ContentSeedbank, Lane, ThesisPrompt } from '../../lib/content-api'
 import type { Claim, EpisodeDetail, EpisodeSummary, Manifest, StudioStatus } from '../../lib/studio-api';
 import { EpisodeDrawer, EpisodeDrawerView, type EpisodeActions } from './EpisodeDrawer';
 import { EpisodesPanel } from './EpisodesPanel';
-import { actionConfirm, actionOutcome, actionsFor, beatMarks, beatVisual, g0Body, g0Notes, isEpisodeId, nextRunAt, parseTags, publishEditable, publishProblems, scriptSections, stageNotes, untilRun } from './episodes';
+import { actionConfirm, actionOutcome, actionsFor, beatMarks, beatVisual, g0Body, g0Notes, isEpisodeId, linkProblem, nextRunAt, parseTags, publishEditable, publishProblems, scriptSections, stageNotes, untilRun } from './episodes';
 import {
   SeedComposer,
   episodeDraftFromPrompt,
@@ -652,5 +652,105 @@ describe('v0.4.5 episode actions', () => {
     const queue = Array.from({ length: 6 }, (_, i) => ({ signalId: `sig-${i}`, title: `Topic ${i}`, episodeClass: null, createdAt: null, source: null }));
     const html = panel({ status: { ...STATUS, lanes: [{ ...STATUS.lanes[0], queue }, STATUS.lanes[1]] } });
     expect(html).toMatch(/<details><summary[^>]*>Queue \(6\)/);
+  });
+});
+
+describe('v0.5 canon claims, the link action and per-beat Shorts', () => {
+  const CANON = 'canon:kernel/sample-canon.md#Sample heading';
+  const canonClaims: Claim[] = [CLAIMS[0], { id: 'c2', beat: 2, text: 'A sample canon line.', source: CANON, kind: 'canon' }];
+  const view = (d: EpisodeDetail, over: Partial<Parameters<typeof EpisodeDrawerView>[0]> = {}) =>
+    renderToStaticMarkup(<EpisodeDrawerView detail={d} loading={false} error={null} actions={ACTIONS} now={NOW} {...over} />);
+  const SHORTS: NonNullable<Manifest['shorts']> = [
+    { beat: 2, heading: 'TWO', state: 'pending', attempt: 0, at: '2026-10-24T05:00:00Z' },
+    { beat: 3, heading: 'THREE', state: 'failed', attempt: 1, at: '2026-10-24T05:00:00Z', note: 'sample refusal' },
+    { beat: 4, heading: 'FOUR', state: 'at-g1', attempt: 1, at: '2026-10-24T05:00:00Z', durationSeconds: 58 },
+  ];
+  const published = (m: Partial<Manifest> = {}, s: Partial<EpisodeSummary> = {}) =>
+    detail(
+      { summary: summary({ stage: 'published', shortStates: (m.shorts ?? SHORTS).map((x) => x.state), episodeUrl: m.episodeUrl ?? null, ...s }) },
+      { stage: 'published', shorts: SHORTS, ...m },
+    );
+
+  it('shows a canon claim with its own chip and its path as text, never as a link or unsourced', () => {
+    const html = view(detail({ claims: canonClaims }, { canonSources: ['kernel/sample-canon.md#Sample heading'] }));
+    expect(html).toContain('>canon</span>');
+    expect(html).toContain('data-canon-source');
+    expect(html).toContain('kernel/sample-canon.md#Sample heading');
+    expect(html).not.toContain(`title="${CANON}"`);
+    expect(html).not.toContain('unsourced: needs a ruling');
+    expect(html).toContain('data-canon-sources');
+  });
+
+  it('names a canon source in the source-copy list as text', () => {
+    const html = view(
+      detail({ sourceIndex: [{ n: 1, url: CANON }] }, { sourceCopy: [{ beat: 2, sentence: 'A sample line.', sourceN: 1, run: 'sample line', kind: 'run' }] }),
+    );
+    expect(html).toContain('source 1 (canon)');
+    expect(html).not.toContain(`title="${CANON}"`);
+  });
+
+  it('offers Link only on an unlinked published episode with Shorts, and Retry when one failed', () => {
+    expect(actionsFor({ stage: 'published', seedHeld: false, shortStates: ['pending'] }).actions).toEqual(['link']);
+    expect(actionsFor({ stage: 'published', seedHeld: false, shortStates: ['pending', 'failed'] }).actions).toEqual(['retry', 'link']);
+    expect(actionsFor({ stage: 'published', seedHeld: false, shortStates: ['failed'], episodeUrl: 'https://youtu.be/abc123' }).actions).toEqual(['retry']);
+    expect(actionsFor({ stage: 'published', seedHeld: false, shortStates: [] }).actions).toEqual([]);
+    expect(actionsFor({ stage: 'at-g1', seedHeld: false, shortStates: ['pending'] }).actions).toEqual([]);
+  });
+
+  it('accepts only a watch or youtu.be URL, as the studio does', () => {
+    expect(linkProblem('https://www.youtube.com/watch?v=abc123XYZ')).toBeNull();
+    expect(linkProblem('https://youtu.be/abc123XYZ')).toBeNull();
+    expect(linkProblem(' https://youtube.com/watch?v=abc123XYZ&t=3 ')).toBeNull();
+    expect(linkProblem('https://www.youtube.com/shorts/abc123XYZ')).toMatch(/Shorts URL/);
+    expect(linkProblem('https://example.com/watch?v=abc123XYZ')).toMatch(/Only a youtube/);
+    expect(linkProblem('http://youtu.be/abc123XYZ')).toMatch(/Only a youtube/);
+    expect(linkProblem('')).toMatch(/Paste/);
+  });
+
+  it('puts Link full episode on the drawer behind the confirm, with the URL field', () => {
+    const html = view(published());
+    expect(html).toContain('</svg> Link full episode</button>');
+    expect(html).toContain('</svg> Retry</button>');
+    const armed = view(published(), { initialAction: 'link' });
+    expect(armed).toContain('aria-label="Full episode URL"');
+    expect(armed).toContain('Confirm link full episode');
+    expect(armed).toMatch(/Confirm link full episode<\/button>/);
+    expect(armed).toMatch(/<button[^>]*disabled=""[^>]*>Confirm link full episode/);
+  });
+
+  it('lists each Short with its state as written, heading, length, run name and the failed note', () => {
+    const html = view(published());
+    expect(html).toContain('Shorts (3)');
+    for (const st of ['pending', 'failed', 'at-g1']) expect(html).toContain(`>${st}</span>`);
+    expect(html).toContain('Beat 3: THREE');
+    expect(html).toContain('0:58');
+    expect(html).toContain(`alpha-episode-${EID}-short-4`);
+    expect(html).toContain('failed, use Retry on the episode: sample refusal');
+    expect(html).toContain('Not linked yet');
+    expect(html).not.toContain('related video');
+  });
+
+  it('shows the linked URL, hides Link, and offers previews of the Short and its card', () => {
+    const url = 'https://youtu.be/abc123XYZ';
+    const html = view(published({ episodeUrl: url, shorts: [SHORTS[2]] }));
+    expect(html).toContain(`title="${url}">${url}</button>`);
+    expect(html).not.toContain('Link full episode</button>');
+    const withMedia = view({ ...published({ episodeUrl: url, shorts: [SHORTS[2]] }), media: { cut: null, short: null, thumbs: [], shorts: { 'beat-4.mp4': 2_000_000, 'beat-4-card.png': 1000 } } });
+    expect(withMedia).toContain('Short, beat 4 (2 MB)');
+    expect(withMedia).toContain('End card, beat 4');
+  });
+
+  it('reads the link and Short-retry outcomes off the stage note', () => {
+    const st = (note: string) => ({ stages: [{ stage: 'published', at: '', ok: true, note }] });
+    expect(actionOutcome(st('episode link recorded: https://youtu.be/abc123XYZ'))?.refused).toBe(false);
+    expect(actionOutcome(st('retry: 1 failed Short(s) back to pending'))?.refused).toBe(false);
+    expect(actionOutcome(st('action link refused: the episode link must be the full episode URL'))?.refused).toBe(true);
+    expect(actionConfirm('retry', { stage: 'published' })).toMatch(/failed Shorts/);
+  });
+
+  it('puts the pause flag line beside a paused channel', () => {
+    const html = panel({ status: { ...STATUS, pauseReasons: { beta: '2026-10-20 sample-ledger-line 81%' } } });
+    expect(html).toContain('data-pause-reason');
+    expect(html).toContain('2026-10-20 sample-ledger-line 81%');
   });
 });

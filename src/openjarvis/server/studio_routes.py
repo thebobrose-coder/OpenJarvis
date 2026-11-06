@@ -13,7 +13,8 @@ those files and write only the ones the contract gives OpenJarvis:
 - ``publish.json`` (title, description, tags, thumbnail), only before the
   episode is submitted to G1;
 - ``action.json`` (v0.4.5), the operator's retry, reject or requeue, by the
-  contract's stage rules, one at a time;
+  contract's stage rules, one at a time; v0.5 adds ``link`` (the published
+  episode's YouTube URL, which its per-beat Shorts wait for);
 - the ``pause/<propertyId>`` flag file.
 
 Every write is atomic (a temp file, then rename). No route serves or writes
@@ -66,8 +67,10 @@ MAX_REWRITES = 2
 SCRIPT_MAX = 200_000
 CLAIM_TEXT_MAX = 1000
 CLAIM_SOURCE_MAX = 500
-CLAIM_KINDS = ("fact", "lore")
+CLAIM_KINDS = ("fact", "lore", "canon")
 UNSOURCED = "unsourced"
+# v0.5 (F3): a canon claim cites a repo path the studio read, never a URL.
+CANON_PREFIX = "canon:"
 
 # publish.json, as Foundry's submit checks it (Postiz's YouTube settings).
 TITLE_MIN, TITLE_MAX = 2, 100
@@ -79,8 +82,15 @@ SUBMITTED_STAGES = frozenset(
     {"scanning", "at-g1", "publishing", "published", "rejected"}
 )
 # action.json (foundry-studio.md v0.4.5): the operator's episode actions.
-ACTIONS = ("retry", "reject", "requeue")
+ACTIONS = ("retry", "reject", "requeue", "link")
 ACTION_NOTE_MAX = 1000
+# v0.5 (F4): the full episode's URL, as the studio's EPISODE_URL_RE has it: a
+# youtube.com watch link or a youtu.be link. A /shorts/ URL never matches.
+EPISODE_URL = re.compile(
+    r"^https://(?:(?:www\.)?youtube\.com/watch\?v=|youtu\.be/)[A-Za-z0-9_-]{6,}"
+    r"(?:[&?#].*)?$"
+)
+EPISODE_URL_MAX = 500
 # Reject ends an episode at any stage before the pipeline (and a stopped one);
 # from scanning on it is G1's call, and an ended one stays ended.
 PRE_PIPELINE_STAGES = frozenset(
@@ -235,16 +245,43 @@ def _media(folder: Path) -> dict[str, Any]:
         except OSError:
             return None
 
-    thumbs = folder / "thumbs"
+    def files(sub: str, kinds: dict[str, str]) -> list[str]:
+        d = folder / sub
+        return sorted(
+            p.name
+            for p in (d.iterdir() if d.is_dir() else [])
+            if p.is_file()
+            and p.suffix.lower() in kinds
+            and _MEDIA_FILE.fullmatch(p.name)
+        )
+
     return {
         "cut": size("cut.mp4"),
         "short": size("short.mp4"),
-        "thumbs": sorted(
-            p.name
-            for p in (thumbs.iterdir() if thumbs.is_dir() else [])
-            if p.is_file() and p.suffix.lower() in _IMAGE_EXT
-        ),
+        "thumbs": files("thumbs", _IMAGE_EXT),
+        # v0.5 (F4): `shorts/beat-<n>.mp4` and `shorts/beat-<n>-card.png`.
+        "shorts": {
+            name: size(f"shorts/{name}")
+            for name in files("shorts", {**_IMAGE_EXT, **_VIDEO_EXT})
+        },
     }
+
+
+def _shorts(m: dict[str, Any]) -> list[dict[str, Any]]:
+    """`manifest.shorts[]` (v0.5): one entry per Short beat of a published
+    episode, `{beat, heading, state, attempt, at, ...}`."""
+    return [s for s in m.get("shorts") or [] if isinstance(s, dict)]
+
+
+def _pause_reason(root: Path, property_id: str) -> str | None:
+    """The pause flag's first non-blank line (v0.5 `pauseReasons`): Hermes's
+    80 % pause writes "date, ledger line, percent" there."""
+    try:
+        text = (root / "pause" / property_id).read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return None
+    line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    return line[:200] or None
 
 
 def _stage_note(m: dict[str, Any]) -> str | None:
@@ -260,7 +297,8 @@ def _stage_note(m: dict[str, Any]) -> str | None:
 
 def _source_index(folder: Path) -> list[dict[str, Any]] | None:
     """The studio's source snapshot (v0.1.4), as {n, url}: names the source a
-    `sourceCopy` hit came from. None before the snapshot exists."""
+    `sourceCopy` hit came from. None before the snapshot exists. A v0.5 canon
+    entry's url is `canon:<path>`, a repo path the page shows as text."""
     index = _read_json(folder / "sources" / "index.json")
     if not isinstance(index, list):
         return None
@@ -323,6 +361,11 @@ def _summary(
         # ended or stopped episode still holds its seed (Requeue seed).
         "actionPending": _action_pending(folder),
         "seedHeld": episode_id in held and not m.get("seedReleasedAt"),
+        # v0.5 (F4): the full episode's URL once linked, and its Shorts' states.
+        "episodeUrl": m.get("episodeUrl"),
+        "shortStates": [
+            s.get("state") for s in _shorts(m) if isinstance(s.get("state"), str)
+        ],
     }
 
 
@@ -372,6 +415,13 @@ def status_doc() -> dict[str, Any]:
         **status,
         # The flag files are the truth; status.json shows them as of its run.
         "paused": {pid: _paused(root, pid) for pid in ids},
+        # v0.5: the flag's first line beside "paused", read from the flag
+        # itself like `paused` (status.json carries it as of its run).
+        "pauseReasons": {
+            pid: reason
+            for pid in ids
+            if _paused(root, pid) and (reason := _pause_reason(root, pid))
+        },
         "published": {pid: _published_count(root, pid) for pid in ids},
         "channels": channels,
         "age_seconds": age,
@@ -458,14 +508,15 @@ def get_episode(episode_id: str, request: Request):
 @studio_router.get("/episodes/{episode_id}/media/{name:path}")
 def get_media(episode_id: str, name: str, request: Request):
     """One media file from the episode's folder: the cut, the short, a
-    thumbnail or a rendered visual. Nothing else, and never outside it."""
+    thumbnail, a rendered visual, or a per-beat Short and its end card (v0.5).
+    Nothing else, and never outside it."""
     _local_only(request)
     root = _root()
     folder = _episode_dir(root, episode_id)
     parts = name.split("/")
     allowed = (
         (len(parts) == 1 and parts[0] in ("cut.mp4", "short.mp4"))
-        or (len(parts) == 2 and parts[0] in ("thumbs", "visuals"))
+        or (len(parts) == 2 and parts[0] in ("thumbs", "visuals", "shorts"))
     ) and all(_MEDIA_FILE.fullmatch(p) for p in parts)
     suffix = Path(parts[-1]).suffix.lower()
     kinds = {**_IMAGE_EXT, **_VIDEO_EXT}
@@ -486,9 +537,26 @@ class ScriptBody(BaseModel):
     claims: list[dict[str, Any]] | None = None
 
 
-def _check_claims(new: list[dict[str, Any]], old: Any) -> list[dict[str, Any]]:
+def _canon_sources(folder: Path, m: dict[str, Any]) -> set[str]:
+    """The episode's own canon sources, as `canon:<path>` (v0.5): the
+    manifest's `canonSources` and the snapshot's canon entries."""
+    out = {
+        f"{CANON_PREFIX}{p}" for p in m.get("canonSources") or [] if isinstance(p, str)
+    }
+    for e in _source_index(folder) or []:
+        url = e.get("url")
+        if isinstance(url, str) and url.startswith(CANON_PREFIX):
+            out.add(url)
+    return out
+
+
+def _check_claims(
+    new: list[dict[str, Any]], old: Any, canon: set[str] | None = None
+) -> list[dict[str, Any]]:
     """The operator's claim edits: the same claims, with text, source and kind
-    edited. A claim keeps its id, its beat and every other key the studio set."""
+    edited. A claim keeps its id, its beat and every other key the studio set.
+    A `canon` claim (v0.5) cites `canon:<path>`: its own source, or another of
+    the episode's canon sources. Kind and source pass through as sent."""
     if not isinstance(old, list):
         raise HTTPException(status_code=409, detail="claims.json could not be read")
     by_id = {c.get("id"): c for c in old if isinstance(c, dict)}
@@ -508,8 +576,32 @@ def _check_claims(new: list[dict[str, Any]], old: Any) -> list[dict[str, Any]]:
             )
         if kind not in CLAIM_KINDS:
             raise HTTPException(
-                status_code=400, detail=f"Claim {claim.get('id')}: kind is fact or lore"
+                status_code=400,
+                detail=f"Claim {claim.get('id')}: kind is fact, lore or canon",
             )
+        is_canon_source = isinstance(source, str) and source.startswith(CANON_PREFIX)
+        if kind == "canon" or is_canon_source:
+            if kind != "canon" or not is_canon_source:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Claim {claim.get('id')}: canon goes with a canon: source",
+                )
+            if source != by_id[claim["id"]].get("source") and source not in (
+                canon or set()
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Claim {claim.get('id')}: cite this episode's canon",
+                )
+            out.append(
+                {
+                    **by_id[claim["id"]],
+                    "text": text.strip(),
+                    "source": source,
+                    "kind": kind,
+                }
+            )
+            continue
         if not isinstance(source, str) or not (
             source in ("", UNSOURCED)
             or (source.startswith("https://") and len(source) <= CLAIM_SOURCE_MAX)
@@ -540,7 +632,7 @@ def put_script(episode_id: str, body: ScriptBody, request: Request):
     the hash the page loaded; a newer draft from the studio answers 409."""
     _local_only(request)
     folder = _episode_dir(_root(), episode_id)
-    _at_g0(folder)
+    m = _at_g0(folder)
     if body.script is None and body.claims is None:
         raise HTTPException(status_code=400, detail="Nothing to save")
     if body.version != _version(folder):
@@ -553,7 +645,9 @@ def put_script(episode_id: str, body: ScriptBody, request: Request):
         )
     claims = None
     if body.claims is not None:
-        claims = _check_claims(body.claims, _read_json(folder / "claims.json"))
+        claims = _check_claims(
+            body.claims, _read_json(folder / "claims.json"), _canon_sources(folder, m)
+        )
     if body.script is not None:
         if not body.script.strip() or len(body.script) > SCRIPT_MAX:
             raise HTTPException(
@@ -706,18 +800,31 @@ def put_publish(episode_id: str, body: PublishBody, request: Request):
 class ActionBody(BaseModel):
     action: str
     note: str = ""
+    # v0.5: `link` only, the full episode's YouTube URL.
+    url: str = ""
 
 
 def action_refusal(action: str, m: dict[str, Any], held: bool) -> str | None:
     """Why the stage rules forbid this action now, or None. The same rules
     the studio applies, so a stale page cannot send one it would refuse."""
     stage = str(m.get("stage") or "")
+    shorts = _shorts(m)
     if action == "retry":
-        return (
-            None
-            if stage == "stopped"
-            else f"Retry needs a stopped episode, not {stage}"
-        )
+        if stage == "stopped":
+            return None
+        # v0.5: retry on a published episode resends its failed Shorts.
+        if stage == "published":
+            failed = any(s.get("state") == "failed" for s in shorts)
+            return None if failed else "The episode has no failed Short"
+        return f"Retry needs a stopped episode, not {stage}"
+    if action == "link":
+        if stage != "published":
+            return f"The episode is {stage}: only a published episode takes its link"
+        if not shorts:
+            return "The episode has no Short beats to link"
+        if m.get("episodeUrl"):
+            return "The episode is already linked"
+        return None
     if action == "reject":
         if stage in PRE_PIPELINE_STAGES or stage == "stopped":
             return None
@@ -732,21 +839,34 @@ def action_refusal(action: str, m: dict[str, Any], held: bool) -> str | None:
         if not held:
             return "This episode no longer holds its seed"
         return None
-    return "retry, reject or requeue"
+    return "retry, reject, requeue or link"
 
 
 @studio_router.post("/episodes/{episode_id}/action")
 def post_action(episode_id: str, body: ActionBody, request: Request):
-    """Write action.json: retry a stopped episode, reject one before the
-    pipeline, or requeue an ended one's seed. The studio consumes it on its
-    next run (every 10 minutes, or Run studio now) and renames it; the
-    outcome is the manifest's last stage note."""
+    """Write action.json: retry a stopped episode (or a published one's
+    failed Shorts), reject one before the pipeline, requeue an ended one's
+    seed, or link a published episode's YouTube URL (v0.5). The studio
+    consumes it on its next run (every 10 minutes, or Run studio now) and
+    renames it; the outcome is the manifest's last stage note."""
     _local_only(request)
     root = _root()
     folder = _episode_dir(root, episode_id)
     m = _manifest(folder)
     if body.action not in ACTIONS:
-        raise HTTPException(status_code=400, detail="retry, reject or requeue")
+        raise HTTPException(status_code=400, detail="retry, reject, requeue or link")
+    url = body.url.strip()
+    if body.action == "link":
+        if "/shorts/" in url:
+            raise HTTPException(
+                status_code=400,
+                detail="That is a Shorts URL: link the full episode's watch URL",
+            )
+        if len(url) > EPISODE_URL_MAX or not EPISODE_URL.fullmatch(url):
+            raise HTTPException(
+                status_code=400,
+                detail="The link is the full episode's YouTube watch or youtu.be URL",
+            )
     note = " ".join(body.note.split())
     if len(note) > ACTION_NOTE_MAX:
         raise HTTPException(
@@ -761,6 +881,8 @@ def post_action(episode_id: str, body: ActionBody, request: Request):
             detail="an action is already waiting for the studio's next run",
         )
     doc: dict[str, Any] = {"action": body.action}
+    if body.action == "link":
+        doc["url"] = url
     if note:
         doc["note"] = note
     doc["at"] = _iso(datetime.now(timezone.utc))
