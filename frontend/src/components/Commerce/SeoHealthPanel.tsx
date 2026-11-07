@@ -1,5 +1,5 @@
 import { SearchCheck } from 'lucide-react';
-import type { EcomSeoHealth, SeoPage, SeoStore } from '../../lib/commerce-api';
+import { crawlComplete, type EcomSeoHealth, type SeoCollections, type SeoCrawl, type SeoPage, type SeoStore } from '../../lib/commerce-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num, shortDateTime, storesFor } from './format';
 import { Chip, ExtLink, Quiet, type Tone } from '../shared/ui';
@@ -38,6 +38,50 @@ function pageWeight(p: SeoPage): number {
   return p.issues.reduce((w, i) => w + (i.severity === 'error' ? 100 : i.severity === 'warn' ? 10 : 1), 0);
 }
 
+const INCOMPLETE_TITLE = 'Under 90 % read, or the audit gave up on a host: its counts may understate, and nothing closes on it.';
+
+/** One crawl's reach: `read/total`, the give-ups, and an incomplete chip
+ * under the complete-crawl rule (90 % read, never while `partial`). */
+function CrawlLine({ label, crawl, children }: { label: string; crawl: SeoCrawl & { complete?: boolean }; children?: React.ReactNode }) {
+  const complete = crawlComplete(crawl);
+  const gaveUp = crawl.gave_up ?? [];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]" data-crawl={label} data-complete={complete}>
+      <span>
+        {label}: {num(crawl.read)}/{num(crawl.total)} read
+      </span>
+      {!complete && (
+        <Chip tone="warning" title={INCOMPLETE_TITLE}>
+          incomplete
+        </Chip>
+      )}
+      {crawl.partial && <Chip tone="warning" title="The run gave up on a host, so this crawl counts as incomplete">partial</Chip>}
+      {gaveUp.map((g) => (
+        <Chip key={g.host} tone="muted" title={g.attempted != null ? `refused ${g.refused ?? '?'} of ${g.attempted} pages (rule ${g.rule ?? '?'})` : undefined}>
+          gave up on {g.host}
+        </Chip>
+      ))}
+      {children}
+    </div>
+  );
+}
+
+function CollectionsLine({ c }: { c: SeoCollections }) {
+  const counts = Object.entries(c.issue_counts ?? {}).filter(([, n]) => n > 0);
+  return (
+    <CrawlLine label="Collections" crawl={c}>
+      {counts.map(([code, n]) => (
+        <span key={code} data-collection-issue={code}>
+          <Chip tone="neutral">
+            {code.replace(/_/g, ' ')} · {num(n)}
+          </Chip>
+        </span>
+      ))}
+      {c.error && <span style={{ color: 'var(--color-warning)' }}>{c.error}</span>}
+    </CrawlLine>
+  );
+}
+
 function StoreHealth({ store, showName }: { store: SeoStore; showName: boolean }) {
   const worstPages = [...store.pages].sort((a, b) => pageWeight(b) - pageWeight(a)).slice(0, 15);
   return (
@@ -60,6 +104,8 @@ function StoreHealth({ store, showName }: { store: SeoStore; showName: boolean }
           .map(([verdict, n]) => `${num(n)} ${verdict.toLowerCase()}`)
           .join(', ') || '—'}
       </div>
+      {store.product_crawl && <CrawlLine label="Products" crawl={store.product_crawl} />}
+      {store.collections && <CollectionsLine c={store.collections} />}
       <div className="flex flex-wrap gap-1">
         {orderedCounts(store).map((c) => (
           <Chip key={c.code} tone={SEVERITY_TONE[c.severity]} title={`${c.severity}`}>

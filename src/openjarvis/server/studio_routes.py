@@ -79,8 +79,18 @@ TAGS_MAX_CHARS = 500
 TAG_MAX = 100
 # From this stage on the episode is with the pipeline: publish.json is spent.
 SUBMITTED_STAGES = frozenset(
-    {"scanning", "at-g1", "publishing", "published", "rejected"}
+    {
+        "scanning",
+        "at-g1",
+        "publishing",
+        "submitted",
+        "upload-failed",
+        "published",
+        "rejected",
+    }
 )
+# v0.5.1: past G1 and waiting on Postiz's upload (the studio's AFTER_PIPELINE).
+AFTER_PIPELINE_STAGES = frozenset({"submitted", "upload-failed"})
 # action.json (foundry-studio.md v0.4.5): the operator's episode actions.
 ACTIONS = ("retry", "reject", "requeue", "link")
 ACTION_NOTE_MAX = 1000
@@ -809,6 +819,24 @@ def action_refusal(action: str, m: dict[str, Any], held: bool) -> str | None:
     the studio applies, so a stale page cannot send one it would refuse."""
     stage = str(m.get("stage") or "")
     shorts = _shorts(m)
+    # v0.5.1: an episode waiting on Postiz takes its link (a hand upload's
+    # confirmation), never a retry (a second post), and a reject only once
+    # Postiz reports the upload failed.
+    if stage in AFTER_PIPELINE_STAGES:
+        if action == "link":
+            return None
+        if action == "retry":
+            return (
+                f"The episode is {stage}: Postiz already has its post. Reschedule"
+                " it in Postiz, or upload cut.mp4 by hand and use Link"
+            )
+        if action == "reject" and stage == "submitted":
+            return (
+                "The episode is submitted: Postiz has its post queued. Delete it"
+                " in Postiz first; once the upload fails, it can be rejected"
+            )
+        if action == "reject":
+            return None
     if action == "retry":
         if stage == "stopped":
             return None

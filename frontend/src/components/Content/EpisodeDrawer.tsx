@@ -11,6 +11,7 @@ import {
   type EpisodeDetail,
   type G0Body,
   type G0File,
+  type Manifest,
   type Plan,
   type PlanBeat,
   type PublishFile,
@@ -18,6 +19,7 @@ import {
   type SourceCopyHit,
 } from '../../lib/studio-api';
 import { ago } from '../../lib/waiting-api';
+import { shortDateTime } from '../shared/format';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
 import {
   ACTION_LABEL,
@@ -110,8 +112,11 @@ export function EpisodeActionsBar({
   const atG0 = m.stage === 'awaiting-g0' && !detail.g0Pending;
   // The manifest is the fuller read; the summary carries the same v0.5 keys.
   const state = { ...ep, shortStates: m.shorts ? m.shorts.map((s) => s.state) : ep.shortStates, episodeUrl: m.episodeUrl ?? ep.episodeUrl };
-  const offered = actionsFor(state).actions.filter((a) => !(atG0 && a === 'reject'));
-  const hint = actionsFor(state).hint;
+  const rules = actionsFor(state);
+  const offered = rules.actions.filter((a) => !(atG0 && a === 'reject'));
+  // v0.5.1: shown but not sendable (Reject on `submitted`), with the studio's reason.
+  const blocked = Object.entries(rules.disabled) as [EpisodeAction, string][];
+  const hint = rules.hint;
   const pending = detail.summary.actionPending ?? sent;
   const outcome = pending ? null : actionOutcome(m);
   const armed = arm && offered.includes(arm) ? arm : null;
@@ -132,7 +137,7 @@ export function EpisodeActionsBar({
     }
   };
 
-  if (!offered.length && !pending && !outcome && !hint) return null;
+  if (!offered.length && !blocked.length && !pending && !outcome && !hint) return null;
   const coolingDown = run != null && run.availableAt != null && run.availableAt > now;
   return (
     <div className="flex flex-col gap-2 rounded-lg p-3" style={{ background: 'var(--color-bg-secondary)' }} data-episode-actions>
@@ -164,7 +169,7 @@ export function EpisodeActionsBar({
           {message}
         </p>
       )}
-      {!pending && offered.length > 0 && (
+      {!pending && (offered.length > 0 || blocked.length > 0) && (
         armed ? (
           <div className="flex flex-col gap-1.5">
             <span style={{ color: 'var(--color-text)' }}>{actionConfirm(armed, { stage: ep.stage, stoppedReason: m.stoppedReason ?? ep.stoppedReason })}</span>
@@ -210,6 +215,19 @@ export function EpisodeActionsBar({
                 <SmallButton key={a} tone={a === 'reject' ? 'error' : 'neutral'} onClick={() => setArm(a)} disabled={busy}>
                   <Icon size={11} /> {ACTION_LABEL[a]}
                 </SmallButton>
+              );
+            })}
+            {blocked.map(([a, why]) => {
+              const Icon = ACTION_ICON[a];
+              return (
+                <span key={a} className="flex flex-wrap items-center gap-1.5" data-action-disabled={a}>
+                  <SmallButton tone="neutral" onClick={() => {}} disabled title={why}>
+                    <Icon size={11} /> {ACTION_LABEL[a]}
+                  </SmallButton>
+                  <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    {why}
+                  </span>
+                </span>
               );
             })}
           </div>
@@ -769,10 +787,22 @@ export function ShortsList({ detail, actions }: { detail: EpisodeDetail; actions
                 <code className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
                   {shortRunName(m.propertyId, m.episodeId, s.beat)}
                 </code>
+                {s.confirmedAt && (
+                  <span data-short-confirmed>
+                    <Chip tone="success" title="Both halves published, on Postiz's word">
+                      confirmed {shortDateTime(s.confirmedAt)}
+                    </Chip>
+                  </span>
+                )}
               </span>
               {s.state === 'failed' && (
                 <span className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
                   failed, use Retry on the episode{s.note ? `: ${s.note}` : ''}
+                </span>
+              )}
+              {s.state === 'failed' && s.postiz?.error && (
+                <span className="text-[11.5px]" style={{ color: 'var(--color-error)' }} data-short-postiz-error>
+                  Postiz: {s.postiz.error}
                 </span>
               )}
               {s.state !== 'failed' && s.note && (
@@ -1030,6 +1060,32 @@ export function EpisodeInfo({ detail, actions, now }: { detail: EpisodeDetail; a
   );
 }
 
+/**
+ * v0.5.1: the episode past G1, waiting on Postiz. `submitted` names the post's
+ * publish date when Postiz has one; `upload-failed` shows the stage's last
+ * note verbatim (Postiz's message and the two remedies). Nothing otherwise.
+ */
+export function PostizLine({ m }: { m: Manifest }) {
+  if (m.stage === 'submitted') {
+    const when = m.postiz?.publishDate;
+    return (
+      <span data-postiz="submitted" style={{ color: 'var(--color-text-secondary)' }}>
+        Waiting on Postiz{when ? `: it has the post for ${shortDateTime(when)}` : ''}.
+      </span>
+    );
+  }
+  if (m.stage === 'upload-failed') {
+    const notes = stageNotes(m);
+    const last = notes[notes.length - 1] ?? m.postiz?.error;
+    return last ? (
+      <span data-postiz="upload-failed" role="status" style={{ color: 'var(--color-error)' }}>
+        {last}
+      </span>
+    ) : null;
+  }
+  return null;
+}
+
 /** The drawer's body: the G0 review while the episode waits on it, otherwise the episode's detail. */
 export function EpisodeDrawerView({
   detail,
@@ -1085,6 +1141,7 @@ export function EpisodeDrawerView({
           </span>
         )}
         {m.stoppedReason && <span style={{ color: 'var(--color-error)' }}>{m.stoppedReason}</span>}
+        <PostizLine m={m} />
       </div>
       {error && (
         <p role="alert" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>

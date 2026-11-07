@@ -138,6 +138,46 @@ export interface SeoStore extends StoreRef {
   issue_counts: Record<string, number>;
   index_summary: Record<string, number>;
   pages: SeoPage[];
+  /** v1.28.2/v1.28.3: first written by the 2026-11-08 audit. */
+  product_crawl?: SeoCrawl;
+  /** v1.30: the store's Admin collections, beside `product_crawl`. */
+  collections?: SeoCollections;
+}
+
+/** A host the audit gave up on for the run (v1.28.3). */
+export interface SeoGaveUp {
+  host: string;
+  attempted?: number;
+  refused?: number;
+  rule?: 'share' | 'in_a_row' | string;
+}
+
+/** How much of a store the audit read (§4.3). */
+export interface SeoCrawl {
+  read: number;
+  total: number;
+  partial?: boolean;
+  gave_up?: SeoGaveUp[];
+}
+
+/** v1.30: the collections block. `complete` is Hermes's own verdict when present. */
+export interface SeoCollections extends SeoCrawl {
+  complete?: boolean;
+  issue_counts?: Record<string, number>;
+  error?: string;
+  items?: { id: string; handle: string; title: string; url: string; codes?: string[] }[];
+}
+
+/** The read floor of the complete-crawl rule (`seo_codes.crawl_complete`). */
+export const CRAWL_FLOOR = 0.9;
+
+/** The complete-crawl rule: at least 90 % read, and never while `partial`.
+ * A block with its own `complete` keeps Hermes's verdict. */
+export function crawlComplete(c: SeoCrawl & { complete?: boolean }): boolean {
+  if (typeof c.complete === 'boolean') return c.complete;
+  if (c.partial) return false;
+  if (!c.total) return true;
+  return c.read / c.total >= CRAWL_FLOOR;
 }
 
 export interface EcomSeoHealth extends FeedMeta {

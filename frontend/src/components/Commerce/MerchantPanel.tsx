@@ -1,7 +1,7 @@
 import { ShoppingBag } from 'lucide-react';
 import type { AdsHold, AdsHoldFlight, MerchantHoldItem, MerchantStatus, MerchantStore, StoreRef } from '../../lib/commerce-api';
 import type { Patch } from '../../lib/fixes-api';
-import { needsOperator } from '../../lib/fixes-api';
+import { isCollectionPatch, needsOperator } from '../../lib/fixes-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { ALL_STORES, num, shortDateTime } from './format';
 import { Chip, Quiet, Tile } from '../shared/ui';
@@ -29,9 +29,13 @@ const codeWords = (code: string) => code.replace(/_/g, ' ').toLowerCase();
 const count = (n: number | null | undefined) => (n == null ? '—' : num(n));
 
 /** The Fixes entry for a product: one waiting on the operator first, else the newest. */
-export function fixFor(patches: Pick<Patch, 'id' | 'product_id' | 'status' | 'created_at'>[], productId?: string | null): string | null {
+export function fixFor(
+  patches: Pick<Patch, 'id' | 'product_id' | 'status' | 'created_at' | 'target'>[],
+  productId?: string | null,
+): string | null {
   if (!productId) return null;
-  const mine = patches.filter((p) => String(p.product_id) === String(productId));
+  // v1.30: a collection patch (`collection:<n>`) never joins a product.
+  const mine = patches.filter((p) => !isCollectionPatch(p) && String(p.product_id) === String(productId));
   if (!mine.length) return null;
   const ranked = [...mine].sort(
     (a, b) => Number(needsOperator(b.status)) - Number(needsOperator(a.status)) || b.created_at.localeCompare(a.created_at),

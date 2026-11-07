@@ -24,6 +24,9 @@ export const STAGE: Record<string, { label: string; tone: Tone }> = {
   scanning: { label: 'scanning', tone: 'accent' },
   'at-g1': { label: 'at G1', tone: 'warning' },
   publishing: { label: 'publishing', tone: 'accent' },
+  // v0.5.1: past G1, published only when Postiz confirms the upload.
+  submitted: { label: 'waiting on Postiz', tone: 'accent' },
+  'upload-failed': { label: 'upload failed', tone: 'error' },
   published: { label: 'published', tone: 'success' },
   stopped: { label: 'stopped', tone: 'error' },
   rejected: { label: 'rejected', tone: 'muted' },
@@ -32,37 +35,49 @@ export const STAGE: Record<string, { label: string; tone: Tone }> = {
 export const stageInfo = (stage: string) => STAGE[stage] ?? { label: stage, tone: 'neutral' as Tone };
 
 /** Stages after which publish.json no longer matters: the episode is with the pipeline. */
-const SUBMITTED = new Set(['scanning', 'at-g1', 'publishing', 'published', 'rejected']);
+const SUBMITTED = new Set(['scanning', 'at-g1', 'publishing', 'submitted', 'upload-failed', 'published', 'rejected']);
 export const publishEditable = (m: Pick<Manifest, 'stage'> & { executionArn?: string }) =>
   !SUBMITTED.has(m.stage) && !m.executionArn;
 
 /** Stages before the pipeline: the operator may still reject here (v0.4.5). */
 const PRE_PIPELINE = new Set(['queued', 'scripting', 'scripted', 'awaiting-g0', 'rewrite-requested', 'narrating', 'visualizing', 'assembling']);
 const WITH_PIPELINE = new Set(['scanning', 'at-g1', 'publishing']);
+/** v0.5.1: past G1 and waiting on Postiz's upload; the studio's `AFTER_PIPELINE`. */
+export const AFTER_PIPELINE = new Set(['submitted', 'upload-failed']);
+
+/** v0.5.1: why Reject is shown but disabled on a `submitted` episode (the studio's refusal). */
+export const SUBMITTED_REJECT =
+  'Postiz has the post queued. Delete it in Postiz first; once Postiz reports the upload failed, the episode can be rejected.';
 
 /**
- * Which of the three episode actions (foundry-studio.md v0.4.5) apply now,
- * by the contract's stage rules: Retry on a stopped episode; Reject at any
- * stage before the pipeline and on a stopped one; Requeue seed on a rejected
- * or stopped episode whose seed is still held. `hint` says why Reject is
- * missing while the pipeline has the episode.
+ * Which of the episode actions (foundry-studio.md v0.4.5, v0.5, v0.5.1) apply
+ * now, by the contract's stage rules: Retry on a stopped episode; Reject at
+ * any stage before the pipeline, on a stopped one and on `upload-failed`;
+ * Requeue seed on a rejected or stopped episode whose seed is still held;
+ * Link on `submitted` and `upload-failed` (the hand-upload fallback). `hint`
+ * says why Reject is missing while the pipeline has the episode; `disabled`
+ * names an action shown but not sendable, with the studio's reason.
  */
 export function actionsFor(ep: {
   stage: string;
   seedHeld: boolean;
   shortStates?: string[] | null;
   episodeUrl?: string | null;
-}): { actions: EpisodeAction[]; hint: string | null } {
+}): { actions: EpisodeAction[]; hint: string | null; disabled: Partial<Record<EpisodeAction, string>> } {
   const actions: EpisodeAction[] = [];
   const shorts = ep.shortStates ?? [];
   const published = ep.stage === 'published';
-  // v0.5: Retry on a published episode resends its failed Shorts.
+  const afterPipeline = AFTER_PIPELINE.has(ep.stage);
+  // v0.5: Retry on a published episode resends its failed Shorts. v0.5.1:
+  // never on submitted or upload-failed (a retry would make a second post).
   if (ep.stage === 'stopped' || (published && shorts.includes('failed'))) actions.push('retry');
-  if (PRE_PIPELINE.has(ep.stage) || ep.stage === 'stopped') actions.push('reject');
+  if (PRE_PIPELINE.has(ep.stage) || ep.stage === 'stopped' || ep.stage === 'upload-failed') actions.push('reject');
   if ((ep.stage === 'rejected' || ep.stage === 'stopped') && ep.seedHeld) actions.push('requeue');
   // v0.5: a published episode with Short beats waits for its own URL.
-  if (published && shorts.length > 0 && !ep.episodeUrl) actions.push('link');
-  return { actions, hint: WITH_PIPELINE.has(ep.stage) ? 'The pipeline has this episode: reject it at G1.' : null };
+  // v0.5.1: the link also confirms a hand upload, Shorts or not.
+  if ((published && shorts.length > 0 && !ep.episodeUrl) || afterPipeline) actions.push('link');
+  const disabled: Partial<Record<EpisodeAction, string>> = ep.stage === 'submitted' ? { reject: SUBMITTED_REJECT } : {};
+  return { actions, hint: WITH_PIPELINE.has(ep.stage) ? 'The pipeline has this episode: reject it at G1.' : null, disabled };
 }
 
 export const ACTION_LABEL: Record<EpisodeAction, string> = { retry: 'Retry', reject: 'Reject', requeue: 'Requeue seed', link: 'Link full episode' };
@@ -102,6 +117,9 @@ export const shortRunName = (propertyId: string, episodeId: string, beat: number
 /** The one-line confirm for an action, naming what the studio will do on its next run. */
 export function actionConfirm(action: EpisodeAction, ep: { stage: string; stoppedReason?: string | null }): string {
   const stopped = ep.stoppedReason ? ` (${ep.stoppedReason})` : '';
+  if (action === 'link' && AFTER_PIPELINE.has(ep.stage)) {
+    return 'Record this as the full episode’s URL? It is your word that the video is up: the studio marks the episode published on its next run, and cuts any Shorts after.';
+  }
   if (action === 'link') return 'Record this as the full episode’s URL? The studio starts cutting its Shorts on its next run, one at a time, each to G1.';
   if (action === 'retry' && ep.stage === 'published') return 'Send the failed Shorts again? The studio puts them back to pending on its next run.';
   if (action === 'retry') return `Retry from the stage that failed${stopped}? The studio resumes it on its next run.`;

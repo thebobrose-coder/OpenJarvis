@@ -941,6 +941,7 @@ export function FixesTab({
                         onDecide={(action, opts) => void decide(p, action, opts)}
                         recTitles={recTitles}
                         onOpenRec={onOpenRec}
+                        onOpenPatch={p.superseded_by && titles.has(p.superseded_by) ? openCard : undefined}
                       />
                     ))}
                   </section>

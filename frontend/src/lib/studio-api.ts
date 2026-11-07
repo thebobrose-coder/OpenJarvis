@@ -19,6 +19,8 @@ export type EpisodeStage =
   | 'scanning'
   | 'at-g1'
   | 'publishing'
+  | 'submitted'
+  | 'upload-failed'
   | 'published'
   | 'stopped'
   | 'rejected';
@@ -150,6 +152,20 @@ export interface ShortEntry {
   postId?: string;
   durationSeconds?: number;
   note?: string;
+  /** v0.5.1: Postiz's state at the studio's last read, the worse of the two halves. */
+  postiz?: PostizCheck;
+  /** v0.5.1: both halves published on Postiz's word. */
+  confirmedAt?: string;
+}
+
+/** v0.5.1: Postiz's state of a post at the studio's last read (`studio/postiz.ts`). */
+export interface PostizCheck {
+  checkedAt: string;
+  kind: 'published' | 'error' | 'waiting' | 'missing' | string;
+  /** Postiz's error text, verbatim; a Short's names the provider ("youtube: …"). */
+  error?: string;
+  /** The post's publishDate at the read; moves when the operator reschedules. */
+  publishDate?: string;
 }
 
 /** An overlay panel over a scene beat (v0.4): a chart or a timeline. */
@@ -229,6 +245,10 @@ export interface Manifest {
   episodeUrl?: string;
   /** v0.5: one entry per Short beat, once the episode is published. */
   shorts?: ShortEntry[];
+  /** v0.5.1: the episode post's state at the studio's last Postiz read. */
+  postiz?: PostizCheck;
+  /** v0.5.1: when the upload was confirmed, by Postiz or by the operator's link. */
+  uploadConfirmed?: { at: string; by: 'postiz' | 'link' };
 }
 
 /** A stretch of narration in a source's wording (v0.1.4): a note for G0, never a block. */

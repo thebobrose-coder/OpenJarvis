@@ -948,6 +948,37 @@ def test_retry_on_a_published_episode_needs_a_failed_short(studio):
     assert _action(client, action="retry").status_code == 200
 
 
+@pytest.mark.parametrize("stage", ["submitted", "upload-failed"])
+def test_link_confirms_a_hand_upload_waiting_on_postiz(studio, stage):
+    # v0.5.1: link works from both Postiz stages, Shorts or not.
+    _set_stage(studio, stage)
+    resp = _action(_client(), action="link", url="https://youtu.be/abc123XYZ")
+    assert resp.status_code == 200
+    doc = json.loads((studio / "action.json").read_text(encoding="utf-8"))
+    assert doc["action"] == "link"
+
+
+@pytest.mark.parametrize(
+    "action,stage,why",
+    [
+        ("retry", "submitted", "Postiz already has its post"),
+        ("retry", "upload-failed", "Postiz already has its post"),
+        ("reject", "submitted", "Delete it in Postiz first"),
+        ("requeue", "upload-failed", "rejected or stopped"),
+    ],
+)
+def test_postiz_stages_refuse_as_the_studio_does(studio, action, stage, why):
+    _set_stage(studio, stage)
+    resp = _action(_client(), action=action)
+    assert resp.status_code == 400 and why in resp.json()["detail"]
+    assert not (studio / "action.json").exists()
+
+
+def test_reject_is_allowed_once_the_upload_failed(studio):
+    _set_stage(studio, "upload-failed")
+    assert _action(_client(), action="reject").status_code == 200
+
+
 def test_shorts_media_is_listed_and_served(studio):
     shorts = studio / "shorts"
     shorts.mkdir()

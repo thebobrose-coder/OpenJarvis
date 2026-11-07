@@ -10,8 +10,10 @@ import {
   ruleLabel,
   entryWhy,
   foundryCopyLabel,
+  isCollectionPatch,
   isSeoField,
   isWriterEntry,
+  supersededBy,
   judgeOnlyInvalid,
   patchSource,
   seoVerifyText,
@@ -340,6 +342,7 @@ export function PatchCard({
   onDecide,
   recTitles,
   onOpenRec,
+  onOpenPatch,
 }: {
   patch: Patch;
   storeName: string;
@@ -352,6 +355,8 @@ export function PatchCard({
   onDecide: (action: FixAction, opts?: DecideOpts) => void;
   recTitles: Record<string, string>;
   onOpenRec?: (id: string) => void;
+  /** v1.30: open another patch by id; given only when `superseded_by` is in the feed. */
+  onOpenPatch?: (id: string) => void;
 }) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -368,7 +373,10 @@ export function PatchCard({
   );
   const judge = patch.judge;
   const drops = specDrops(patch);
-  const reason = statusReason(patch);
+  // v1.30: a stale patch a newer one replaced says so, not "the live copy changed".
+  const superseded = supersededBy(patch);
+  const reason = superseded ? null : statusReason(patch);
+  const collection = isCollectionPatch(patch);
   // v1.5: where the patch came from, and the SEO audit's reading of it.
   const source = patchSource(patch);
   const foundry = !!patch.copy_source;
@@ -437,16 +445,30 @@ export function PatchCard({
           </ExtLink>
         </span>
         <ExtIcon url={patch.admin_url} title="Open in Shopify admin" />
+        {collection && patch.product_url && (
+          <span className="text-[11px]" data-storefront-link style={{ color: 'var(--color-accent)' }}>
+            <ExtLink url={patch.product_url} title="Open the collection on the storefront">
+              storefront
+            </ExtLink>
+          </span>
+        )}
         <span className="text-[11px] ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
           {storeName} · {shortDateTime(patch.decided_at ?? patch.created_at)}
         </span>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-        {alt && (
+        {(alt || collection) && (
           <span data-rule={patch.fix_class.rule}>
             <Chip tone="neutral" title={`Class ${patch.fix_class.rule}`}>
               {ruleLabel(patch.fix_class.rule)}
+            </Chip>
+          </span>
+        )}
+        {collection && (
+          <span data-target="collection">
+            <Chip tone="accent" title="A collection’s SEO title and description, not a product’s">
+              collection
             </Chip>
           </span>
         )}
@@ -514,6 +536,26 @@ export function PatchCard({
         )}
       </div>
 
+      {superseded && (
+        <p className="text-[11.5px]" role="status" data-superseded-by={superseded} style={{ color: 'var(--color-warning)' }}>
+          Why {statusLabel(patch.status)}: superseded by{' '}
+          {onOpenPatch ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenPatch(superseded);
+              }}
+              className="cursor-pointer underline"
+              style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-accent)' }}
+              title="Open the patch that replaced this one"
+            >
+              {superseded}
+            </button>
+          ) : (
+            superseded
+          )}
+        </p>
+      )}
       {reason && (
         <p className="text-[11.5px]" role="status" data-status-reason style={{ color: 'var(--color-warning)' }}>
           Why {statusLabel(patch.status)}: {reason}

@@ -142,6 +142,13 @@ export interface Patch {
   retry_of?: string | null;
   /** v1.23: on the first patch, once retried (`patch_id` null: nothing proposed). */
   retried?: { at: string; patch_id: string | null } | null;
+  /** v1.30 (§5.8): `collection` on a `seo:collection` patch; absent on a
+   * product patch. Its `product_id` is then `collection:<n>`, never a product's. */
+  target?: 'product' | 'collection' | string;
+  collection_id?: string;
+  collection_handle?: string;
+  /** v1.30: a `stale` patch a newer one was written over. */
+  superseded_by?: string | null;
 }
 
 export interface ClassStats extends FixClass {
@@ -252,8 +259,16 @@ export function patchSource(p: Pick<Patch, 'source' | 'addresses'>): FixSource {
 export const SOURCE_TITLE: Record<FixSource, string> = {
   sentinel: 'From a compliance finding',
   rec: 'From a recommendation',
-  seo: 'From the SEO audit: meta description, SEO title or image alt text',
+  seo: 'From the SEO audit: meta description, SEO title, image alt text or a collection’s SEO',
 };
+
+/** v1.30: a collection SEO patch. It never joins a product row. */
+export const isCollectionPatch = (p: Pick<Patch, 'target' | 'product_id'>) =>
+  p.target === 'collection' || String(p.product_id ?? '').startsWith('collection:');
+
+/** v1.30: why a `stale` patch is stale, when a newer patch replaced it. */
+export const supersededBy = (p: Pick<Patch, 'status' | 'superseded_by'>) =>
+  p.status === 'stale' && p.superseded_by ? p.superseded_by : null;
 
 export const isSeoField = (field: string) => field === 'seo.title' || field === 'seo.description';
 

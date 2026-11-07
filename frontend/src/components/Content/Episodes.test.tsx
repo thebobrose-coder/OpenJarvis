@@ -518,7 +518,7 @@ describe('v0.4.5 episode actions', () => {
       expect(actionsFor({ stage, seedHeld: false }).actions).toEqual(['reject']);
     }
     for (const stage of ['scanning', 'at-g1', 'publishing']) {
-      expect(actionsFor({ stage, seedHeld: false })).toEqual({ actions: [], hint: 'The pipeline has this episode: reject it at G1.' });
+      expect(actionsFor({ stage, seedHeld: false })).toEqual({ actions: [], hint: 'The pipeline has this episode: reject it at G1.', disabled: {} });
     }
   });
 
@@ -752,5 +752,87 @@ describe('v0.5 canon claims, the link action and per-beat Shorts', () => {
     const html = panel({ status: { ...STATUS, pauseReasons: { beta: '2026-10-20 sample-ledger-line 81%' } } });
     expect(html).toContain('data-pause-reason');
     expect(html).toContain('2026-10-20 sample-ledger-line 81%');
+  });
+});
+
+describe('v0.5.1 Postiz stages: submitted and upload-failed', () => {
+  const view = (d: EpisodeDetail) => renderToStaticMarkup(<EpisodeDrawerView detail={d} loading={false} error={null} actions={ACTIONS} now={NOW} />);
+  const buttons = (html: string) => ['Retry', 'Reject', 'Requeue seed', 'Link full episode'].filter((b) => html.includes(`</svg> ${b}</button>`));
+  const FAILED_NOTE =
+    'Postiz could not upload to YouTube: sample quota message. Reschedule the post in Postiz (after 02:00 Central), or upload cut.mp4 by hand and use link.';
+  const after = (stage: 'submitted' | 'upload-failed', m: Partial<Manifest> = {}) =>
+    detail(
+      { summary: summary({ stage, seedHeld: true }) },
+      {
+        stage,
+        stages: [
+          { stage: 'at-g1', at: '2026-10-24T04:00:00Z', ok: true },
+          { stage: 'submitted', at: '2026-10-24T05:00:00Z', ok: true, note: 'waiting on Postiz' },
+          ...(stage === 'upload-failed' ? [{ stage: 'upload-failed', at: '2026-10-24T05:40:00Z', ok: false, note: FAILED_NOTE }] : []),
+        ],
+        ...m,
+      },
+    );
+
+  it('labels submitted "waiting on Postiz" with the publish date when Postiz has one', () => {
+    const html = view(after('submitted', { postiz: { checkedAt: '2026-10-24T05:30:00Z', kind: 'waiting', publishDate: '2026-10-25T14:00:00Z' } }));
+    expect(html).toContain('>waiting on Postiz</span>');
+    expect(html).toContain('data-postiz="submitted"');
+    expect(html).toContain('it has the post for');
+    expect(view(after('submitted'))).not.toContain('it has the post for');
+  });
+
+  it('on submitted: Link offered, Retry hidden, Reject shown disabled with the studio reason', () => {
+    const html = view(after('submitted'));
+    // Reject renders, but only as the disabled button below.
+    expect(buttons(html)).toEqual(['Reject', 'Link full episode']);
+    expect(html.match(/<button[^>]*disabled=""[^>]*>/g)).toHaveLength(1);
+    expect(html).toMatch(/data-action-disabled="reject"[^]*?<button[^>]*disabled=""[^>]*>[^]*?Reject<\/button>/);
+    expect(html).toContain('Delete it in Postiz first');
+    expect(actionsFor({ stage: 'submitted', seedHeld: true }).actions).toEqual(['link']);
+  });
+
+  it('on upload-failed: the last note verbatim, Reject and Link offered, Retry hidden', () => {
+    const html = view(after('upload-failed'));
+    expect(html).toContain('>upload failed</span>');
+    expect(html).toContain('data-postiz="upload-failed"');
+    expect(html).toContain('sample quota message. Reschedule the post in Postiz (after 02:00 Central), or upload cut.mp4 by hand and use link.');
+    expect(buttons(html)).toEqual(['Reject', 'Link full episode']);
+    expect(html).not.toContain('data-action-disabled');
+    expect(actionsFor({ stage: 'upload-failed', seedHeld: true }).actions).toEqual(['reject', 'link']);
+  });
+
+  it('words the link confirm as the hand-upload confirmation', () => {
+    expect(actionConfirm('link', { stage: 'upload-failed' })).toContain('your word that the video is up');
+    expect(actionConfirm('link', { stage: 'published' })).toContain('starts cutting its Shorts');
+  });
+
+  it('keeps publish.json read-only once with Postiz', () => {
+    expect(publishEditable({ stage: 'submitted' })).toBe(false);
+    expect(publishEditable({ stage: 'upload-failed' })).toBe(false);
+  });
+
+  it("shows a failed Short's Postiz error by provider, and confirmedAt when both halves are live", () => {
+    const html = view(
+      detail(
+        { summary: summary({ stage: 'published', shortStates: ['failed', 'published'], episodeUrl: 'https://youtu.be/abc123' }) },
+        {
+          stage: 'published',
+          episodeUrl: 'https://youtu.be/abc123',
+          shorts: [
+            { beat: 2, heading: 'TWO', state: 'failed', attempt: 1, at: '2026-10-24T05:00:00Z', postiz: { checkedAt: '2026-10-24T05:30:00Z', kind: 'error', error: 'youtube: sample quota message' } },
+            { beat: 3, heading: 'THREE', state: 'published', attempt: 1, at: '2026-10-24T05:00:00Z', confirmedAt: '2026-10-24T05:45:00Z' },
+          ],
+        },
+      ),
+    );
+    expect(html).toContain('data-short-postiz-error');
+    expect(html).toContain('Postiz: youtube: sample quota message');
+    expect(html).toContain('data-short-confirmed');
+    expect(html.match(/data-short-confirmed/g)).toHaveLength(1);
+  });
+
+  it('keeps an unknown stage as plain text', () => {
+    expect(view(detail({ summary: summary({ stage: 'sample-new-stage' }) }, { stage: 'sample-new-stage' }))).toContain('>sample-new-stage</span>');
   });
 });
