@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { rollFolded, rollTone, stopDistancePct, stopTone, type Roll, type Sleeve, type TradingStatus } from '../../lib/trading-api';
-import { TradingSummaryView } from '../Dashboard/TradingSummaryPanel';
 import { EventsPanel, eventTone } from './EventsPanel';
 import { RollBlock, SleeveCard } from './SleeveCard';
 
@@ -66,16 +65,6 @@ describe('short positions (R1)', () => {
     expect(ok).not.toContain('>past<');
     const past = renderToStaticMarkup(<SleeveCard name="futures" sleeve={sleeve({ positions: [SHORT_PAST] })} now={NOW} />);
     expect(past).toContain('>past<');
-    expect(past).toContain('var(--color-error)');
-  });
-
-  it('the Dashboard summary shows SHORT with its stop distance', () => {
-    const ok = renderToStaticMarkup(<TradingSummaryView status={status({}, { positions: [SHORT] })} now={NOW} />);
-    expect(ok).toContain('SHORT 1 SAMPLE-27NOV26-X');
-    expect(ok).toContain('data-summary-stop-distance="3.06"');
-    expect(ok).toContain('3.1% away');
-    const past = renderToStaticMarkup(<TradingSummaryView status={status({}, { positions: [SHORT_PAST] })} now={NOW} />);
-    expect(past).toContain('past the stop');
     expect(past).toContain('var(--color-error)');
   });
 });

@@ -9,8 +9,10 @@ import {
   dispatchRow,
   fetchWaiting,
   fixRec,
+  linkFor,
   rowKey,
   snoozeRec,
+  type FiledRow,
   type RowStatus,
   type Waiting,
   type WaitingItem,
@@ -215,6 +217,35 @@ export function WaitingProvider({ children }: { children: ReactNode }) {
     [waiting, error, loading, receivedAt, refresh, decisionsOpen, g1Open, bellOpen, reportOpen, rowStatus, dispatch, snooze, fix, dismiss, rowActions],
   );
   return <WaitingContext.Provider value={value}>{children}</WaitingContext.Provider>;
+}
+
+/** What a row does when opened: a drawer here, or the page that holds its action.
+ * One copy for the Dashboard panel and the Inbox page (widescreen plan, Phase 1). */
+export function useOpenWaitingItem(): { openItem: (item: WaitingItem) => void; openFiled: (row: FiledRow) => void } {
+  const { setDecisionsOpen, setG1Open, setReportOpen } = useWaiting();
+  const navigate = useNavigate();
+  const setStackDrawerOpen = useAppStore((st) => st.setStackDrawerOpen);
+  const openItem = useCallback(
+    (item: WaitingItem) => {
+      if (item.opens === 'decisions') setDecisionsOpen(true);
+      else if (item.opens === 'g1') setG1Open(String(item.id));
+      else if (item.opens === 'workorder') setReportOpen(String(item.id));
+      else if (item.opens === 'sites') setStackDrawerOpen(true);
+      else {
+        const href = linkFor(item);
+        if (href) navigate(href);
+      }
+    },
+    [setDecisionsOpen, setG1Open, setReportOpen, setStackDrawerOpen, navigate],
+  );
+  const openFiled = useCallback(
+    (row: FiledRow) => {
+      if (row.opens === 'workorder') setReportOpen('*');
+      else if (row.href) navigate(row.href);
+    },
+    [setReportOpen, navigate],
+  );
+  return { openItem, openFiled };
 }
 
 export function useWaiting(): WaitingState {

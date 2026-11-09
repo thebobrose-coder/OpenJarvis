@@ -58,8 +58,12 @@ export interface RowActions {
 
 /** Dismiss with a one-click confirm and an optional one-line note (0024 J4).
  * Shared by the work-order row and the report drawer. */
-export function DismissControl({ id, busy, onDismiss }: { id: string; busy?: boolean; onDismiss: (note: string) => void }) {
-  const [armed, setArmed] = useState(false);
+export function DismissControl({ id, busy, onDismiss, onArmed }: { id: string; busy?: boolean; onDismiss: (note: string) => void; onArmed?: (armed: boolean) => void }) {
+  const [armed, setArmedState] = useState(false);
+  const setArmed = (b: boolean) => {
+    setArmedState(b);
+    onArmed?.(b);
+  };
   const [note, setNote] = useState('');
   if (!armed) {
     return (
@@ -99,8 +103,7 @@ export function DismissControl({ id, busy, onDismiss }: { id: string; busy?: boo
   );
 }
 
-function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) {
-  const [armed, setArmed] = useState(false);
+function Actions({ item, actions, armed, setArmed }: { item: WaitingItem; actions: RowActions; armed: boolean; setArmed: (b: boolean) => void }) {
   const [days, setDays] = useState<number>(SNOOZE_DEFAULT);
   // A company-site notice has no action: the row only opens its card (v1.27).
   if (item.kind === 'notice') return null;
@@ -134,7 +137,7 @@ function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) 
       )}
       {!done && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {dismissable && <DismissControl id={String(item.id)} busy={busy} onDismiss={(note) => actions.onDismiss!(item, note)} />}
+          {dismissable && <DismissControl id={String(item.id)} busy={busy} onDismiss={(note) => actions.onDismiss!(item, note)} onArmed={setArmed} />}
           {label &&
             (armed ? (
               <>
@@ -216,6 +219,7 @@ function Row({
   onOpen: (item: WaitingItem) => void;
   actions?: RowActions;
 }) {
+  const [armed, setArmed] = useState(false);
   const due = dueLabel(item.due, now);
   const overdue = due?.endsWith('overdue') ?? false;
   const openable = isOpenable(item);
@@ -226,7 +230,7 @@ function Row({
   const title = notice ? noticeLine(item) : item.title;
   const detail = notice ? (item.notice_kind === 'privacy_changed' ? PRIVACY_NOTE : null) : item.detail;
   return (
-    <li>
+    <li className="min-w-0 rounded-md" style={{ background: armed ? 'var(--color-bg-secondary)' : undefined }}>
       <button
         type="button"
         onClick={() => openable && onOpen(item)}
@@ -263,13 +267,13 @@ function Row({
           )}
           {age && <span>{ago(age, now)}</span>}
         </span>
-        {(!compact || notice) && detail && (
+        {(!compact || notice) && detail && !armed && (
           <span className="text-ui-11-5 line-clamp-2" style={{ color: 'var(--color-text-secondary)' }} data-detail>
             {detail}
           </span>
         )}
       </button>
-      {actions && <Actions item={item} actions={actions} />}
+      {actions && <Actions item={item} actions={actions} armed={armed} setArmed={setArmed} />}
     </li>
   );
 }
@@ -306,7 +310,10 @@ export function WaitingListView({
   onOpen: (item: WaitingItem) => void;
   actions?: RowActions;
 }) {
-  let left = limit ?? Infinity;
+  // "Show all" expands in place when nobody gave the list somewhere else to go.
+  const [all, setAll] = useState(false);
+  const cap = limit != null && !onMore && all ? undefined : limit;
+  let left = cap ?? Infinity;
   const total = groups.reduce((n, g) => n + g.count, 0);
   let shownAll = 0;
   return (
@@ -337,12 +344,12 @@ export function WaitingListView({
                 <span>{g.label}</span>
                 <span data-count>{g.count}</span>
               </h3>
-              <ul className="flex flex-col">
+              <ul className={compact ? 'flex flex-col' : 'grid grid-cols-1 3xl:grid-cols-2 gap-x-4'}>
                 {shown.map((item) => (
                   <Row key={rowKey(item)} item={item} now={now} compact={compact} onOpen={onOpen} actions={actions} />
                 ))}
               </ul>
-              {more > 0 && limit == null && (
+              {more > 0 && cap == null && !all && (
                 <p className="text-ui-10-5 px-2" style={{ color: 'var(--color-text-tertiary)' }}>
                   + {more} more on the page
                 </p>
@@ -351,15 +358,15 @@ export function WaitingListView({
           );
         })
       )}
-      {limit != null && total > shownAll && (
+      {limit != null && (total > shownAll || all) && (
         <button
           type="button"
           data-more
-          onClick={onMore}
+          onClick={onMore ?? (() => setAll((a) => !a))}
           className="self-start text-ui-11 px-2 cursor-pointer"
           style={{ background: 'transparent', border: 'none', color: 'var(--color-accent)' }}
         >
-          {total - shownAll} more
+          {onMore ? `${total - shownAll} more` : all ? 'Show fewer' : `Show all ${total}`}
         </button>
       )}
     </div>

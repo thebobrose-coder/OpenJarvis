@@ -2,7 +2,8 @@ import { Newspaper, Pause, Play } from 'lucide-react';
 import { useDailyBriefAudio } from '../../lib/DailyBriefAudioContext';
 import { AutoFixes } from '../Commerce/fixes/AutoFixes';
 import { DashboardPanel } from './DashboardPanel';
-import { DAILY_LATE_AFTER_S, FeedFreshness } from './FeedFreshness';
+import { DAILY_LATE_AFTER_S } from './FeedFreshness';
+import { FeedAge } from './FeedAge';
 
 /**
  * Flagship general/market digest, brought onto the dashboard from the
@@ -19,6 +20,38 @@ import { DAILY_LATE_AFTER_S, FeedFreshness } from './FeedFreshness';
  * AudioPlayer, matching the pattern already used by every other digest
  * panel (Culture & Sports, the sidebar dock).
  */
+/** The digest text with its play control (widescreen plan, Phase 1: the Briefings
+ * hub mounts this body under its Daily Brief tab). */
+export function DailyBriefBody({
+  digest,
+  audioUrl,
+  playing,
+  toggleAudio,
+}: Pick<ReturnType<typeof useDailyBriefAudio>, 'digest' | 'audioUrl' | 'playing' | 'toggleAudio'>) {
+  if (!digest?.text) {
+    return <p style={{ color: 'var(--color-text-tertiary)' }}>No briefing for today yet. Regenerate to get started.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <FeedAge label="Daily Brief" ageSeconds={digest.age_seconds} stale={digest.stale} staleAfterSeconds={DAILY_LATE_AFTER_S} />
+      <div className="flex items-start gap-2">
+        {audioUrl && (
+          <button
+            onClick={toggleAudio}
+            className="flex items-center justify-center w-5 h-5 rounded-full shrink-0 cursor-pointer mt-0.5"
+            style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
+            title={playing ? 'Pause' : 'Play Daily Brief'}
+          >
+            {playing ? <Pause size={10} /> : <Play size={10} />}
+          </button>
+        )}
+        <p className="whitespace-pre-wrap flex-1">{digest.text}</p>
+      </div>
+      <AutoFixes fixes={digest.auto_fixes} />
+    </div>
+  );
+}
+
 export function DailyBriefPanel() {
   const { digest, audioUrl, loading, error, regenerating, playing, regenerate, toggleAudio } =
     useDailyBriefAudio();
@@ -35,27 +68,7 @@ export function DailyBriefPanel() {
       onRegenerate={regenerate}
       regenerating={regenerating}
     >
-      {!digest?.text ? (
-        <p style={{ color: 'var(--color-text-tertiary)' }}>No briefing for today yet. Regenerate to get started.</p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          <FeedFreshness ageSeconds={digest.age_seconds} stale={digest.stale} staleAfterSeconds={DAILY_LATE_AFTER_S} />
-          <div className="flex items-start gap-2">
-            {audioUrl && (
-              <button
-                onClick={toggleAudio}
-                className="flex items-center justify-center w-5 h-5 rounded-full shrink-0 cursor-pointer mt-0.5"
-                style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
-                title={playing ? 'Pause' : 'Play Daily Brief'}
-              >
-                {playing ? <Pause size={10} /> : <Play size={10} />}
-              </button>
-            )}
-            <p className="whitespace-pre-wrap flex-1">{digest.text}</p>
-          </div>
-          <AutoFixes fixes={digest.auto_fixes} />
-        </div>
-      )}
+      <DailyBriefBody digest={digest} audioUrl={audioUrl} playing={playing} toggleAudio={toggleAudio} />
     </DashboardPanel>
   );
 }

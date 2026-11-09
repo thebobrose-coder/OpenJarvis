@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { CalendarClock } from 'lucide-react';
-import { fetchDayAhead, refreshDayAhead } from '../../lib/api';
+import { fetchDayAhead } from '../../lib/api';
 import type { DayAhead } from '../../lib/api';
 import { DashboardPanel } from './DashboardPanel';
-import { FeedFreshness } from './FeedFreshness';
+import { FeedAge } from './FeedAge';
 
 const REFRESH_MS = 5 * 60 * 1000;
 // Hermes regenerates day_ahead every 5 minutes; past 15 the feed is late.
@@ -77,15 +77,15 @@ export function DayAheadView({ data, onConnect }: { data: DayAhead; onConnect?: 
         </div>
       )}
 
-      <FeedFreshness ageSeconds={data.age_seconds} stale={data.stale} staleAfterSeconds={LATE_AFTER_S} />
+      <FeedAge label="Day Ahead" ageSeconds={data.age_seconds} stale={data.stale} staleAfterSeconds={LATE_AFTER_S} />
     </div>
   );
 }
 
 /**
  * Agenda panel: Hermes's day_ahead feed (wave 4), which Hermes regenerates
- * every 5 minutes. Opening the panel asks Hermes for a fresh one (it lands
- * within a couple of minutes); the panel reloads on its interval.
+ * every 5 minutes; the panel reloads on its interval. (It no longer asks Hermes for a
+ * fresh one on mount: a Dashboard visit is not operator intent.)
  */
 export function DayAheadPanel() {
   const navigate = useNavigate();
@@ -105,15 +105,13 @@ export function DayAheadPanel() {
   }, []);
 
   useEffect(() => {
-    // Queue one refresh on open; don't wait for it (the current copy shows now).
-    refreshDayAhead().catch(() => {});
     load();
     const interval = setInterval(load, REFRESH_MS);
     return () => clearInterval(interval);
   }, [load]);
 
   return (
-    <DashboardPanel icon={CalendarClock} title="Day Ahead" tag="5 min" size="half" priority loading={loading} error={error}>
+    <DashboardPanel icon={CalendarClock} title="Day Ahead" tag="5 min" size="quarter" band="tall" priority loading={loading} error={error}>
       {data && <DayAheadView data={data} onConnect={() => navigate('/data-sources')} />}
     </DashboardPanel>
   );

@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { OVER_CAP, spendTone, type Sleeve, type TradingStatus } from '../../lib/trading-api';
 import { SOURCE_LABELS } from '../../lib/voice-api';
-import { ORDER_EVENT_TYPES, TradingSummaryView } from './TradingSummaryPanel';
+import { TradingSummaryView } from './TradingSummaryPanel';
 
 // Invented numbers only: this repo is public.
 const NOW = Date.parse('2026-10-06T17:00:00Z');
@@ -50,23 +50,18 @@ function status(over: Partial<TradingStatus> = {}): TradingStatus {
 const view = (s: TradingStatus, now = NOW) => renderToStaticMarkup(<TradingSummaryView status={s} now={now} onOpen={() => {}} />);
 
 describe('Trading Summary (Dashboard)', () => {
-  it('shows each sleeve’s halt state and equity, open positions, the latest order activity and spend', () => {
+  it('shows each sleeve’s halt state and equity and spend; positions and order activity stay on /trading', () => {
     const html = view(status());
     expect(html).toContain('data-trading-sleeves');
     expect(html.match(/data-halt="NORMAL"/g)?.length).toBe(2);
     expect(html).toContain('10,240.50');
     expect(html).toContain('5,000.00');
-    expect(html).toContain('data-summary-positions');
-    expect(html).toContain('long 12 SAMPLE-A @ 101.25 · stop 96.00 · 3 d');
-    expect(html).toContain('data-latest-order');
-    // The newest order-activity event wins; the DEGRADED_CLEARED event is not order activity.
-    expect(html).toContain('>HITL<');
-    expect(html).not.toContain('DEGRADED_CLEARED');
+    expect(html).not.toContain('data-summary-positions');
+    expect(html).not.toContain('data-latest-order');
     expect(html).toContain('x402 today: 3 payments');
     expect(html).toContain('0.03 of 3.00 USDC');
     expect(html).toContain('Trading view');
     expect(html).not.toContain('data-trading-warnings');
-    expect(ORDER_EVENT_TYPES.has('FILL')).toBe(true);
   });
 
   it('shows today’s spend as a meter above the sleeves, and not in the footer', () => {
@@ -131,10 +126,7 @@ describe('Trading Summary (Dashboard)', () => {
     expect(view(status(), NOW + 40 * 60 * 1000)).toContain('Status is stale');
   });
 
-  it('says so with no positions, no order activity, or no sleeves', () => {
-    const quiet = view(status({ sleeves: { equities: sleeve(), crypto: sleeve() } }));
-    expect(quiet).toContain('No open positions.');
-    expect(quiet).toContain('No proposals or fills in the recent events.');
+  it('says so with no sleeves', () => {
     expect(view(status({ sleeves: undefined }))).toContain('could not read the trader');
   });
 

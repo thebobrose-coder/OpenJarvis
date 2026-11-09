@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Search, ShoppingBag, TrendingDown, TrendingUp } from 'lucide-react';
 import { fetchStorePerformance } from '../../lib/api';
@@ -13,7 +14,7 @@ import type {
 } from '../../lib/api';
 import { Chip, Segmented, SmallButton, Tile, type Tone } from '../shared/ui';
 import { DashboardPanel } from './DashboardPanel';
-import { FeedFreshness } from './FeedFreshness';
+import { FeedAge } from './FeedAge';
 
 const REFRESH_MS = 30 * 60 * 1000;
 
@@ -375,7 +376,9 @@ function StoreSearch({ gsc }: { gsc: SearchConsolePerformanceSection }) {
  * also shows its age and a stale marker when Hermes has fallen behind.
  */
 export function StorePerformancePanel() {
+  const navigate = useNavigate();
   const [data, setData] = useState<StorePerformancePayload | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -398,49 +401,43 @@ export function StorePerformancePanel() {
   }, [load]);
 
   const stores = data?.stores ?? [];
+  const shown = stores.length > 1 ? stores.find((s) => s.slug === picked) ?? stores[0] : stores[0];
 
   return (
     <DashboardPanel
       icon={ShoppingBag}
       title="Store Performance"
       tag="30 min"
-      size="full"
+      size="half"
+      band="short"
       priority
       loading={loading}
       error={error}
       onRegenerate={load}
       regenerateKind="reload"
+      onTitleClick={() => navigate('/commerce')}
+      headerExtra={
+        stores.length > 1 ? (
+          <Segmented
+            ariaLabel="Store"
+            value={shown?.slug ?? ''}
+            onChange={setPicked}
+            options={stores.map((s) => ({ value: s.slug, label: s.display_name }))}
+          />
+        ) : undefined
+      }
     >
-      <FeedFreshness
+      <FeedAge
+        label="Store performance"
         ageSeconds={data?.age_seconds}
         stale={data?.stale}
         staleTitle="The Hermes feed has missed its last refreshes -- showing the last good copy."
         className="mb-3"
       />
-      {stores.length === 0 ? (
-        <p style={{ color: 'var(--color-text-tertiary)' }}>
-          No stores in the Hermes feed yet.
-        </p>
+      {!shown ? (
+        <p style={{ color: 'var(--color-text-tertiary)' }}>No stores in the Hermes feed yet.</p>
       ) : (
-        <div className="flex flex-col gap-4">
-          {stores.map((store, i) => (
-            <div key={store.slug}>
-              {stores.length > 1 && (
-                <div
-                  className="text-ui-11 font-semibold uppercase tracking-wide mb-2"
-                  style={{
-                    color: 'var(--color-text-secondary)',
-                    borderTop: i > 0 ? '1px solid var(--color-border)' : 'none',
-                    paddingTop: i > 0 ? 12 : 0,
-                  }}
-                >
-                  {store.display_name}
-                </div>
-              )}
-              <StoreSection store={store} />
-            </div>
-          ))}
-        </div>
+        <StoreSection store={shown} />
       )}
     </DashboardPanel>
   );

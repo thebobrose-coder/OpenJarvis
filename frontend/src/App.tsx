@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router';
 import { Layout } from './components/Layout';
 import { ChatPage } from './pages/ChatPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { InboxPage } from './pages/InboxPage';
 import { CommercePage } from './pages/CommercePage';
 import { BizDevPage } from './pages/BizDevPage';
 import { ContentPage } from './pages/ContentPage';
@@ -192,6 +193,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route index element={<ChatPage />} />
           <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="inbox" element={<InboxPage />} />
           <Route path="commerce" element={<CommercePage />} />
           <Route path="bizdev" element={<BizDevPage />} />
           <Route path="content" element={<ContentPage />} />

@@ -80,8 +80,8 @@ export function ListenList({ queue }: { queue: VoiceQueue }) {
   );
 }
 
-/** The morning playlist: Hermes's voice_queue in order. Nothing auto-plays. */
-export function ListenPanel({ initial }: { initial?: VoiceQueue }) {
+/** Hermes's voice_queue, polled every minute (the Briefings hub and ListenPanel). */
+export function useVoiceQueue(initial?: VoiceQueue) {
   const [queue, setQueue] = useState<VoiceQueue | null>(initial ?? null);
   const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +106,13 @@ export function ListenPanel({ initial }: { initial?: VoiceQueue }) {
     const t = setInterval(load, REFRESH_MS);
     return () => clearInterval(t);
   }, [initial, load]);
+
+  return { queue, loading, error, playError };
+}
+
+/** The morning playlist: Hermes's voice_queue in order. Nothing auto-plays. */
+export function ListenPanel({ initial }: { initial?: VoiceQueue }) {
+  const { queue, loading, error, playError } = useVoiceQueue(initial);
 
   return (
     <DashboardPanel icon={Headphones} title="Listen" tag={queue?.voice_name} size="half" loading={loading} error={error}>

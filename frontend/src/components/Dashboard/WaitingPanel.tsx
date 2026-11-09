@@ -1,14 +1,13 @@
 import { useNavigate } from 'react-router';
-import { Inbox } from 'lucide-react';
+import { ArrowRight, Inbox } from 'lucide-react';
 import { DashboardPanel } from './DashboardPanel';
 import { SmallButton } from '../shared/ui';
 import { WaitingListView, type RowActions } from '../Waiting/WaitingListView';
-import { useAppStore } from '../../lib/store';
-import { useWaiting } from '../../lib/WaitingContext';
-import { bellCount, fmtAge, groupItems, linkFor, sourceAges, staleSources, type Waiting, type WaitingItem } from '../../lib/waiting-api';
+import { useOpenWaitingItem, useWaiting } from '../../lib/WaitingContext';
+import { bellCount, fmtAge, groupItems, sourceAges, staleSources, type Waiting, type WaitingItem } from '../../lib/waiting-api';
 
-/** The Dashboard shows this many "For you" rows; the rest are in the bell. */
-export const PANEL_ROWS = 10;
+/** The Dashboard's act band shows this many "For you" rows before "Show all". */
+export const PANEL_ROWS = 16;
 
 /** Pure: the panel's body for a given poll (see WaitingPanel). */
 export function WaitingPanelView({
@@ -18,7 +17,8 @@ export function WaitingPanelView({
   now,
   onOpen,
   onDecisions,
-  onMore = () => {},
+  onMore,
+  onInbox,
   actions,
 }: {
   waiting: Waiting | null;
@@ -27,8 +27,10 @@ export function WaitingPanelView({
   now: number;
   onOpen: (item: WaitingItem) => void;
   onDecisions: () => void;
-  /** "N more": the full list (the bell's dropdown). */
+  /** "N more" goes here; without it "Show all" expands in place. */
   onMore?: () => void;
+  /** The Inbox page: every lane at full width. */
+  onInbox?: () => void;
   actions?: RowActions;
 }) {
   const act = bellCount(waiting);
@@ -38,16 +40,24 @@ export function WaitingPanelView({
       title="Waiting on you"
       tag={waiting ? `${act} for you` : undefined}
       size="full"
+      band="short"
       priority={act > 0}
       loading={loading && !waiting}
       error={!waiting ? error : null}
       actions={
-        <SmallButton onClick={onDecisions} title="The open decision boxes in the inbox briefs">
-          Decisions
-        </SmallButton>
+        <>
+          <SmallButton onClick={onDecisions} title="The open decision boxes in the inbox briefs">
+            Decisions
+          </SmallButton>
+          {onInbox && (
+            <SmallButton onClick={onInbox} title="Every lane: For you, Dispatch, Filed">
+              Inbox <ArrowRight size={11} />
+            </SmallButton>
+          )}
+        </>
       }
     >
-      <div className="max-h-[26rem] overflow-y-auto pr-1">
+      <div>
         <WaitingListView
           groups={groupItems(waiting, 'act')}
           stale={staleSources(waiting)}
@@ -71,14 +81,14 @@ export function WaitingPanelView({
 
 /**
  * The Dashboard's "Waiting on you" panel (hq 0020 P1, 0023 D1): the For you
- * lane only, at most ten rows, with "N more" opening the bell's full list.
+ * lane only, 16 rows then "Show all" in place, with the Inbox page a click away.
  * Each row opens the page that holds its action; a rec can be snoozed or
  * fixed here, and a work-order row dismissed.
  */
 export function WaitingPanel() {
-  const { waiting, loading, error, setDecisionsOpen, setG1Open, setReportOpen, setBellOpen, rowActions } = useWaiting();
+  const { waiting, loading, error, setDecisionsOpen, rowActions } = useWaiting();
+  const { openItem } = useOpenWaitingItem();
   const navigate = useNavigate();
-  const setStackDrawerOpen = useAppStore((st) => st.setStackDrawerOpen);
   return (
     <WaitingPanelView
       waiting={waiting}
@@ -86,18 +96,9 @@ export function WaitingPanel() {
       error={error}
       now={Date.now()}
       onDecisions={() => setDecisionsOpen(true)}
-      onMore={() => setBellOpen(true)}
+      onInbox={() => navigate('/inbox')}
       actions={rowActions}
-      onOpen={(item) => {
-        if (item.opens === 'decisions') setDecisionsOpen(true);
-        else if (item.opens === 'g1') setG1Open(String(item.id));
-        else if (item.opens === 'workorder') setReportOpen(String(item.id));
-        else if (item.opens === 'sites') setStackDrawerOpen(true);
-        else {
-          const href = linkFor(item);
-          if (href) navigate(href);
-        }
-      }}
+      onOpen={openItem}
     />
   );
 }

@@ -188,16 +188,16 @@ describe('rows', () => {
 });
 
 describe('WaitingPanelView (Dashboard)', () => {
-  it('shows the For you lane only, at most 10 rows, then "N more"', () => {
-    const many = Array.from({ length: 14 }, (_, n) => item({ id: `r-${n}`, title: `Rec ${n}` }));
-    const w = laned({ items: [...many, DESK_REC], counts: { total: 15, act: 14, delegate: 1, fyi: 0 } });
+  it('shows the For you lane only, 16 rows, then "Show all" in place', () => {
+    const many = Array.from({ length: 20 }, (_, n) => item({ id: `r-${n}`, title: `Rec ${n}` }));
+    const w = laned({ items: [...many, DESK_REC], counts: { total: 21, act: 20, delegate: 1, fyi: 0 } });
     const html = renderToStaticMarkup(
       <WaitingPanelView waiting={w} loading={false} error={null} now={NOW} onOpen={noop} onDecisions={noop} actions={actions} />,
     );
-    expect(PANEL_ROWS).toBe(10);
-    expect((html.match(/data-kind="rec"/g) ?? []).length).toBe(10);
-    expect(html).toContain('4 more');
-    expect(html).toContain('14 for you');
+    expect(PANEL_ROWS).toBe(16);
+    expect((html.match(/data-kind="rec"/g) ?? []).length).toBe(16);
+    expect(html).toContain('Show all 20');
+    expect(html).toContain('20 for you');
     expect(html).not.toContain('A desk rec');
   });
 });

@@ -9,56 +9,33 @@ import {
   killWhen,
   money,
   OVER_CAP,
-  recentEvents,
   sleeveLabel,
   sleeveNames,
   spendTone,
   staleness,
-  stopDistancePct,
-  stopTone,
   type TradingStatus,
 } from '../../lib/trading-api';
 import { firstBlock } from '../../lib/voice-api';
 import { Meter } from '../Trading/Meter';
 import { HaltPill } from '../Trading/TradingHeader';
 import { shortDateTime } from '../shared/format';
-import { Chip, Quiet, SmallButton } from '../shared/ui';
+import { Quiet, SmallButton } from '../shared/ui';
 import { SpeakButton } from '../shared/SpeakButton';
 import { DashboardPanel } from './DashboardPanel';
-import { FeedFreshness } from './FeedFreshness';
+import { FeedAge } from './FeedAge';
 
 const REFRESH_MS = 60 * 1000;
 
-/** How far the mark is from the stop (either side: a short's stop is above
- * its mark), amber under 2 %, red once through it. */
-function StopDistance({ p }: { p: Parameters<typeof stopDistancePct>[0] }) {
-  const pct = stopDistancePct(p);
-  if (pct == null) return null;
-  const tone = stopTone(pct);
-  return (
-    <span data-summary-stop-distance={pct.toFixed(2)} style={{ color: tone ? `var(--color-${tone})` : 'var(--color-text-tertiary)' }}>
-      {pct <= 0 ? ' (past the stop)' : ` (${pct.toFixed(1)}% away)`}
-    </span>
-  );
-}
 const STALE_AFTER_S = 15 * 60;
-
-/** Event types that describe order activity: the trader's proposals, the
- * gate's verdicts, HITL decisions, fills. The newest one is the "latest
- * order recommendation" line. */
-export const ORDER_EVENT_TYPES = new Set(['PROPOSAL', 'GATE', 'HITL', 'FILL', 'ORDER', 'EXIT']);
 
 export const NO_STATUS = 'No trading status yet. The trader publishes it every 5 minutes.';
 
-/** The top line of the x402 paper trader for the Dashboard: halt state and
- * today's x402
- * spend against the cap, equity per sleeve, open positions, the latest order
- * activity, and the stale or KILL warnings. Read-only; the link opens /trading. */
+/** The top line of the x402 paper trader for the Dashboard: halt state, today's
+ * x402 spend against the cap, equity per sleeve, and the stale or KILL warnings.
+ * Positions and order activity live on /trading (widescreen plan, Phase 1). Read-only. */
 export function TradingSummaryView({ status, now, onOpen }: { status: TradingStatus; now: number; onOpen?: () => void }) {
   const stale = staleness(status, now);
   const sleeves = sleeveNames(status);
-  const positions = sleeves.flatMap((name) => (status.sleeves?.[name]?.positions ?? []).map((p) => ({ ...p, sleeve: name })));
-  const latest = recentEvents(status).find((e) => ORDER_EVENT_TYPES.has(e.type)) ?? null;
   const hb = status.heartbeat;
   const hbBad = hb ? hb.last_ok === false || hb.alarm === 'ALARM' : false;
   const killed = sleeves.filter((n) => status.sleeves?.[n]?.halt_state === 'KILL');
@@ -127,46 +104,6 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
         </ul>
       )}
 
-      <div className="flex flex-col gap-1">
-        <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-          Open positions ({positions.length})
-        </span>
-        {positions.length === 0 ? (
-          <Quiet>No open positions.</Quiet>
-        ) : (
-          <ul className="flex flex-col gap-0.5 text-ui-12 tabular-nums" data-summary-positions style={{ color: 'var(--color-text)' }}>
-            {positions.slice(0, 6).map((p, i) => (
-              <li key={`${p.sleeve}-${p.product}-${i}`}>
-                {p.side} {String(p.size)} {p.product} @ {fmtMoney(p.entry)}
-                {p.stop ? ` · stop ${fmtMoney(p.stop)}` : ''}
-                <StopDistance p={p} />
-                {p.held_days != null ? ` · ${p.held_days} d` : ''}
-                <span style={{ color: 'var(--color-text-tertiary)' }}> · {sleeveLabel(p.sleeve)}</span>
-              </li>
-            ))}
-            {positions.length > 6 && <li style={{ color: 'var(--color-text-tertiary)' }}>+{positions.length - 6} more on the Trading page</li>}
-          </ul>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-          Latest order activity
-        </span>
-        {latest ? (
-          <p className="flex flex-wrap items-baseline gap-2 text-ui-12" data-latest-order>
-            <span className="tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
-              {shortDateTime(latest.ts)}
-            </span>
-            <Chip tone="accent">{latest.type}</Chip>
-            <span style={{ color: 'var(--color-text-tertiary)' }}>{sleeveLabel(latest.sleeve)}</span>
-            {latest.summary && <span style={{ color: 'var(--color-text)' }}>{latest.summary}</span>}
-          </p>
-        ) : (
-          <Quiet>No proposals or fills in the recent events.</Quiet>
-        )}
-      </div>
-
       {onOpen && (
         <div className="flex justify-end pt-1" data-summary-footer>
           <SmallButton onClick={onOpen} title="The full Trading view">
@@ -211,7 +148,8 @@ export function TradingSummaryPanel() {
       icon={CandlestickChart}
       title="Trading Summary"
       tag="Paper · 5 min"
-      size="half"
+      size="quarter"
+      band="tall"
       priority
       loading={loading}
       error={error}
@@ -222,7 +160,7 @@ export function TradingSummaryPanel() {
       ) : (
         <div className="flex flex-col gap-2">
           <TradingSummaryView status={status} now={now} onOpen={() => navigate('/trading')} />
-          <FeedFreshness ageSeconds={status.age_seconds} stale={status.stale} staleAfterSeconds={STALE_AFTER_S} />
+          <FeedAge label="Trading" ageSeconds={status.age_seconds} stale={status.stale} staleAfterSeconds={STALE_AFTER_S} />
         </div>
       )}
     </DashboardPanel>

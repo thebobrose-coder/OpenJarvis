@@ -23,7 +23,7 @@ import {
 import { fetchWeather, refreshWeather } from '../../lib/api';
 import type { WeatherPayload } from '../../lib/api';
 import { DashboardPanel } from './DashboardPanel';
-import { FeedFreshness } from './FeedFreshness';
+import { FeedAge } from './FeedAge';
 
 const LIVE_REFRESH_MS = 15 * 60 * 1000;
 // Hermes regenerates weather every 15 minutes; past 45 the feed is late.
@@ -92,8 +92,6 @@ export function WeatherPanel() {
   }, []);
 
   useEffect(() => {
-    // Queue one refresh on open; the current copy shows meanwhile.
-    refreshWeather().catch(() => {});
     loadLive();
     const interval = setInterval(loadLive, LIVE_REFRESH_MS);
     return () => clearInterval(interval);
@@ -122,8 +120,8 @@ export function WeatherPanel() {
       icon={weather?.current ? conditionIcon(weather.current.icon) : CloudSun}
       title="Weather"
       tag="15 min"
-      size="half"
-      priority
+      size="quarter"
+      band="short"
       loading={loading}
       error={error}
       onRegenerate={handleRefresh}
@@ -258,7 +256,7 @@ export function WeatherView({ weather }: { weather: WeatherPayload | null }) {
             </div>
           )}
 
-          <FeedFreshness ageSeconds={weather.age_seconds} stale={weather.stale} staleAfterSeconds={LATE_AFTER_S} />
+          <FeedAge label="Weather" ageSeconds={weather.age_seconds} stale={weather.stale} staleAfterSeconds={LATE_AFTER_S} />
         </div>
       )}
     </>
