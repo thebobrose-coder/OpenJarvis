@@ -386,6 +386,20 @@ The sidebar Stack health dock stays as the one-line indicator and opens `/ops`.
 Decision 11-09-26: build it, and make it graphically compelling for the wide viewport
 (gauges, burn curves, timelines; recharts is already a dependency).
 
+**As built (11-09-26, Phases 4 and 5).**
+
+- The stack band is compact (auto height), not the 420 px short band, so rows 1 and 2
+  sit above the fold. Its "sparkline of the last 30 runs" became the day's four
+  scheduled runs with the last run and now: the feed carries one run, no history.
+- The burn curve joins three real points per series (0 on the 1st, month to date
+  today, AWS's month-end forecast); the straight segments are the average pace, and
+  the chart says so. The y range takes in the monthly caps.
+- Cost by engine uses five validated categorical slots (`--viz-series-1..5`) then
+  "Other"; free engines are listed apart.
+- Waiting `spend-*` rows now open `/ops` (client alias); the feed still names
+  `/commerce`.
+- BizDev (4.5): the board has 7 stage columns, not 10, about 300 px each at 2240.
+
 ### 5.4 Inbox (Waiting as a page, `/inbox`)
 
 The bell dropdown is the only place the Dispatch and Filed lanes are visible, in 380 px.
