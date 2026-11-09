@@ -5,6 +5,7 @@ import { ChatPage } from './pages/ChatPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { InboxPage } from './pages/InboxPage';
 import { StudioPage } from './pages/StudioPage';
+import { OpsPage } from './pages/OpsPage';
 import { CommercePage } from './pages/CommercePage';
 import { BizDevPage } from './pages/BizDevPage';
 import { ContentPage } from './pages/ContentPage';
@@ -175,6 +176,7 @@ export default function App() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
         e.preventDefault();
+        // On Chat: the context rail (widescreen plan 4.8; the System panel moved to /ops).
         toggleSystemPanel();
       }
     };
@@ -199,6 +201,7 @@ export default function App() {
           <Route path="bizdev" element={<BizDevPage />} />
           <Route path="content" element={<ContentPage />} />
           <Route path="studio" element={<StudioPage />} />
+          <Route path="ops" element={<OpsPage />} />
           <Route path="trading" element={<TradingPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="get-started" element={<GetStartedPage />} />

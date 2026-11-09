@@ -22,7 +22,7 @@ export const SPEND_TONE: Record<string, Tone> = {
 
 /** The periods in the order the tiles show them; others follow as listed. */
 const PERIOD_ORDER = ['day', 'month', 'flight', 'episode'];
-const PERIOD_LABEL: Record<string, string> = {
+export const PERIOD_LABEL: Record<string, string> = {
   day: 'Per day',
   month: 'Per month',
   flight: 'Per flight',
@@ -47,7 +47,7 @@ export function groupLines(lines: SpendLine[]): [string, SpendLine[]][] {
   return [...groups.entries()].sort(([a], [b]) => rank(a) - rank(b));
 }
 
-function LineTile({ line }: { line: SpendLine }) {
+export function LineTile({ line }: { line: SpendLine }) {
   const tone = SPEND_TONE[line.status] ?? 'neutral';
   const border = tone === 'warning' ? 'var(--color-warning)' : tone === 'error' ? 'var(--color-error)' : 'transparent';
   const muted = tone === 'muted';
@@ -109,7 +109,7 @@ export function CostReaderLine({ reader }: { reader: CostReader | null | undefin
   );
 }
 
-function AlertRow({ alert }: { alert: SpendAlert }) {
+export function AlertRow({ alert }: { alert: SpendAlert }) {
   const paused = alert.action === 'studio_paused';
   const tone: Tone = paused || alert.level === 100 ? 'error' : alert.lane === 'act' ? 'warning' : 'muted';
   const color = tone === 'error' ? 'var(--color-error)' : tone === 'warning' ? 'var(--color-warning)' : 'var(--color-text-secondary)';
@@ -139,12 +139,13 @@ export interface SpendLedgerPanelProps {
   dim?: boolean;
 }
 
-export function SpendLedgerPanel({ ledger, loading, error, tag = 'read only', dim }: SpendLedgerPanelProps) {
+/** The ledger's tiles by period, the cost reader line, the alerts and the
+ * footer: the Spend ledger panel's body, and the Ops Spend burn's Table view. */
+export function SpendLedgerBody({ ledger }: { ledger: SpendLedger | null }) {
   const groups = groupLines(ledger?.lines ?? []);
   const errors = ledger?.parse_errors ?? [];
   const alerts = ledger?.alerts ?? [];
   return (
-    <DashboardPanel icon={Wallet} title="Spend ledger" tag={tag} size="full" dim={dim} loading={loading && !ledger} error={error}>
       <div id="spend-ledger" className="flex flex-col gap-3">
         {errors.length > 0 && (
           <p role="alert" className="text-ui-12" style={{ color: 'var(--color-warning)' }} data-parse-errors>
@@ -192,6 +193,13 @@ export function SpendLedgerPanel({ ledger, loading, error, tag = 'read only', di
           {ledger?.run_at ? `, last at ${shortDateTime(ledger.run_at)}` : ''}.
         </Quiet>
       </div>
+  );
+}
+
+export function SpendLedgerPanel({ ledger, loading, error, tag = 'read only', dim }: SpendLedgerPanelProps) {
+  return (
+    <DashboardPanel icon={Wallet} title="Spend ledger" tag={tag} size="full" dim={dim} loading={loading && !ledger} error={error}>
+      <SpendLedgerBody ledger={ledger} />
     </DashboardPanel>
   );
 }

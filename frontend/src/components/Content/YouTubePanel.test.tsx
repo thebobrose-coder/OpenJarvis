@@ -134,7 +134,7 @@ describe('v1.29 waiting kinds', () => {
       link: { page, focus },
       lane: 'act' as const,
     });
-    expect(linkFor(row('spend_cap', '/commerce', 'spend-aws-total'))).toBe('/commerce?tab=ads&focus=spend-aws-total');
+    expect(linkFor(row('spend_cap', '/commerce', 'spend-aws-total'))).toBe('/ops?focus=spend-aws-total');
     const groups = groupItems({ items: [row('spark', '/content', 'spark-flight-a'), row('mystery', '/content', 'm')], counts: {} as never });
     expect(groups.map((g) => [g.kind, g.label])).toEqual([
       ['spark', 'Spark swap (Google Ads)'],

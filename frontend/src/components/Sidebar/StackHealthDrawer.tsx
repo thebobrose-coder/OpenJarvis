@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Drawer } from '../shared/Drawer';
-import { Check, Copy, Loader2, MessagesSquare, Play, X } from 'lucide-react';
+import { Check, Copy, Gauge, Loader2, MessagesSquare, Play, X } from 'lucide-react';
 import type { RunState } from '../../hooks/useStackHealth';
 import {
   cappedEvents,
@@ -120,46 +120,26 @@ export interface StackHealthDrawerProps {
   onAskDesk?: () => void;
   /** Company sites (v1.27), read-only; undefined hides the section. */
   sites?: { sites: EntityWatch | null; error: string | null };
+  /** The Ops page, where this run reads as a panel (widescreen plan 5.3). */
+  onOpenOps?: () => void;
 }
 
 /**
- * The full text behind the dock (the ProspectDrawer shape): counts, every
- * FAIL then WARN row with its whole evidence line, the open cloud events,
- * and the footer with Run now and Speak. There is no page: this drawer is the
- * "link to the full error text".
+ * The run's detail: every FAIL then WARN row with its whole evidence line, the
+ * open cloud events (10, then "+N more"), the company sites and the skip count.
+ * The drawer and the Ops page's Stack detail panel both render it.
  */
-export function StackHealthDrawer({ health, now, run, onRun, onClose, onAskDesk, sites }: StackHealthDrawerProps) {
-  const c = health?.counts;
-  const running = run.state === 'running';
+export function StackSections({
+  health,
+  now,
+  sites,
+}: {
+  health: StackHealth | null;
+  now: number;
+  sites?: { sites: EntityWatch | null; error: string | null };
+}) {
   return (
-    <Drawer open onClose={onClose} label="Stack health" width="narrow">
-      <header className="flex items-start justify-between gap-2">
-        <div className="flex flex-col gap-1.5">
-          <h2 className="text-ui-15 font-semibold" style={{ color: 'var(--color-text)' }}>
-            Stack health · {health ? clock(health.ran_at) : 'unavailable'}
-          </h2>
-          {health && c && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Chip tone={c.FAIL ? 'error' : 'muted'}>{c.FAIL} FAIL</Chip>
-            <Chip tone={c.WARN ? 'warning' : 'muted'}>{c.WARN} WARN</Chip>
-            <Chip tone="success">{c.OK} OK</Chip>
-            <Chip tone="muted">{c.SKIP} SKIP</Chip>
-            {health.stale && <Chip tone="warning">stale</Chip>}
-          </div>
-          )}
-        </div>
-        <div className="flex items-start gap-1 shrink-0">
-          {onAskDesk && health && (
-            <SmallButton onClick={onAskDesk} title="Open an Ops desk thread with this run as context">
-              <MessagesSquare size={11} /> Ask the desk
-            </SmallButton>
-          )}
-          <button onClick={onClose} aria-label="Close" className="cursor-pointer p-1" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
-            <X size={14} />
-          </button>
-        </div>
-      </header>
-
+    <>
       {!health && <Quiet>The stack-health file is unavailable.</Quiet>}
       {health && health.failing.length > 0 && (
         <Section title="Failures">
@@ -191,6 +171,54 @@ export function StackHealthDrawer({ health, now, run, onRun, onClose, onAskDesk,
           {health.skipped} check{health.skipped === 1 ? '' : 's'} skipped
         </Quiet>
       )}
+    </>
+  );
+}
+
+/**
+ * The full text behind the dock (the ProspectDrawer shape): counts, every
+ * FAIL then WARN row with its whole evidence line, the open cloud events,
+ * and the footer with Run now and Speak. The Ops page carries the same detail as a
+ * panel; this drawer stays for the Waiting rows and desk cards that open it.
+ */
+export function StackHealthDrawer({ health, now, run, onRun, onClose, onAskDesk, sites, onOpenOps }: StackHealthDrawerProps) {
+  const c = health?.counts;
+  const running = run.state === 'running';
+  return (
+    <Drawer open onClose={onClose} label="Stack health" width="narrow">
+      <header className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-1.5">
+          <h2 className="text-ui-15 font-semibold" style={{ color: 'var(--color-text)' }}>
+            Stack health · {health ? clock(health.ran_at) : 'unavailable'}
+          </h2>
+          {health && c && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Chip tone={c.FAIL ? 'error' : 'muted'}>{c.FAIL} FAIL</Chip>
+            <Chip tone={c.WARN ? 'warning' : 'muted'}>{c.WARN} WARN</Chip>
+            <Chip tone="success">{c.OK} OK</Chip>
+            <Chip tone="muted">{c.SKIP} SKIP</Chip>
+            {health.stale && <Chip tone="warning">stale</Chip>}
+          </div>
+          )}
+        </div>
+        <div className="flex items-start gap-1 shrink-0">
+          {onOpenOps && (
+            <SmallButton onClick={onOpenOps} title="The Ops page: this run as a panel, beside spend and the machine">
+              <Gauge size={11} /> Ops
+            </SmallButton>
+          )}
+          {onAskDesk && health && (
+            <SmallButton onClick={onAskDesk} title="Open an Ops desk thread with this run as context">
+              <MessagesSquare size={11} /> Ask the desk
+            </SmallButton>
+          )}
+          <button onClick={onClose} aria-label="Close" className="cursor-pointer p-1" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
+            <X size={14} />
+          </button>
+        </div>
+      </header>
+
+      <StackSections health={health} now={now} sites={sites} />
 
       {health && (
       <footer className="mt-auto flex flex-col gap-2 pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>

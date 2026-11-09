@@ -143,7 +143,7 @@ export function StackHealthDock() {
         missing={s.missing}
         error={s.error}
         pulse={s.pulse}
-        onOpen={() => setOpen(true)}
+        onOpen={() => navigate('/ops')}
       />
       {open && (
         <StackHealthDrawer
@@ -153,6 +153,10 @@ export function StackHealthDock() {
           onRun={s.runNow}
           onClose={() => setOpen(false)}
           sites={sites}
+          onOpenOps={() => {
+            setOpen(false);
+            navigate('/ops');
+          }}
           onAskDesk={() => {
             openDeskThread('ops', stackContext(s.health!));
             setOpen(false);

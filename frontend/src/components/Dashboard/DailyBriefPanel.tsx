@@ -1,6 +1,6 @@
-import { Newspaper, Pause, Play } from 'lucide-react';
+import { ArrowRight, Newspaper, Pause, Play } from 'lucide-react';
+import { Link } from 'react-router';
 import { useDailyBriefAudio } from '../../lib/DailyBriefAudioContext';
-import { AutoFixes } from '../Commerce/fixes/AutoFixes';
 import { DashboardPanel } from './DashboardPanel';
 import { DAILY_LATE_AFTER_S } from './FeedFreshness';
 import { FeedAge } from './FeedAge';
@@ -47,7 +47,12 @@ export function DailyBriefBody({
         )}
         <p className="whitespace-pre-wrap flex-1">{digest.text}</p>
       </div>
-      <AutoFixes fixes={digest.auto_fixes} />
+      {(digest.auto_fixes?.length ?? 0) > 0 && (
+        // Auto-applied fixes, with Revert, live on the Briefing page only (plan 5.5).
+        <Link to="/briefing" className="inline-flex items-center gap-1 text-ui-11-5 hover:underline" style={{ color: 'var(--color-accent)' }} data-auto-fixes-link>
+          {digest.auto_fixes!.length} fix{digest.auto_fixes!.length === 1 ? '' : 'es'} applied overnight: review or revert on the Briefing page <ArrowRight size={11} />
+        </Link>
+      )}
     </div>
   );
 }

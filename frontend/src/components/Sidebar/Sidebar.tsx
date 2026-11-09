@@ -33,7 +33,7 @@ import { modelDisplayName } from '../../lib/chat-routing';
 
 /** Pages the widescreen plan adds; each flips on in its own phase so no dead route
  * ever shows in the nav. */
-export const ROUTES_READY: { inbox: boolean; studio: boolean; ops: boolean } = { inbox: true, studio: true, ops: false };
+export const ROUTES_READY: { inbox: boolean; studio: boolean; ops: boolean } = { inbox: true, studio: true, ops: true };
 
 export function Sidebar() {
   const navigate = useNavigate();

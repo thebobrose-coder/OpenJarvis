@@ -42,6 +42,8 @@
     --text-ui-14: 16px;
     --text-ui-15: 17px;
     --text-ui-20: 24px;
+    /* Chat reads a little wider beside the context rail (widescreen plan 4.8). */
+    --chat-max-width: 880px;
   }
 }
 
@@ -123,6 +125,8 @@
     --viz-series-1: #2a78d6;
     --viz-series-2: #eb6834;
     --viz-series-3: #1baf7a;
+    --viz-series-4: #eda100;
+    --viz-series-5: #e87ba4;
 
     --color-code-bg: #f4f4f5;
     --color-input-bg: #ffffff;
@@ -186,6 +190,8 @@
     --viz-series-1: #3987e5;
     --viz-series-2: #d95926;
     --viz-series-3: #199e70;
+    --viz-series-4: #c98500;
+    --viz-series-5: #d55181;
 
     --color-code-bg: #0c121a;
     --color-input-bg: #0c121a;
@@ -238,6 +244,8 @@
       --viz-series-1: #3987e5;
       --viz-series-2: #d95926;
       --viz-series-3: #199e70;
+      --viz-series-4: #c98500;
+      --viz-series-5: #d55181;
 
       --color-code-bg: #0c121a;
       --color-input-bg: #0c121a;

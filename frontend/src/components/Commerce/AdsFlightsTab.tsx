@@ -1,5 +1,5 @@
 import { Plane, Sparkles } from 'lucide-react';
-import type { AdsHold, DailyStore, SpendLedger } from '../../lib/commerce-api';
+import type { AdsHold, DailyStore } from '../../lib/commerce-api';
 import type { Spark } from '../../lib/content-api';
 import type { Patch } from '../../lib/fixes-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
@@ -7,7 +7,6 @@ import { SparkBlock } from '../Content/YouTubePanel';
 import { Quiet } from '../shared/ui';
 import { AdsPanel } from './AdsPanel';
 import { HoldFlight } from './MerchantPanel';
-import { SpendLedgerPanel } from './SpendLedgerPanel';
 
 export interface AdsFlightsTabProps {
   /** The selected stores' daily rows (GA4 ads live on them). */
@@ -16,12 +15,10 @@ export interface AdsFlightsTabProps {
   adsHold: AdsHold | null;
   /** youtube_performance.spark (v1.29): the pick per flight; the swap is the operator's. */
   sparks: Spark[] | null;
-  /** spend_ledger (v1.29): shown here, dimmed, until the Ops page takes it (Phase 5). */
-  spend: SpendLedger | null;
   patches?: Patch[];
   onOpenFix?: (id: string) => void;
-  loading?: { daily?: boolean; spend?: boolean };
-  error?: { daily?: string | null; spend?: string | null };
+  loading?: { daily?: boolean };
+  error?: { daily?: string | null };
 }
 
 /**
@@ -30,7 +27,7 @@ export interface AdsFlightsTabProps {
  * ledger (flight caps) and the Ads panel (GA4 campaigns). Everything here is read only
  * or links to an existing Fixes entry; the swap and the campaigns stay in Google Ads.
  */
-export function AdsFlightsTab({ stores, adsHold, sparks, spend, patches = [], onOpenFix, loading = {}, error = {} }: AdsFlightsTabProps) {
+export function AdsFlightsTab({ stores, adsHold, sparks, patches = [], onOpenFix, loading = {}, error = {} }: AdsFlightsTabProps) {
   const flights = Object.entries(adsHold?.flights ?? {});
   return (
     <>
@@ -73,9 +70,9 @@ export function AdsFlightsTab({ stores, adsHold, sparks, spend, patches = [], on
           )}
         </DashboardPanel>
       </div>
-      <div className="grid grid-cols-12 gap-4 mb-10">
-        <SpendLedgerPanel ledger={spend} loading={loading.spend} error={error.spend} tag="read only · moves to Ops" dim />
-      </div>
+      <p className="text-ui-11 mb-10" style={{ color: 'var(--color-text-tertiary)' }} data-spend-moved>
+        The spend ledger, with each cap’s gauge and the AWS burn, is on the Ops page.
+      </p>
     </>
   );
 }

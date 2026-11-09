@@ -150,9 +150,9 @@ export function duration(ms: number | null | undefined): string {
 }
 
 /** The task runs at 00:10, 06:10, 12:10 and 18:10 Central. */
-const RUN_MINUTES = [10, 370, 730, 1090];
+export const RUN_MINUTES = [10, 370, 730, 1090];
 
-function centralMinutes(at: number): number {
+export function centralMinutes(at: number): number {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Chicago',
     hour: 'numeric',

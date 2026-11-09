@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { GitBranch, Clock, ChevronRight, ChevronDown } from 'lucide-react';
+import { Clock, ChevronRight, ChevronDown } from 'lucide-react';
+import { Quiet } from '../shared/ui';
 
 interface TraceStepData {
   model?: string;
@@ -117,6 +118,8 @@ function StepDetail({ step, index }: { step: TraceStep; index: number }) {
   );
 }
 
+/** The local agent's recent traces, list beside detail: a body, under the Ops
+ * Machine panel's Traces tab (widescreen plan 5.3). It fills its parent's height. */
 export function TraceDebugger() {
   const [traces, setTraces] = useState<TraceSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -141,33 +144,15 @@ export function TraceDebugger() {
 
   const selected = traces.find((t) => t.id === selectedId);
 
-  if (error) {
-    return (
-      <div className="hud-panel p-6">
-        <h3 className="hud-label flex items-center gap-2 mb-4">
-          <GitBranch size={12} style={{ color: 'var(--color-accent)' }} />
-          Trace Debugger
-        </h3>
-        <div className="h-48 flex items-center justify-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
-          <span className="hud-mono">{error}</span>
-        </div>
-      </div>
-    );
-  }
+  if (error) return <Quiet>{error}</Quiet>;
 
   return (
-    <div className="hud-panel p-6">
-      <h3 className="hud-label flex items-center gap-2 mb-4">
-        <GitBranch size={12} style={{ color: 'var(--color-accent)' }} />
-        Trace Debugger
-      </h3>
+    <div className="h-full min-h-0 flex flex-col" data-trace-debugger>
 
       {traces.length === 0 ? (
-        <div className="h-48 flex items-center justify-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
-          No traces yet. Start making queries to see them here.
-        </div>
+        <Quiet>No traces yet. Start making queries to see them here.</Quiet>
       ) : (
-        <div className="flex gap-4 h-80">
+        <div className="flex gap-4 flex-1 min-h-[20rem]">
           {/* Trace list */}
           <div className="w-1/3 overflow-y-auto flex flex-col gap-1 pr-2" style={{ borderRight: '1px solid var(--color-border)' }}>
             {traces.map((trace) => (

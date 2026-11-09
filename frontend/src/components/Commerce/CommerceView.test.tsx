@@ -276,7 +276,7 @@ describe('CommerceView', () => {
     expect(tabFromLocation(null, '#commerce-compliance')).toBe('compliance');
     expect(tabFromLocation('nonsense', '')).toBe('overview');
     expect(isAdsFocus('spark-flight-1')).toBe(true);
-    expect(isAdsFocus('spend-line')).toBe(true);
+    expect(isAdsFocus('spend-line')).toBe(false); // spend lines live on /ops (plan 5.3)
     expect(isAdsFocus('abc')).toBe(false);
   });
 

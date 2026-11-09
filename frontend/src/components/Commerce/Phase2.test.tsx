@@ -32,18 +32,18 @@ const SPARKS: Spark[] = [
 ];
 
 describe('Phase 2: Ads & flights tab', () => {
-  it('one card per flight, the spark picks and the spend ledger, dimmed', () => {
-    const html = renderToStaticMarkup(<AdsFlightsTab stores={[]} adsHold={HOLD} sparks={SPARKS} spend={null} />);
+  it('one card per flight and the spark picks; the spend ledger points at Ops', () => {
+    const html = renderToStaticMarkup(<AdsFlightsTab stores={[]} adsHold={HOLD} sparks={SPARKS} />);
     expect(html).toContain('data-flight="flight-1"');
     expect(html).toContain('data-flight="flight-2"');
     expect(html).toContain('no Merchant Center offer');
     expect(html).toContain('id="spark-flight-1"');
     expect(html).toContain('pick ready');
-    expect(html).toContain('moves to Ops');
-    expect(html).toContain('No spend ledger read yet.');
+    expect(html).toContain('data-spend-moved');
+    expect(html).not.toContain('No spend ledger read yet.');
   });
   it('says so without verdicts or picks', () => {
-    const html = renderToStaticMarkup(<AdsFlightsTab stores={[]} adsHold={null} sparks={[]} spend={null} />);
+    const html = renderToStaticMarkup(<AdsFlightsTab stores={[]} adsHold={null} sparks={[]} />);
     expect(html).toContain('No ads-hold verdict yet');
     expect(html).toContain('No spark picks');
   });
@@ -58,9 +58,9 @@ describe('Phase 2: Compliance tab', () => {
 });
 
 describe('Phase 2: links and caps', () => {
-  it('spark and spend rows land on the Ads & flights tab whatever page the feed names', () => {
+  it('spark rows land on Ads & flights and spend rows on Ops, whatever page the feed names', () => {
     expect(linkFor({ link: { page: '/content', focus: 'spark-flight-1' } })).toBe('/commerce?tab=ads&focus=spark-flight-1');
-    expect(linkFor({ link: { page: '/commerce', focus: 'spend-aws-total' } })).toBe('/commerce?tab=ads&focus=spend-aws-total');
+    expect(linkFor({ link: { page: '/commerce', focus: 'spend-aws-total' } })).toBe('/ops?focus=spend-aws-total');
     expect(linkFor({ link: { page: '/commerce', focus: 'abc' } })).toBe('/commerce?focus=abc');
   });
   it('the recommendations panel shows 18 before Show all', () => {

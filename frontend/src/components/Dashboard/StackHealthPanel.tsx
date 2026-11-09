@@ -1,6 +1,6 @@
 import { Activity } from 'lucide-react';
+import { useNavigate } from 'react-router';
 import { useStackHealth } from '../../hooks/useStackHealth';
-import { useAppStore } from '../../lib/store';
 import type { StackLevel } from '../../lib/stack-api';
 import { DashboardPanel } from './DashboardPanel';
 import { StackHealthPanelView } from './StackHealthPanelView';
@@ -14,10 +14,10 @@ const LEVEL_TAG: Record<StackLevel, string> = {
 };
 
 /** The stack-health run as a Dashboard panel (widescreen plan, Phase 1): the counts
- * and the headline the sidebar dock shows, with the drawer one click away. */
+ * and the headline the sidebar dock shows, with the Ops page one click away. */
 export function StackHealthPanel() {
   const s = useStackHealth();
-  const setOpen = useAppStore((st) => st.setStackDrawerOpen);
+  const navigate = useNavigate();
   return (
     <DashboardPanel
       icon={Activity}
@@ -36,7 +36,7 @@ export function StackHealthPanel() {
         noticeOnly={s.noticeOnly}
         missing={s.missing}
         error={s.error}
-        onOpen={() => setOpen(true)}
+        onOpen={() => navigate('/ops')}
       />
     </DashboardPanel>
   );

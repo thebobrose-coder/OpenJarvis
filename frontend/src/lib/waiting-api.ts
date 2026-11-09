@@ -289,10 +289,14 @@ export function linkFor(item: Pick<WaitingItem, 'link'>): string | null {
   if (!item.link?.page) return null;
   const [path, hash] = item.link.page.split('#');
   const focus = item.link.focus;
-  // Widescreen plan 5.1: a spark pick or a spend line lives on Commerce's Ads & flights
-  // tab now; the feed still names the page it used to (a contract note for later).
-  if (typeof focus === 'string' && (focus.startsWith('spark-') || focus.startsWith('spend-'))) {
+  // Widescreen plan 5.1: a spark pick lives on Commerce's Ads & flights tab now, and
+  // 5.3: a spend line on the Ops page; the feed still names the page it used to
+  // (a contract note for later).
+  if (typeof focus === 'string' && focus.startsWith('spark-')) {
     return `/commerce?tab=ads&focus=${encodeURIComponent(focus)}`;
+  }
+  if (typeof focus === 'string' && focus.startsWith('spend-')) {
+    return `/ops?focus=${encodeURIComponent(focus)}`;
   }
   // Widescreen plan 5.2: an episode (a ULID, the G0 rows) lives on /studio now.
   if (typeof focus === 'string' && EPISODE_ID.test(focus)) {

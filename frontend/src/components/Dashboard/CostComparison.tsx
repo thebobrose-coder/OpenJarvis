@@ -1,4 +1,5 @@
-import { DollarSign, TrendingDown, Cloud, HardDrive } from 'lucide-react';
+import { TrendingDown, Cloud, HardDrive } from 'lucide-react';
+import { Quiet } from '../shared/ui';
 import { useAppStore } from '../../lib/store';
 
 const CLOUD_PRICING = [
@@ -7,32 +8,18 @@ const CLOUD_PRICING = [
   { name: 'Gemini 3.1 Pro', input: 2.00, output: 12.00 },
 ];
 
+/** What the local turns would have cost on cloud models: a body, wrapped by the
+ * Ops page's DashboardPanel (widescreen plan 5.3). */
 export function CostComparison() {
   const savings = useAppStore((s) => s.savings);
 
-  if (!savings || savings.total_tokens === 0) {
-    return (
-      <div className="hud-panel p-6">
-        <h3 className="hud-label flex items-center gap-2 mb-4">
-          <DollarSign size={12} style={{ color: 'var(--color-success)' }} />
-          Cost Comparison
-        </h3>
-        <div className="h-48 flex items-center justify-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
-          <span className="hud-mono">awaiting first inference…</span>
-        </div>
-      </div>
-    );
-  }
+  if (!savings || savings.total_tokens === 0) return <Quiet>Awaiting the first local inference…</Quiet>;
 
   const promptK = savings.total_prompt_tokens / 1000;
   const completionK = savings.total_completion_tokens / 1000;
 
   return (
-    <div className="hud-panel p-6">
-      <h3 className="hud-label flex items-center gap-2 mb-4">
-        <DollarSign size={12} style={{ color: 'var(--color-success)' }} />
-        Cost Comparison*
-      </h3>
+    <div data-cost-comparison>
 
       {/* Local stats */}
       <div

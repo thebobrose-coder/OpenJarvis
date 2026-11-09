@@ -35,8 +35,8 @@ export function tabFromLocation(tab: string | null, hash: string): CommerceTab {
   return tab === 'fixes' || tab === 'compliance' || tab === 'ads' ? tab : 'overview';
 }
 
-/** A focus id that lives on the Ads & flights tab: a spark pick or a spend line. */
-export const isAdsFocus = (id: string | null | undefined) => !!id && (id.startsWith('spark-') || id.startsWith('spend-'));
+/** A focus id that lives on the Ads & flights tab: a spark pick (spend lines moved to /ops). */
+export const isAdsFocus = (id: string | null | undefined) => !!id && id.startsWith('spark-');
 
 /** What the Fixes tab needs from useCatalogFixes. */
 export type FixesProps = Pick<
@@ -263,11 +263,10 @@ export function CommerceView({
           stores={selectedDaily}
           adsHold={adsHold}
           sparks={sparks}
-          spend={feeds.spend_ledger?.data ?? null}
           patches={fixes?.data?.patches ?? []}
           onOpenFix={fixes ? openFix : undefined}
-          loading={{ daily: dailyState.loading, spend: feeds.spend_ledger?.loading }}
-          error={{ daily: dailyState.error, spend: feeds.spend_ledger?.error }}
+          loading={{ daily: dailyState.loading }}
+          error={{ daily: dailyState.error }}
         />
       ) : (
         <>
