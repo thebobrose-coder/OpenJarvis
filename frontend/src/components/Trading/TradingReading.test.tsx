@@ -190,7 +190,7 @@ describe('one time zone', () => {
     expect(utcWindowLocal('not a window', NOW)).toBeNull();
     const local = new Date('2026-10-06T00:01:23.411Z').toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     expect(localizeStamps(null)).toBe('');
-    expect(renderToStaticMarkup(<EventsPanel status={status({ alerts_24h: [{ ts: '2026-10-06T15:00:00Z', source: 'kernel', message: null as unknown as string }] })} />)).toContain('kernel');
+    expect(renderToStaticMarkup(<EventsPanel initialTab="alerts" status={status({ alerts_24h: [{ ts: '2026-10-06T15:00:00Z', source: 'kernel', message: null as unknown as string }] })} />)).toContain('kernel');
     expect(localizeStamps('max_drawdown: set at 2026-10-06T00:01:23.411Z')).toBe(`max_drawdown: set at ${local}`);
     const html = renderToStaticMarkup(<SleeveCard name="equities" sleeve={sleeve()} now={NOW} />);
     expect(html).toContain('title="15:45 ET"');

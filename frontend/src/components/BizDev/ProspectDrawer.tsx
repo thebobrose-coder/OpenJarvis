@@ -52,6 +52,19 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/** A reference section folded by default (Signals, History): the drawer
+ * leads with what the operator acts on (widescreen plan 4.5). */
+function FoldedSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="flex flex-col gap-1.5" data-folded={title}>
+      <summary className="cursor-pointer text-ui-10-5 font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+        {title}
+      </summary>
+      <div className="flex flex-col gap-1.5 mt-1.5">{children}</div>
+    </details>
+  );
+}
+
 /**
  * What the last re-check found. When the new result was worse, Hermes kept
  * the earlier research, so the drawer says so and summarises what was
@@ -435,6 +448,45 @@ export function ProspectDrawer({
         )}
       </header>
 
+      <Section title="Outcome">
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value.slice(0, 500))}
+          rows={2}
+          placeholder="Optional note (kept with the stage change)"
+          className="rounded-md px-2 py-1.5 resize-y"
+          style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+        />
+        {confirm ? (
+          <SuppressionConfirm
+            stage={confirm}
+            name={prospect.name}
+            onCancel={() => setConfirm(null)}
+            onConfirm={() => {
+              setConfirm(null);
+              onMove(confirm, note);
+            }}
+          />
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {OUTCOMES.map((s) => (
+              <SmallButton key={s} tone={isSuppression(s) ? 'neutral' : s === 'won' ? 'success' : 'accent'} onClick={() => decide(s)}>
+                {STAGE_LABELS[s]}
+              </SmallButton>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2 mt-1">
+          <SmallButton onClick={onRecheck} disabled={recheckDisabled} title="Ask Hermes to research this prospect again">
+            <RotateCw size={11} /> Re-check
+          </SmallButton>
+          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
+            {recheckDisabled ? 'Daily re-check cap reached' : `${rechecksToday} of ${recheckCap} re-checks used today`}
+          </span>
+        </div>
+        {prospect.recheck && <RecheckNote recheck={prospect.recheck} />}
+      </Section>
+
       {(prospect.fit_rationale || prospect.rank) && (
         <Section title="Why it fits">
           {prospect.fit_rationale && <p style={{ color: 'var(--color-text)' }}>{prospect.fit_rationale}</p>}
@@ -446,7 +498,7 @@ export function ProspectDrawer({
         </Section>
       )}
 
-      <Section title="Signals">
+      <FoldedSection title="Signals">
         <div className="flex flex-wrap gap-1.5">
           {signals.platform && <Chip>platform: {signals.platform}</Chip>}
           <Chip tone={signals.directory_found ? 'success' : 'muted'}>
@@ -476,7 +528,7 @@ export function ProspectDrawer({
             {prospect.triage.reason}
           </p>
         )}
-      </Section>
+      </FoldedSection>
 
       <Section title="Contacts (official directory)">
         {contacts.length === 0 ? (
@@ -560,45 +612,6 @@ export function ProspectDrawer({
         )}
       </Section>
 
-      <Section title="Outcome">
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value.slice(0, 500))}
-          rows={2}
-          placeholder="Optional note (kept with the stage change)"
-          className="rounded-md px-2 py-1.5 resize-y"
-          style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
-        />
-        {confirm ? (
-          <SuppressionConfirm
-            stage={confirm}
-            name={prospect.name}
-            onCancel={() => setConfirm(null)}
-            onConfirm={() => {
-              setConfirm(null);
-              onMove(confirm, note);
-            }}
-          />
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {OUTCOMES.map((s) => (
-              <SmallButton key={s} tone={isSuppression(s) ? 'neutral' : s === 'won' ? 'success' : 'accent'} onClick={() => decide(s)}>
-                {STAGE_LABELS[s]}
-              </SmallButton>
-            ))}
-          </div>
-        )}
-        <div className="flex items-center gap-2 mt-1">
-          <SmallButton onClick={onRecheck} disabled={recheckDisabled} title="Ask Hermes to research this prospect again">
-            <RotateCw size={11} /> Re-check
-          </SmallButton>
-          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
-            {recheckDisabled ? 'Daily re-check cap reached' : `${rechecksToday} of ${recheckCap} re-checks used today`}
-          </span>
-        </div>
-        {prospect.recheck && <RecheckNote recheck={prospect.recheck} />}
-      </Section>
-
       {(prospect.touches?.length ?? 0) > 0 && (
         <Section title="Engagement">
           <EngagementTimeline prospect={prospect} />
@@ -606,7 +619,7 @@ export function ProspectDrawer({
       )}
 
       {(prospect.history?.length ?? 0) > 0 && (
-        <Section title="History">
+        <FoldedSection title="History">
           <ol className="flex flex-col gap-1">
             {prospect.history!.map((h, i) => (
               <li key={i} className="flex flex-col">
@@ -623,7 +636,7 @@ export function ProspectDrawer({
               </li>
             ))}
           </ol>
-        </Section>
+        </FoldedSection>
       )}
     </Drawer>
   );

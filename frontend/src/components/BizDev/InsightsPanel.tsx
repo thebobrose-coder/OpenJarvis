@@ -1,4 +1,4 @@
-import { Lightbulb, ScrollText } from 'lucide-react';
+import { Lightbulb, MailCheck, Radar, ScrollText } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { BdProspects, EngagementStats, StatsLine, Template } from '../../lib/bizdev-api';
 import { templateSourceId } from '../../lib/bizdev-compose';
@@ -95,28 +95,32 @@ export function EngagementStatsBlock({ e, templates }: { e: EngagementStats; tem
   );
 }
 
+const panelProps = (stats: StatsLine | undefined, loading?: boolean, error?: string | null) => ({
+  loading,
+  error,
+  tag: stats ? 'Daily' : undefined,
+});
+
+/** The funnel and the three conversion rates (widescreen plan 4.5, row 1 third). */
 export function InsightsPanel({
   stats,
   loading,
   error,
-  templates,
 }: {
   stats: StatsLine | undefined;
   loading?: boolean;
   error?: string | null;
+  /** Kept for callers that passed the line's templates; the engagement panel uses them now. */
   templates?: Template[];
 }) {
   const data = FUNNEL.map((s) => ({ stage: STAGE_LABELS[s], count: stats?.by_stage?.[s] ?? 0 }));
-  const sent = (stats?.by_stage?.sent ?? 0) + (stats?.by_stage?.replied ?? 0) + (stats?.by_stage?.meeting ?? 0) + (stats?.by_stage?.won ?? 0) + (stats?.by_stage?.lost ?? 0);
-  const insights = stats?.signal_insights ?? [];
-
   return (
-    <DashboardPanel icon={Lightbulb} title="Insights" tag="Daily" size="half" loading={loading} error={error}>
+    <DashboardPanel icon={Lightbulb} title="Insights" size="third" band="short" {...panelProps(stats, loading, error)}>
       {!stats ? (
         <Quiet>No stats yet -- Hermes computes them daily.</Quiet>
       ) : (
-        <div className="flex flex-col gap-3">
-          <div className="h-44">
+        <div className="flex flex-col gap-3 h-full" data-insights-funnel>
+          <div className="flex-1 min-h-[9rem]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
@@ -136,50 +140,93 @@ export function InsightsPanel({
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-ui-11-5">
-            <span>sent → replied {pct(stats.conversion?.sent_to_replied)}</span>
-            <span>replied → meeting {pct(stats.conversion?.replied_to_meeting)}</span>
-            <span>meeting → won {pct(stats.conversion?.meeting_to_won)}</span>
+          <div className="grid grid-cols-3 gap-2 shrink-0">
+            <Tile label="sent → replied" value={pct(stats.conversion?.sent_to_replied)} />
+            <Tile label="replied → meeting" value={pct(stats.conversion?.replied_to_meeting)} />
+            <Tile label="meeting → won" value={pct(stats.conversion?.meeting_to_won)} />
           </div>
-          {stats.engagement && (stats.engagement.sends ?? 0) > 0 && (
-            <EngagementStatsBlock e={stats.engagement} templates={templates} />
-          )}
-          {insights.length === 0 || sent < INSIGHTS_MIN_SENT ? (
-            <Quiet>Signal insights appear once at least {INSIGHTS_MIN_SENT} emails have been sent.</Quiet>
-          ) : (
-            <table className="w-full text-ui-12 tabular-nums">
-              <thead>
-                <tr style={{ color: 'var(--color-text-tertiary)' }}>
-                  <th className="py-1 px-2 text-left font-medium">Signal</th>
-                  <th className="py-1 px-2 text-right font-medium">Prospects</th>
-                  <th className="py-1 px-2 text-right font-medium">Replies</th>
-                  <th className="py-1 px-2 text-right font-medium">Reply rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {insights.map((s) => (
-                  <tr key={s.signal} style={{ borderTop: '1px solid var(--color-border)' }}>
-                    <td className="py-1 px-2">{s.signal}</td>
-                    <td className="py-1 px-2 text-right">{num(s.prospects)}</td>
-                    <td className="py-1 px-2 text-right">{num(s.replied)}</td>
-                    <td className="py-1 px-2 text-right">{pct(s.reply_rate)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
         </div>
       )}
     </DashboardPanel>
   );
 }
 
-/** This week's skipped schools and errors, for transparency. */
+/** Part B's engagement numbers as their own reference panel (row 3). */
+export function EngagementPanel({
+  stats,
+  loading,
+  error,
+  templates,
+}: {
+  stats: StatsLine | undefined;
+  loading?: boolean;
+  error?: string | null;
+  templates?: Template[];
+}) {
+  const e = stats?.engagement;
+  return (
+    <DashboardPanel icon={MailCheck} title="Engagement" size="third" band="short" dim {...panelProps(stats, loading, error)}>
+      {!stats ? (
+        <Quiet>No stats yet -- Hermes computes them daily.</Quiet>
+      ) : !e || (e.sends ?? 0) === 0 ? (
+        <Quiet>Engagement numbers appear after the first send.</Quiet>
+      ) : (
+        <EngagementStatsBlock e={e} templates={templates} />
+      )}
+    </DashboardPanel>
+  );
+}
+
+/** Which signals got replies, once enough mail has gone out (row 3). */
+export function SignalInsightsPanel({
+  stats,
+  loading,
+  error,
+}: {
+  stats: StatsLine | undefined;
+  loading?: boolean;
+  error?: string | null;
+}) {
+  const sent = (stats?.by_stage?.sent ?? 0) + (stats?.by_stage?.replied ?? 0) + (stats?.by_stage?.meeting ?? 0) + (stats?.by_stage?.won ?? 0) + (stats?.by_stage?.lost ?? 0);
+  const insights = stats?.signal_insights ?? [];
+  return (
+    <DashboardPanel icon={Radar} title="Signal insights" size="third" band="short" dim {...panelProps(stats, loading, error)}>
+      {!stats ? (
+        <Quiet>No stats yet -- Hermes computes them daily.</Quiet>
+      ) : insights.length === 0 || sent < INSIGHTS_MIN_SENT ? (
+        <Quiet>Signal insights appear once at least {INSIGHTS_MIN_SENT} emails have been sent.</Quiet>
+      ) : (
+        <table className="w-full text-ui-12 tabular-nums">
+          <thead>
+            <tr style={{ color: 'var(--color-text-tertiary)' }}>
+              <th className="py-1 px-2 text-left font-medium">Signal</th>
+              <th className="py-1 px-2 text-right font-medium">Prospects</th>
+              <th className="py-1 px-2 text-right font-medium">Replies</th>
+              <th className="py-1 px-2 text-right font-medium">Reply rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {insights.map((s) => (
+              <tr key={s.signal} style={{ borderTop: '1px solid var(--color-border)' }}>
+                <td className="py-1 px-2">{s.signal}</td>
+                <td className="py-1 px-2 text-right">{num(s.prospects)}</td>
+                <td className="py-1 px-2 text-right">{num(s.replied)}</td>
+                <td className="py-1 px-2 text-right">{pct(s.reply_rate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </DashboardPanel>
+  );
+}
+
+/** This week's skipped schools and errors, for transparency (row 3). */
 export function ResearchLog({ prospects, loading, error }: { prospects: BdProspects | null; loading?: boolean; error?: string | null }) {
   const skipped = prospects?.skipped ?? [];
   const errors = prospects?.errors ?? [];
   return (
-    <DashboardPanel icon={ScrollText} title="Research log" tag={prospects?.week ?? 'Weekly'} size="half" loading={loading} error={error}>
+    <DashboardPanel icon={ScrollText} title="Research log" tag={prospects?.week ?? 'Weekly'} size="third" band="short" dim loading={loading} error={error}>
       {!prospects ? (
         <Quiet>No research batch yet.</Quiet>
       ) : (

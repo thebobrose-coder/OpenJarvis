@@ -20,7 +20,7 @@ export function prospectContext(p: PipelineProspect): { block: string; label: st
   const name = p.name || `prospect ${p.id}`;
   return { block: contextBlock(item), label: name.length > 40 ? `${name.slice(0, 40)}…` : name };
 }
-import { BizDevView, type BizDevTab } from '../components/BizDev/BizDevView';
+import { BizDevView } from '../components/BizDev/BizDevView';
 import { RECHECK_DAILY_CAP, useBizDevData } from '../hooks/useBizDevData';
 
 /** Hermes's bd-researcher pipeline on one page: see components/BizDev. */
@@ -28,17 +28,13 @@ export function BizDevPage() {
   const data = useBizDevData();
   const [line, setLine] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
-  const [tab, setTab] = useState<BizDevTab>('pipeline');
   // ?focus=<prospect id> from "Waiting on you": open that card's drawer.
   const location = useLocation();
   const [params] = useSearchParams();
   const focus = params.get('focus');
   useEffect(() => {
     const id = Number(focus);
-    if (focus && Number.isInteger(id)) {
-      setTab('pipeline');
-      setOpenId(id);
-    }
+    if (focus && Number.isInteger(id)) setOpenId(id);
   }, [focus, location.key]);
 
   // Desks (hq 0020 P2): "Ask the desk" on the open prospect, and an `open`
@@ -76,8 +72,6 @@ export function BizDevPage() {
         onSend={data.send}
         sendChecks={data.sendChecks}
         onCheckSend={data.checkSend}
-        tab={tab}
-        onTab={setTab}
         onSaveTemplate={data.saveTemplate}
         onArchiveTemplate={data.archiveTemplate}
         onAddContact={data.addRecipient}

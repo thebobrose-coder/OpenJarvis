@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { firstBlock, type SpeechBlock, type SpeechFeed } from '../../lib/voice-api';
 import { X } from 'lucide-react';
 import {
@@ -15,13 +16,10 @@ import { applyMoves, type BizDevFeedStates, type PendingMove } from '../../hooks
 import { BizDevHeader } from './BizDevHeader';
 import { FollowUpsStrip } from './FollowUpsStrip';
 import { SendChecks } from './MailActions';
-import { InsightsPanel, ResearchLog } from './InsightsPanel';
+import { EngagementPanel, InsightsPanel, ResearchLog, SignalInsightsPanel } from './InsightsPanel';
 import { PipelineBoard } from './PipelineBoard';
 import { ProspectDrawer, type ContactNote } from './ProspectDrawer';
-import { TemplatesPanel } from './Templates';
-import { Segmented } from '../shared/ui';
-
-export type BizDevTab = 'pipeline' | 'templates';
+import { ManageTemplates, TemplatesDrawer } from './Templates';
 
 export interface BizDevViewProps {
   feeds: BizDevFeedStates;
@@ -45,11 +43,12 @@ export interface BizDevViewProps {
   /** Sends Forward Email didn't confirm or never got, and Check now. */
   sendChecks?: Record<string, LocalSendState>;
   onCheckSend?: (id: number) => Promise<void>;
-  /** Templates (Part C): the Templates tab and "Save as template…". */
-  tab?: BizDevTab;
-  onTab?: (tab: BizDevTab) => void;
+  /** Templates (Part C): the Templates drawer and "Save as template…".
+   * Without `onArchiveTemplate` there is no drawer, only the save. */
   onSaveTemplate?: (t: TemplateSave) => Promise<void>;
   onArchiveTemplate?: (id: number) => Promise<void>;
+  /** The drawer open at first render (tests, deep links). */
+  templatesOpen?: boolean;
   /** "Add recipient" (A3) and what became of each add, by prospect id. */
   onAddContact?: (id: number, c: ContactAdd) => Promise<void>;
   contactNotes?: Record<number, ContactNote>;
@@ -61,11 +60,6 @@ export interface BizDevViewProps {
   onAskDesk?: (prospect: PipelineProspect) => void;
 }
 
-/**
- * The Business Development page: header, follow-ups due, the pipeline board
- * (with the prospect drawer), insights and the research log. Generic by
- * business line. Pure: everything comes in through props (see BizDevPage).
- */
 /** Follow-ups due (bd_pipeline) first, else the latest research run (bd_prospects). */
 export function bdSpeech(
   pipeline: { speech?: SpeechBlock[] } | null | undefined,
@@ -76,6 +70,14 @@ export function bdSpeech(
   return { feed: 'bd_prospects', block: firstBlock(prospects?.speech) };
 }
 
+/**
+ * The Business Development page (widescreen plan 4.5). Row 1, the act band:
+ * follow-ups due (wide) and the funnel (third). Row 2, the work: the pipeline
+ * board full width in the tall band, with the prospect drawer. Row 3, the
+ * reference: research log, engagement and signal insights, dim. Templates
+ * live in a drawer, from the header and from any composer. Generic by
+ * business line. Pure: everything comes in through props (see BizDevPage).
+ */
 export function BizDevView(props: BizDevViewProps) {
   const { feeds, pending } = props;
   const pipeline = feeds.bd_pipeline.data;
@@ -90,11 +92,14 @@ export function BizDevView(props: BizDevViewProps) {
   const open = props.openProspectId != null ? byId.get(props.openProspectId) : undefined;
   const compose = line ? { line: line.line, screen: line.screen, templates: line.templates } : null;
   const templates = line?.templates ?? [];
-  const tab = props.tab ?? 'pipeline';
   const liveTemplates = templates.filter((t) => !t.archived_at).length;
+  const hasTemplates = !!(props.onSaveTemplate && props.onArchiveTemplate);
+  const [templatesOpen, setTemplatesOpen] = useState(!!props.templatesOpen);
+  const openTemplates = hasTemplates ? () => setTemplatesOpen(true) : null;
 
   return (
     <SendChecks.Provider value={{ states: props.sendChecks ?? {}, check: props.onCheckSend }}>
+    <ManageTemplates.Provider value={openTemplates}>
     <div>
       <BizDevHeader
         lines={lines}
@@ -106,6 +111,8 @@ export function BizDevView(props: BizDevViewProps) {
         researchStatus={props.researchStatus}
         onResearch={props.onResearch}
         sendEnabled={!!props.sendConfig?.enabled}
+        onTemplates={openTemplates ?? undefined}
+        templateCount={liveTemplates}
       />
 
       {props.notice && (
@@ -123,63 +130,48 @@ export function BizDevView(props: BizDevViewProps) {
         </div>
       )}
 
-      {props.onTab && (
-        <div className="mb-4">
-          <Segmented<BizDevTab>
-            ariaLabel="Business Development view"
-            value={tab}
-            onChange={props.onTab}
-            options={[
-              { value: 'pipeline', label: 'Pipeline' },
-              { value: 'templates', label: `Templates${liveTemplates ? ` (${liveTemplates})` : ''}` },
-            ]}
-          />
-        </div>
-      )}
+      <div className="grid grid-cols-12 gap-4 mb-4">
+        <FollowUpsStrip
+          followUps={followUps}
+          prospectsById={byId}
+          onMarkSent={(id, touch) => props.onMove(id, 'sent', '', touch)}
+          sendConfig={props.sendConfig}
+          onSend={props.onSend}
+          line={compose}
+          onSaveTemplate={props.onSaveTemplate}
+        />
+        <InsightsPanel stats={stats} loading={feeds.bd_stats.loading} error={feeds.bd_stats.error} />
+      </div>
 
-      {tab === 'templates' ? (
-        <div className="grid grid-cols-12 gap-4 mb-10">
-          <TemplatesPanel
-            line={line?.line ?? null}
-            templates={templates}
-            onSave={props.onSaveTemplate ?? (() => Promise.reject(new Error('Templates are read-only here')))}
-            onArchive={props.onArchiveTemplate ?? (() => Promise.reject(new Error('Templates are read-only here')))}
-          />
-        </div>
-      ) : (
-        <>
-          {followUps.length > 0 && (
-            <div className="grid grid-cols-12 gap-4 mb-4">
-              <FollowUpsStrip
-                followUps={followUps}
-                prospectsById={byId}
-                onMarkSent={(id, touch) => props.onMove(id, 'sent', '', touch)}
-                sendConfig={props.sendConfig}
-                onSend={props.onSend}
-                line={compose}
-                onSaveTemplate={props.onSaveTemplate}
-              />
-            </div>
-          )}
+      <div className="grid grid-cols-12 gap-4 mb-4">
+        <PipelineBoard
+          stages={stages}
+          suppressed={suppressed}
+          empty={!line}
+          onOpen={(p) => props.onOpenProspect(p.id)}
+          onMove={(id, stage) => stage !== 'new' && props.onMove(id, stage)}
+          loading={feeds.bd_pipeline.loading}
+          error={feeds.bd_pipeline.error}
+          speech={bdSpeech(pipeline, feeds.bd_prospects.data)}
+          followUps={followUps}
+        />
+      </div>
 
-          <div className="grid grid-cols-12 gap-4 mb-4">
-            <PipelineBoard
-              stages={stages}
-              suppressed={suppressed}
-              empty={!line}
-              onOpen={(p) => props.onOpenProspect(p.id)}
-              onMove={(id, stage) => stage !== 'new' && props.onMove(id, stage)}
-              loading={feeds.bd_pipeline.loading}
-              error={feeds.bd_pipeline.error}
-              speech={bdSpeech(pipeline, feeds.bd_prospects.data)}
-            />
-          </div>
+      <div className="grid grid-cols-12 gap-4 mb-10">
+        <ResearchLog prospects={feeds.bd_prospects.data} loading={feeds.bd_prospects.loading} error={feeds.bd_prospects.error} />
+        <EngagementPanel stats={stats} loading={feeds.bd_stats.loading} error={feeds.bd_stats.error} templates={templates} />
+        <SignalInsightsPanel stats={stats} loading={feeds.bd_stats.loading} error={feeds.bd_stats.error} />
+      </div>
 
-          <div className="grid grid-cols-12 gap-4 mb-10">
-            <InsightsPanel stats={stats} loading={feeds.bd_stats.loading} error={feeds.bd_stats.error} templates={templates} />
-            <ResearchLog prospects={feeds.bd_prospects.data} loading={feeds.bd_prospects.loading} error={feeds.bd_prospects.error} />
-          </div>
-        </>
+      {hasTemplates && (
+        <TemplatesDrawer
+          open={templatesOpen}
+          onClose={() => setTemplatesOpen(false)}
+          line={line?.line ?? null}
+          templates={templates}
+          onSave={props.onSaveTemplate!}
+          onArchive={props.onArchiveTemplate!}
+        />
       )}
 
       {open && (
@@ -205,6 +197,7 @@ export function BizDevView(props: BizDevViewProps) {
         />
       )}
     </div>
+    </ManageTemplates.Provider>
     </SendChecks.Provider>
   );
 }

@@ -81,6 +81,9 @@ function CurveTable({ rows, sleeves, unit }: { rows: CurveRow[]; sleeves: string
  * is told apart by more than color. By default each sleeve reads as % from
  * its own first night, so sleeves of $3k and $20k compare on one axis; $
  * shows the amounts. Each sleeve keeps its colour from the rest of the page. */
+/** The chart's height in the tall band (widescreen plan 4.6). */
+export const CHART_HEIGHT = 420;
+
 export function EquityCurve({ day, loading, error }: { day: TradingDay | null; loading?: boolean; error?: string | null }) {
   const [view, setView] = useState<'chart' | 'table'>('chart');
   const [unit, setUnit] = useState<CurveUnit>('pct');
@@ -95,7 +98,8 @@ export function EquityCurve({ day, loading, error }: { day: TradingDay | null; l
       icon={TrendingUp}
       title="Equity curve"
       tag={rows.length ? `${rows.length} of ${CURVE_DAYS} days` : `${CURVE_DAYS} days`}
-      size="full"
+      size="wide"
+      band="tall"
       loading={loading}
       error={error}
       actions={
@@ -146,7 +150,7 @@ export function EquityCurve({ day, loading, error }: { day: TradingDay | null; l
           {view === 'table' ? (
             <CurveTable rows={data} sleeves={sleeves} unit={unit} />
           ) : (
-            <div style={{ height: 220 }}>
+            <div style={{ height: CHART_HEIGHT }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke="var(--color-border)" vertical={false} />

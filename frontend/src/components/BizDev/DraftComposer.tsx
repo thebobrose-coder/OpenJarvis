@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { BookmarkPlus, ChevronDown } from 'lucide-react';
+import { BookmarkPlus, ChevronDown, FileText } from 'lucide-react';
 import {
   sendBlock,
   sendCheckKey,
@@ -27,7 +27,7 @@ import {
 } from '../../lib/bizdev-compose';
 import { Quiet, SmallButton } from '../shared/ui';
 import { MailActions, SendChecks } from './MailActions';
-import { TemplateEditor } from './Templates';
+import { ManageTemplates, TemplateEditor } from './Templates';
 
 const field = {
   background: 'var(--color-bg-secondary)',
@@ -137,6 +137,7 @@ export function DraftComposer({
   const [open, setOpen] = useState(!compact);
   const [saving, setSaving] = useState(false);
   const [savedNote, setSavedNote] = useState<string | null>(null);
+  const manageTemplates = useContext(ManageTemplates);
   const templates = line?.templates ?? [];
   const groups = templatesFor(templates, touch);
   const values = useMemo(() => mergeValues(prospect, to, sendConfig), [prospect, to, sendConfig]);
@@ -310,6 +311,11 @@ export function DraftComposer({
             <SmallButton onClick={() => setSaving(true)} title="Save this subject and body as a template; put {{fields}} in place of names first">
               <BookmarkPlus size={11} /> Save as template…
             </SmallButton>
+            {manageTemplates && (
+              <SmallButton onClick={manageTemplates} title="Open the line’s templates: new, edit, archive">
+                <FileText size={11} /> Manage templates
+              </SmallButton>
+            )}
             {savedNote && (
               <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }} role="status">
                 {savedNote}

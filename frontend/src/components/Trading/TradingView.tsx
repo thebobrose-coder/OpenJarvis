@@ -18,10 +18,12 @@ export const NO_STATUS_YET = 'No trading status yet. Hermes publishes the trader
 export const NO_SLEEVES = 'Hermes could not read the trader’s status export, so there is nothing to show for the sleeves.';
 
 /**
- * The Trading page (hq/decisions/0014): the x402 paper trader as it reports
- * itself, read-only. Header strip, kill switch, x402 spend and nightly (one
- * line while all fine), one card per sleeve, the equity curve, events and alerts. Pure: everything comes
- * in through props (see TradingPage).
+ * The Trading page (hq/decisions/0014; widescreen plan 4.6): the x402 paper
+ * trader as it reports itself, read-only. Row 1: the status strip (kill
+ * switch, x402 spend and nightly; one line while all fine, expands in place).
+ * Row 2, tall: one card per sleeve, three across. Row 3, tall: the equity
+ * curve (wide) beside Events | Alerts (third, tabbed). Pure: everything
+ * comes in through props (see TradingPage).
  */
 export function TradingView({ status, day, config, now }: TradingViewProps) {
   const s = status.data;
@@ -53,6 +55,7 @@ export function TradingView({ status, day, config, now }: TradingViewProps) {
               error={error}
               now={now}
               size={sleeveSize(shown.length)}
+              band="tall"
             />
           ))
         )}

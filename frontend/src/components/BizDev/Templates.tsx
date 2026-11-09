@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Archive, FileText, Pencil, Plus } from 'lucide-react';
+import { createContext, useState } from 'react';
+import { Archive, FileText, Pencil, Plus, X } from 'lucide-react';
 import { unresolvedFields, type Template, type TemplateSave, type TemplateTouch } from '../../lib/bizdev-api';
 import { MERGE_FIELDS } from '../../lib/bizdev-compose';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
+import { Drawer } from '../shared/Drawer';
 import { num, shortDateTime } from '../shared/format';
 import { Chip, Quiet, SmallButton } from '../shared/ui';
 
@@ -222,18 +223,15 @@ function TemplateRow({
   );
 }
 
-/** The page's Templates tab: the line's templates, with uses and replies. */
-export function TemplatesPanel({
-  line,
-  templates,
-  onSave,
-  onArchive,
-}: {
+export interface TemplatesProps {
   line: string | null;
   templates: Template[];
   onSave: (t: TemplateSave) => Promise<void>;
   onArchive: (id: number) => Promise<void>;
-}) {
+}
+
+/** The line's templates, with uses and replies: new, edit, archive. */
+export function TemplatesBody({ line, templates, onSave, onArchive }: TemplatesProps) {
   const [editing, setEditing] = useState<number | 'new' | null>(null);
   const current = templates.filter((t) => !t.archived_at);
   const archived = templates.filter((t) => t.archived_at);
@@ -243,7 +241,6 @@ export function TemplatesPanel({
   };
 
   return (
-    <DashboardPanel icon={FileText} title="Templates" tag={`${current.length}`} size="full">
       <div className="flex flex-col gap-2 text-ui-12" style={{ color: 'var(--color-text-secondary)' }}>
         <span className="text-ui-11-5">
           Saved changes reach Hermes within about 2 minutes. A template that is the default for a touch replaces the
@@ -307,6 +304,42 @@ export function TemplatesPanel({
           </details>
         )}
       </div>
+  );
+}
+
+/** The templates in a panel (the pre-widescreen Templates tab; kept for one-off renders). */
+export function TemplatesPanel(props: TemplatesProps) {
+  const current = props.templates.filter((t) => !t.archived_at);
+  return (
+    <DashboardPanel icon={FileText} title="Templates" tag={`${current.length}`} size="full">
+      <TemplatesBody {...props} />
     </DashboardPanel>
+  );
+}
+
+/** Opens the Templates drawer from a composer's footer ("Manage templates"),
+ * so a draft can reach the templates without leaving the board (widescreen
+ * plan 4.5). Null where no drawer is wired. */
+export const ManageTemplates = createContext<(() => void) | null>(null);
+
+/** The Templates drawer (widescreen plan 4.5): the line's templates in a
+ * narrow Drawer, from the header's Templates button and from any composer. */
+export function TemplatesDrawer({ open, onClose, ...props }: TemplatesProps & { open: boolean; onClose: () => void }) {
+  const current = props.templates.filter((t) => !t.archived_at);
+  return (
+    <Drawer open={open} onClose={onClose} label="Templates" width="narrow">
+      <header className="flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-ui-15 font-semibold" style={{ color: 'var(--color-text)' }}>
+          <FileText size={14} style={{ color: 'var(--color-accent)' }} /> Templates
+          <span className="text-ui-11 font-normal" style={{ color: 'var(--color-text-tertiary)' }}>
+            {current.length}
+          </span>
+        </h2>
+        <button onClick={onClose} aria-label="Close" className="cursor-pointer p-1" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
+          <X size={14} />
+        </button>
+      </header>
+      <TemplatesBody {...props} />
+    </Drawer>
   );
 }

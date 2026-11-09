@@ -1,6 +1,6 @@
-import { Telescope } from 'lucide-react';
+import { FileText, Telescope } from 'lucide-react';
 import type { BdPipeline, BdProspects, StatsLine } from '../../lib/bizdev-api';
-import { FeedFreshness } from '../Dashboard/FeedFreshness';
+import { FeedFreshnessLine } from '../Dashboard/FeedFreshnessLine';
 import { engineLabel, num } from '../shared/format';
 import { Chip, Segmented, SmallButton } from '../shared/ui';
 
@@ -16,6 +16,8 @@ export function BizDevHeader({
   researchStatus,
   onResearch,
   sendEnabled = false,
+  onTemplates,
+  templateCount = 0,
 }: {
   lines: { line: string; display_name: string }[];
   selectedLine: string;
@@ -27,6 +29,9 @@ export function BizDevHeader({
   onResearch: () => void;
   /** Send through Forward Email is configured (hq 0018). */
   sendEnabled?: boolean;
+  /** Opens the Templates drawer (widescreen plan 4.5); absent hides the button. */
+  onTemplates?: () => void;
+  templateCount?: number;
 }) {
   return (
     <header className="flex flex-col gap-3 mb-6">
@@ -42,13 +47,20 @@ export function BizDevHeader({
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <SmallButton
-            onClick={onResearch}
-            disabled={researchStatus === 'queued'}
-            title="One extra research batch -- capped at 1 a week beyond the Monday run"
-          >
-            <Telescope size={11} /> Research more
-          </SmallButton>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {onTemplates && (
+              <SmallButton onClick={onTemplates} title="The line’s templates: new, edit, archive">
+                <FileText size={11} /> Templates{templateCount ? ` (${templateCount})` : ''}
+              </SmallButton>
+            )}
+            <SmallButton
+              onClick={onResearch}
+              disabled={researchStatus === 'queued'}
+              title="One extra research batch -- capped at 1 a week beyond the Monday run"
+            >
+              <Telescope size={11} /> Research more
+            </SmallButton>
+          </div>
           <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
             {researchStatus === 'queued'
               ? 'Queued -- the batch appears within a few minutes'
@@ -74,10 +86,12 @@ export function BizDevHeader({
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        {prospects && (
-          <FeedFreshness label="This week’s batch" ageSeconds={prospects.age_seconds} stale={prospects.stale} staleAfterSeconds={8 * 24 * 3600} />
-        )}
-        {pipeline && <FeedFreshness label="Pipeline" ageSeconds={pipeline.age_seconds} stale={pipeline.stale} staleAfterSeconds={WEEK} />}
+        <FeedFreshnessLine
+          feeds={[
+            ...(prospects ? [{ label: 'This week’s batch', ageSeconds: prospects.age_seconds, stale: prospects.stale, staleAfterSeconds: 8 * 24 * 3600 }] : []),
+            ...(pipeline ? [{ label: 'Pipeline', ageSeconds: pipeline.age_seconds, stale: pipeline.stale, staleAfterSeconds: WEEK }] : []),
+          ]}
+        />
         {stats && (
           <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             {num(stats.researched)} of {num(stats.universe)} researched ({num(stats.coverage_pct, 0)}%)

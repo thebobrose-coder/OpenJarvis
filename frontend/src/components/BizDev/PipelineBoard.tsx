@@ -2,7 +2,7 @@ import { SpeakButton } from '../shared/SpeakButton';
 import type { SpeechBlock, SpeechFeed } from '../../lib/voice-api';
 import { useMemo, useState, type DragEvent } from 'react';
 import { KanbanSquare } from 'lucide-react';
-import { BOARD_STAGES, rankBreakdown, rankNumber, type BoardStage, type PipelineProspect } from '../../lib/bizdev-api';
+import { BOARD_STAGES, rankBreakdown, rankNumber, type BoardStage, type FollowUp, type PipelineProspect } from '../../lib/bizdev-api';
 import {
   ENGAGEMENT_CHIP_LABELS,
   engagementChips,
@@ -203,10 +203,12 @@ function ProspectCard({ p, onOpen, onDragging }: { p: PipelineProspect; onOpen: 
   );
 }
 
-/** A column with cards gets a real card width; an empty one collapses to a
- * rail (wider while a card is being dragged, so it's an easy target). */
+/** A column with cards shares the row with the other populated columns (at
+ * 2240 seven columns are about 300 px each, no horizontal scroll; narrower
+ * windows scroll the row); an empty one collapses to a rail (wider while a
+ * card is being dragged, so it's an easy target). */
 export function columnWidthClass(count: number, dragging: boolean): string {
-  if (count > 0) return 'flex-[1_1_18rem] min-w-[16rem]';
+  if (count > 0) return 'flex-[1_1_0] min-w-[13rem]';
   return dragging ? 'flex-none w-[12rem]' : 'flex-none w-[6rem]';
 }
 
@@ -245,7 +247,7 @@ function Column({
       onDragOver={onDragOver}
       onDragLeave={() => setOver(false)}
       onDrop={onDrop}
-      className={`flex flex-col gap-2 rounded-lg p-2 transition-[width] ${columnWidthClass(items.length, dragging)}`}
+      className={`flex flex-col gap-2 rounded-lg p-2 min-h-0 transition-[width] ${columnWidthClass(items.length, dragging)}`}
       style={{
         background: 'var(--color-bg-secondary)',
         border: `1px dashed ${over ? 'var(--color-accent)' : 'transparent'}`,
@@ -259,7 +261,7 @@ function Column({
           {items.length}
         </span>
       </header>
-      <div className="flex flex-col gap-1.5 max-h-[max(60vh,calc(100vh-18rem))] overflow-y-auto">
+      <div className="flex flex-col gap-1.5 flex-1 min-h-0 overflow-y-auto">
         {boardOrder(items).map((p) => (
           <ProspectCard key={p.id} p={p} onOpen={() => onOpen(p)} onDragging={onDragging} />
         ))}
@@ -294,40 +296,69 @@ export function StageAge({ p, className }: { p: Pick<PipelineProspect, 'stage' |
   );
 }
 
-/** Compact table of the same filtered prospects, in board (rank) order. */
-function ProspectList({ items, onOpen }: { items: PipelineProspect[]; onOpen: (p: PipelineProspect) => void }) {
+/** The latest touch's send time, for the list's "Last touch" column. */
+export function lastTouchAt(p: Pick<PipelineProspect, 'touches'>): string | null {
+  const touches = (p.touches ?? []).filter((t) => t.sent_at);
+  if (!touches.length) return null;
+  return touches.reduce((a, b) => (a.sent_at > b.sent_at ? a : b)).sent_at;
+}
+
+/** Compact table of the same filtered prospects, in board (rank) order, with
+ * the columns the card carries: contacts, the last touch and the next due
+ * follow-up (widescreen plan 4.5). */
+function ProspectList({
+  items,
+  onOpen,
+  nextDue,
+}: {
+  items: PipelineProspect[];
+  onOpen: (p: PipelineProspect) => void;
+  nextDue: Map<number, FollowUp>;
+}) {
   if (!items.length) return <Quiet>No prospects match these filters.</Quiet>;
-  const th = 'text-left font-medium px-2 py-1.5 whitespace-nowrap';
+  const th = 'text-left font-medium px-2 py-1.5 whitespace-nowrap sticky top-0';
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-ui-12" style={{ color: 'var(--color-text-secondary)' }}>
+      <table className="w-full text-ui-12" style={{ color: 'var(--color-text-secondary)' }} data-prospect-list>
         <thead style={{ color: 'var(--color-text-tertiary)' }}>
           <tr>
-            {['Rank', 'School', 'Affiliation', 'Platform', 'Fit', 'Stage', 'In stage since', 'Contacts'].map((h) => (
-              <th key={h} className={th}>{h}</th>
+            {['Rank', 'School', 'Affiliation', 'Platform', 'Fit', 'Stage', 'In stage since', 'Contacts', 'Last touch', 'Next due'].map((h) => (
+              <th key={h} className={th} style={{ background: 'var(--color-surface)' }}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {items.map((p) => (
-            <tr
-              key={p.id}
-              onClick={() => onOpen(p)}
-              className="cursor-pointer"
-              style={{ borderTop: '1px solid var(--color-border)' }}
-            >
-              <td className="px-2 py-1.5"><RankChip p={p} /></td>
-              <td className="px-2 py-1.5" style={{ color: 'var(--color-text)' }}>{p.name}</td>
-              <td className="px-2 py-1.5">{p.affiliation ?? ''}</td>
-              <td className="px-2 py-1.5">{p.signals?.platform ?? ''}</td>
-              <td className="px-2 py-1.5 tabular-nums">{p.fit_score ?? ''}</td>
-              <td className="px-2 py-1.5 whitespace-nowrap">{STAGE_LABELS[p.stage] ?? p.stage}</td>
-              <td className="px-2 py-1.5">
-                <StageAge p={p} />
-              </td>
-              <td className="px-2 py-1.5 tabular-nums">{(p.contacts ?? []).length}</td>
-            </tr>
-          ))}
+          {items.map((p) => {
+            const last = lastTouchAt(p);
+            const due = nextDue.get(p.id);
+            return (
+              <tr
+                key={p.id}
+                onClick={() => onOpen(p)}
+                className="cursor-pointer"
+                style={{ borderTop: '1px solid var(--color-border)' }}
+              >
+                <td className="px-2 py-1.5"><RankChip p={p} /></td>
+                <td className="px-2 py-1.5" style={{ color: 'var(--color-text)' }}>{p.name}</td>
+                <td className="px-2 py-1.5">{p.affiliation ?? ''}</td>
+                <td className="px-2 py-1.5">{p.signals?.platform ?? ''}</td>
+                <td className="px-2 py-1.5 tabular-nums">{p.fit_score ?? ''}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap">{STAGE_LABELS[p.stage] ?? p.stage}</td>
+                <td className="px-2 py-1.5">
+                  <StageAge p={p} />
+                </td>
+                <td className="px-2 py-1.5 tabular-nums" title={(p.contacts ?? []).map((c) => c.name).join(', ') || undefined}>
+                  {(p.contacts ?? []).length}
+                </td>
+                <td className="px-2 py-1.5 whitespace-nowrap tabular-nums" data-last-touch={last ?? undefined}>
+                  {last ? `${shortDateTime(last)} · touch ${(p.touches ?? []).length}` : '—'}
+                </td>
+                <td className="px-2 py-1.5 whitespace-nowrap tabular-nums" data-next-due={due?.due}>
+                  {due ? `${stageSince(due.due) ?? due.due} · touch ${due.touch}` : '—'}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -340,6 +371,9 @@ const VIEWS: { value: BoardView; label: string }[] = [
   { value: 'list', label: 'List' },
 ];
 
+/** The work row (widescreen plan 4.5): the board full width in the tall band,
+ * its filters and the Board | List switch in the panel header, each column
+ * scrolling on its own inside the row. */
 export function PipelineBoard({
   stages,
   suppressed,
@@ -349,6 +383,7 @@ export function PipelineBoard({
   error,
   empty,
   speech,
+  followUps = [],
 }: {
   stages: Record<BoardStage, PipelineProspect[]>;
   suppressed: number;
@@ -359,6 +394,8 @@ export function PipelineBoard({
   empty: boolean;
   /** The block the speaker button plays: follow-ups due, else the latest research run. */
   speech?: { feed: SpeechFeed; block: SpeechBlock | null };
+  /** Due follow-ups, for the list view's "Next due" column. */
+  followUps?: FollowUp[];
 }) {
   const [filters, setFilters] = useState<BoardFilters>(NO_FILTERS);
   const [view, setView] = useState<BoardView>('board');
@@ -368,6 +405,14 @@ export function PipelineBoard({
   const opts = (vals: string[]) => [{ value: '', label: 'All' }, ...vals.map((v) => ({ value: v, label: v }))];
   const filtered = all.filter((p) => matches(p, filters));
   const shown = filtered.length;
+  const nextDue = useMemo(() => {
+    const m = new Map<number, FollowUp>();
+    for (const f of followUps) {
+      const cur = m.get(f.prospect_id);
+      if (!cur || f.due < cur.due) m.set(f.prospect_id, f);
+    }
+    return m;
+  }, [followUps]);
 
   return (
     <DashboardPanel
@@ -375,16 +420,14 @@ export function PipelineBoard({
       title="Pipeline"
       tag={empty ? undefined : `${shown} shown · ${num(suppressed)} suppressed`}
       size="full"
+      band="tall"
       priority
       loading={loading}
       error={error}
       actions={speech ? <SpeakButton feed={speech.feed} block={speech.block} /> : undefined}
-    >
-      {empty ? (
-        <Quiet>No pipeline yet -- Hermes publishes it after the first research batch.</Quiet>
-      ) : (
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3">
+      headerExtra={
+        empty ? undefined : (
+          <div className="flex flex-wrap items-center gap-3" data-board-filters>
             <Select label="Association" value={filters.association} onChange={set('association')} options={opts(values(all, (p) => p.association))} />
             <Select label="Division" value={filters.division} onChange={set('division')} options={opts(values(all, (p) => p.division))} />
             <Select label="State" value={filters.state} onChange={set('state')} options={opts(values(all, (p) => p.state))} />
@@ -406,23 +449,26 @@ export function PipelineBoard({
               <Segmented ariaLabel="Pipeline view" value={view} onChange={setView} options={VIEWS} />
             </div>
           </div>
-          {view === 'list' ? (
-            <ProspectList items={listOrder(filtered)} onOpen={onOpen} />
-          ) : (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {BOARD_STAGES.map((stage) => (
-                <Column
-                  key={stage}
-                  stage={stage}
-                  items={stages[stage].filter((p) => matches(p, filters))}
-                  dragging={dragging}
-                  onDragging={setDragging}
-                  onOpen={onOpen}
-                  onDropProspect={onMove}
-                />
-              ))}
-            </div>
-          )}
+        )
+      }
+    >
+      {empty ? (
+        <Quiet>No pipeline yet -- Hermes publishes it after the first research batch.</Quiet>
+      ) : view === 'list' ? (
+        <ProspectList items={listOrder(filtered)} onOpen={onOpen} nextDue={nextDue} />
+      ) : (
+        <div className="flex gap-2 h-full min-h-0 overflow-x-auto pb-1" data-board>
+          {BOARD_STAGES.map((stage) => (
+            <Column
+              key={stage}
+              stage={stage}
+              items={stages[stage].filter((p) => matches(p, filters))}
+              dragging={dragging}
+              onDragging={setDragging}
+              onOpen={onOpen}
+              onDropProspect={onMove}
+            />
+          ))}
         </div>
       )}
     </DashboardPanel>

@@ -10,7 +10,7 @@ import {
 } from '../../lib/bizdev-api';
 import { recipientName } from '../../lib/bizdev-compose';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
-import { Chip } from '../shared/ui';
+import { Chip, Quiet } from '../shared/ui';
 import { DraftComposer, type ComposeLine } from './DraftComposer';
 import { MailActions } from './MailActions';
 
@@ -32,7 +32,8 @@ export function followUpRecipient(f: FollowUp, p: PipelineProspect | undefined):
 }
 
 /** Follow-ups Hermes has drafted (touch 2 at 7 days, touch 3 at 14), one per
- * card, each for one recipient. */
+ * card, each for one recipient. The act band's wide panel (widescreen plan 4.5):
+ * cards side by side, about six in view at 2240, the rest a scroll away. */
 export function FollowUpsStrip({
   followUps,
   prospectsById,
@@ -52,10 +53,12 @@ export function FollowUpsStrip({
   line?: ComposeLine | null;
   onSaveTemplate?: (t: TemplateSave) => Promise<void>;
 }) {
-  if (followUps.length === 0) return null;
   return (
-    <DashboardPanel icon={CalendarClock} title="Follow-ups due" tag={`${followUps.length}`} size="full">
-      <div className="flex gap-3 overflow-x-auto pb-1">
+    <DashboardPanel icon={CalendarClock} title="Follow-ups due" tag={`${followUps.length}`} size="wide" band="short" priority>
+      {followUps.length === 0 ? (
+        <Quiet>No follow-ups due. Hermes drafts touch 2 at 7 days and touch 3 at 14.</Quiet>
+      ) : (
+      <div className="flex gap-3 overflow-x-auto pb-1 h-full items-start" data-follow-ups>
         {followUps.map((f) => {
           const p = prospectsById.get(f.prospect_id);
           const due = dueLabel(f.due);
@@ -114,6 +117,7 @@ export function FollowUpsStrip({
           );
         })}
       </div>
+      )}
     </DashboardPanel>
   );
 }

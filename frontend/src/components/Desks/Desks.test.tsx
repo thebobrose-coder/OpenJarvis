@@ -356,21 +356,41 @@ describe('the Desks page at /agents', () => {
     live: false, now: 60_000, ...over,
   });
 
-  it('renders the roster and the selected desk: soul, route, tools, rulings, threads and trace', () => {
+  it('renders the roster and the selected desk’s work: threads, rulings (add box first) and trace; no soul editor', () => {
     const html = renderToStaticMarkup(<DesksView {...props()} />);
     expect(html).toContain('Desk roster');
+    expect(html).toContain('3xl:grid-cols-6');
     expect(html).toContain('Content desk');
     expect(html).toContain('BD desk');
     expect(html).toContain('A Hermes turn measured a sample cost.');
     expect(html).toContain('no soul yet');
-    expect(html).toContain('13 / 8,000 characters');
-    expect(html).toContain('brand_context');
+    expect(html).toContain('data-desk-tab="desk"');
+    expect(html).toContain('New thread');
     expect(html).toContain('Prefer short hooks.');
     expect(html).toContain('Quote rule 2');
     expect(html).toContain('Tool trace');
+    expect(html.indexOf('data-ruling-add')).toBeLessThan(html.indexOf('Prefer short hooks.'));
+    // Three thirds in the tall band.
+    expect(html.match(/lg:col-span-4 lg:h-\[860px\]/g)?.length).toBe(3);
+    // The soul and the tools are configuration (plan 4.7): on the Configure tab only.
+    expect(html).not.toContain('aria-label="Soul"');
+    expect(html).not.toContain('13 / 8,000 characters');
+    expect(html).not.toContain('Local tools (read-only)');
+    expect(html).toContain('>Configure<');
     // Nothing from the upstream Agents page.
     expect(html).not.toContain('Create agent');
     expect(html).not.toContain('Channels');
+  });
+
+  it('the Configure tab has the soul editor (wide) and the route and tools (third)', () => {
+    const html = renderToStaticMarkup(<DesksView {...props({ initialTab: 'configure' })} />);
+    expect(html).toContain('data-desk-tab="configure"');
+    expect(html).toContain('aria-label="Soul"');
+    expect(html).toContain('13 / 8,000 characters');
+    expect(html).toContain('Save soul');
+    expect(html).toContain('brand_context');
+    expect(html).toContain('Route and tools');
+    expect(html).not.toContain('Tool trace');
   });
 
   it('the soul editor refuses over 8,000 characters and an unchanged save', () => {

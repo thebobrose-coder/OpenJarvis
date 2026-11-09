@@ -203,11 +203,12 @@ describe('TradingView (0014, read-only)', () => {
     expect(view(status(), DAY, null, NOW + 40 * 60 * 1000)).toContain('data-stale-banner');
   });
 
-  it('a KILL shows in the pill with the cause and the time, and both indicators say where to clear it', () => {
+  it('a KILL shows in the pill; the cause and time once, on the kill card; both indicators say where to clear it', () => {
     const html = view(KILLED);
     expect(html).toContain('data-halt="KILL"');
-    expect(html).toContain('data-kill-detail');
-    expect(html).toContain('max_drawdown 8.4%');
+    // Plan 4.6: the cause no longer repeats in the header pill.
+    expect(html).not.toContain('data-kill-detail');
+    expect(html.match(/max_drawdown 8\.4%/g)?.length).toBe(2); // the kill card's Last cause, and the KILL event itself
     expect(html).toContain('data-halt="DEGRADED"');
     expect(html).toContain('data-kill-indicator="aws-flag"');
     expect(html).toContain('data-kill-state="set"');
@@ -235,9 +236,9 @@ describe('TradingView (0014, read-only)', () => {
     const html = view(KILLED);
     // Panel titles render as disabled <button>s (no onTitleClick). The rest are
     // view controls only: Chart | Table, % from start | $, the events' sleeve
-    // filter, and Details on the folded status row.
+    // filter, Events | Alerts, and Details on the folded status row.
     const buttons = (html.match(/<button[^>]*>[\s\S]*?<\/button>/g) ?? []).filter((b) => !/<button[^>]*\sdisabled(=|\s|>)/.test(b));
-    const labels = buttons.map((b) => b.replace(/<[^>]+>/g, '').trim()).filter((t) => t && !/^(Chart|Table|% from start|\$|All|Equities|Crypto|Futures|Details)$/.test(t));
+    const labels = buttons.map((b) => b.replace(/<[^>]+>/g, '').trim()).filter((t) => t && !/^(Chart|Table|% from start|\$|All|Equities|Crypto|Futures|Details|Events \(\d+\)|Alerts \(\d+\))$/.test(t));
     expect(labels).toEqual(['Open approval page']);
     expect(html).not.toMatch(/pause|resume|clear kill|request/i);
   });
@@ -327,13 +328,26 @@ describe('TradingView (0014, read-only)', () => {
     expect(table).toContain('Equities realized');
   });
 
-  it('events carry type chips and alerts list the last 24 hours', () => {
+  it('events carry type chips; alerts are the panel’s other tab, the last 24 hours', () => {
     const html = view(KILLED);
     expect(html).toContain('data-events');
     expect(html).toContain('data-event-type="KILL"');
     expect(html).toContain('data-event-type="FILL"');
-    expect(html).toContain('data-alerts');
-    expect(html).toContain('sample data pull failed, retried');
+    expect(html).toContain('aria-label="Events or alerts"');
+    expect(html).toContain('Alerts (1)');
+    expect(html).not.toContain('data-alerts');
+    const alerts = renderToStaticMarkup(<EventsPanel status={KILLED} initialTab="alerts" />);
+    expect(alerts).toContain('data-alerts');
+    expect(alerts).toContain('sample data pull failed, retried');
+    expect(alerts).not.toContain('data-events');
+  });
+
+  it('widescreen rows (plan 4.6): sleeves in the tall band, the curve wide at 420 px beside Events | Alerts', () => {
+    const html = view(status());
+    expect(html).toContain('lg:col-span-8 lg:h-[860px]'); // Equity curve
+    expect(html).toContain('height:420px');
+    expect(html.match(/lg:col-span-4 lg:h-\[860px\]/g)?.length).toBe(1); // Events | Alerts (two sleeves are halves)
+    expect(html.match(/lg:col-span-6 lg:h-\[860px\]/g)?.length).toBe(2);
   });
 
   it('says so before the first status, and when Hermes could not read the export', () => {
@@ -361,10 +375,11 @@ describe('TradingView (0014, read-only)', () => {
     });
     expect(sleeveNames(three)).toEqual(['equities', 'crypto', 'futures']);
     const html = view(three);
-    // Three trio panels, each holding one sleeve card; no half-width sleeve.
-    expect(html.match(/rounded-xl p-4 col-span-12 lg:col-span-4"/g)?.length).toBe(3);
+    // Three trio panels in the tall band, each holding one sleeve card; no half-width sleeve.
+    const TRIO = 'rounded-xl p-4 col-span-12 lg:col-span-4 lg:h-[860px] min-h-0"';
+    expect(html.split(TRIO).length - 1).toBe(3);
     expect(html.match(/data-sleeve-card="/g)?.length).toBe(3);
-    expect(view(status())).not.toContain('rounded-xl p-4 col-span-12 lg:col-span-4"');
+    expect(view(status())).not.toContain(TRIO);
     expect(html).toContain('>Futures<');
     expect(html).toContain('lucide-candlestick-chart');
     expect(sleeveSize(1)).toBe('full');

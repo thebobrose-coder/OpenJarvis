@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Activity, Gavel, MessagesSquare, Plus, ScrollText, Wrench } from 'lucide-react';
 import { deskIcon } from './deskIcon';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
-import { Chip, Quiet, SmallButton } from '../shared/ui';
+import { Chip, Quiet, Segmented, SmallButton } from '../shared/ui';
 import { ToolCallCard } from '../Chat/ToolCallCard';
 import { RULING_MAX, SOUL_MAX, type DeskId, type DeskInfo, type Ruling, type Soul } from '../../lib/desks-api';
 import type { ToolCallInfo } from '../../types';
@@ -47,7 +47,14 @@ export interface DesksViewProps {
   trace: TraceRow[];
   live: boolean;
   now?: number;
+  /** The tab open at first render: the desk's work, or its configuration. */
+  initialTab?: DesksTab;
 }
+
+export type DesksTab = 'desk' | 'configure';
+
+/** The trace shows this many rows before "Show all". */
+export const TRACE_VISIBLE = 20;
 
 const field = {
   background: 'var(--color-bg)',
@@ -90,7 +97,7 @@ function RosterCard({ desk, active, onSelect }: { desk: DeskInfo; active: boolea
     <button
       onClick={onSelect}
       aria-pressed={active}
-      className="flex flex-col gap-1.5 rounded-lg p-3 text-left cursor-pointer min-w-[15rem] flex-1"
+      className="flex flex-col gap-1.5 rounded-lg p-3 text-left cursor-pointer min-w-0"
       style={{
         background: active ? 'var(--color-accent-subtle)' : 'var(--color-bg-secondary)',
         border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
@@ -259,16 +266,7 @@ export function RulingsList({
           {error}
         </p>
       )}
-      {rulings.length === 0 ? (
-        <Quiet>No rulings yet. A desk proposes one as a card; or add one here.</Quiet>
-      ) : (
-        <ul className="flex flex-col gap-1.5">
-          {rulings.map((r) => (
-            <RulingRow key={`${r.id}:${r.updated_at}`} ruling={r} onEdit={(t) => onEdit(r.id, t)} onDelete={() => onDelete(r.id)} />
-          ))}
-        </ul>
-      )}
-      <div className="flex gap-1.5 items-start">
+      <div className="flex gap-1.5 items-start" data-ruling-add>
         <textarea
           aria-label="New ruling"
           value={text}
@@ -289,6 +287,15 @@ export function RulingsList({
           <Plus size={11} /> Add
         </SmallButton>
       </div>
+      {rulings.length === 0 ? (
+        <Quiet>No rulings yet. A desk proposes one as a card; or add one here.</Quiet>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {rulings.map((r) => (
+            <RulingRow key={`${r.id}:${r.updated_at}`} ruling={r} onEdit={(t) => onEdit(r.id, t)} onDelete={() => onDelete(r.id)} />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -313,11 +320,42 @@ function ToolList({ title, tools, notes }: { title: string; tools: string[]; not
   );
 }
 
-/** /agents (0020 D2a): the desk roster, and per desk its soul, route,
- * toolsets, rulings, threads and a live tool-call trace. Pure. */
+/** The live tool trace, capped at TRACE_VISIBLE rows with "Show all". */
+function TraceList({ trace, now }: { trace: TraceRow[]; now: number }) {
+  const [all, setAll] = useState(false);
+  if (trace.length === 0) {
+    return <Quiet>No tool calls yet. Each desk turn’s local tool calls and Hermes progress show here.</Quiet>;
+  }
+  const shown = all ? trace : trace.slice(0, TRACE_VISIBLE);
+  return (
+    <div className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2">
+        {shown.map((row) => (
+          <li key={row.key} className="flex flex-col gap-1" data-trace>
+            <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
+              {row.route === 'hermes' ? 'Hermes' : 'local'} · {ago(row.at, now)}
+            </span>
+            <ToolCallCard toolCall={row.call} />
+          </li>
+        ))}
+      </ul>
+      {trace.length > TRACE_VISIBLE && !all && (
+        <div>
+          <SmallButton onClick={() => setAll(true)}>Show all {trace.length}</SmallButton>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** /agents (0020 D2a; widescreen plan 4.7): the desk roster six across, then
+ * per desk what the operator works with (threads, rulings, the live tool
+ * trace, three across in the tall band) and, on the Configure tab, its soul
+ * and its route and tools. Pure. */
 export function DesksView(props: DesksViewProps) {
   const now = props.now ?? Date.now();
   const desk = props.desks?.find((d) => d.id === props.selected) ?? null;
+  const [tab, setTab] = useState<DesksTab>(props.initialTab ?? 'desk');
   return (
     <div className="flex flex-col gap-5">
       <header className="flex flex-col gap-1">
@@ -339,125 +377,135 @@ export function DesksView(props: DesksViewProps) {
               The workspace data folder isn’t configured, so souls and rulings can’t be read or written.
             </p>
           )}
-          <div className="flex flex-wrap gap-3" role="list" aria-label="Desk roster">
+          <div className="grid grid-cols-2 lg:grid-cols-3 3xl:grid-cols-6 gap-3" role="list" aria-label="Desk roster">
             {props.desks.map((d) => (
               <RosterCard key={d.id} desk={d} active={d.id === props.selected} onSelect={() => props.onSelect(d.id)} />
             ))}
           </div>
 
           {desk && (
-            <div className="grid grid-cols-12 gap-4">
-              <DashboardPanel icon={ScrollText} title={`${desk.name}: soul`} tag={desk.soul.exists ? undefined : 'absent'} size="wide">
-                <SoulEditor
-                  soul={props.soul}
-                  draft={props.soulDraft}
-                  onDraft={props.onSoulDraft}
-                  onSave={props.onSaveSoul}
-                  onReload={props.onReloadSoul}
-                  status={props.soulStatus}
-                  saving={props.soulSaving}
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Segmented<DesksTab>
+                  ariaLabel="Desk view"
+                  value={tab}
+                  onChange={setTab}
+                  options={[
+                    { value: 'desk', label: desk.name },
+                    { value: 'configure', label: 'Configure' },
+                  ]}
                 />
-              </DashboardPanel>
+                <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
+                  {desk.soul.exists ? `soul ${desk.soul.chars.toLocaleString()} chars` : 'no soul yet'} · {desk.rulings} ruling{desk.rulings === 1 ? '' : 's'}
+                </span>
+              </div>
 
-              <DashboardPanel icon={Wrench} title="Route and tools" size="tall">
-                <div className="flex flex-col gap-3 text-ui-12">
-                  <div className="flex flex-col gap-1">
-                    <Label>Default route</Label>
-                    <span style={{ color: 'var(--color-text)' }}>
-                      {desk.hermes === false
-                        ? 'Local qwen on this machine only. This desk has no Hermes profile.'
-                        : desk.default_route === 'hermes'
-                          ? 'Hermes (the desk’s read-only profile). Start with “local,” to answer on this machine.'
-                          : 'Local qwen on this machine. Start with “Hermes,” for the desk’s Hermes profile.'}
-                    </span>
-                    <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
-                      Hermes turns count under the daily Hermes cap.
-                    </span>
-                  </div>
-                  <ToolList title="Local tools (read-only)" tools={desk.local_tools} notes={TOOL_NOTES} />
-                  {desk.local_tools.includes('panel_feed') && (
-                    <div className="flex flex-wrap gap-1">
-                      {desk.panel_feeds.map((f) => (
-                        <Chip key={f} tone="muted">
-                          {f}
-                        </Chip>
-                      ))}
-                    </div>
-                  )}
-                  <ToolList title="Hermes profile tools (read-only)" tools={desk.hermes_tools} />
-                  <div className="flex flex-col gap-1">
-                    <Label>Cards it may propose</Label>
-                    <div className="flex flex-wrap gap-1">
-                      {desk.card_kinds.map((k) => (
-                        <Chip key={k}>{k}</Chip>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </DashboardPanel>
+              {tab === 'configure' ? (
+                <div className="grid grid-cols-12 gap-4" data-desk-tab="configure">
+                  <DashboardPanel icon={ScrollText} title={`${desk.name}: soul`} tag={desk.soul.exists ? undefined : 'absent'} size="wide">
+                    <SoulEditor
+                      soul={props.soul}
+                      draft={props.soulDraft}
+                      onDraft={props.onSoulDraft}
+                      onSave={props.onSaveSoul}
+                      onReload={props.onReloadSoul}
+                      status={props.soulStatus}
+                      saving={props.soulSaving}
+                    />
+                  </DashboardPanel>
 
-              <DashboardPanel icon={Gavel} title="Rulings" tag={`${props.rulings.length}`} size="half">
-                <RulingsList
-                  rulings={props.rulings}
-                  error={props.rulingsError}
-                  onAdd={props.onAddRuling}
-                  onEdit={props.onEditRuling}
-                  onDelete={props.onDeleteRuling}
-                />
-              </DashboardPanel>
-
-              <DashboardPanel
-                icon={MessagesSquare}
-                title="Threads"
-                tag={`${props.threads.length}`}
-                size="half"
-                actions={
-                  <SmallButton tone="accent" onClick={props.onNewThread}>
-                    <Plus size={11} /> New thread
-                  </SmallButton>
-                }
-              >
-                {props.threads.length === 0 ? (
-                  <Quiet>No threads yet.</Quiet>
-                ) : (
-                  <ul className="flex flex-col gap-1">
-                    {props.threads.map((t) => (
-                      <li key={t.id}>
-                        <button
-                          onClick={() => props.onOpenThread(t.id)}
-                          className="w-full text-left rounded-md px-2 py-1.5 cursor-pointer"
-                          style={{ background: 'var(--color-bg-secondary)', border: 'none' }}
-                        >
-                          <span className="block text-ui-12-5 truncate" style={{ color: 'var(--color-text)' }}>
-                            {t.title}
-                          </span>
-                          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
-                            {t.turns} turn{t.turns === 1 ? '' : 's'} · {ago(t.updatedAt, now)}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </DashboardPanel>
-
-              <DashboardPanel icon={Activity} title="Tool trace" tag={props.live ? 'live' : undefined} size="full">
-                {props.trace.length === 0 ? (
-                  <Quiet>No tool calls yet. Each desk turn’s local tool calls and Hermes progress show here.</Quiet>
-                ) : (
-                  <ul className="flex flex-col gap-2">
-                    {props.trace.map((row) => (
-                      <li key={row.key} className="flex flex-col gap-1" data-trace>
-                        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
-                          {row.route === 'hermes' ? 'Hermes' : 'local'} · {ago(row.at, now)}
+                  <DashboardPanel icon={Wrench} title="Route and tools" size="third">
+                    <div className="flex flex-col gap-3 text-ui-12">
+                      <div className="flex flex-col gap-1">
+                        <Label>Default route</Label>
+                        <span style={{ color: 'var(--color-text)' }}>
+                          {desk.hermes === false
+                            ? 'Local qwen on this machine only. This desk has no Hermes profile.'
+                            : desk.default_route === 'hermes'
+                              ? 'Hermes (the desk’s read-only profile). Start with “local,” to answer on this machine.'
+                              : 'Local qwen on this machine. Start with “Hermes,” for the desk’s Hermes profile.'}
                         </span>
-                        <ToolCallCard toolCall={row.call} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </DashboardPanel>
-            </div>
+                        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
+                          Hermes turns count under the daily Hermes cap.
+                        </span>
+                      </div>
+                      <ToolList title="Local tools (read-only)" tools={desk.local_tools} notes={TOOL_NOTES} />
+                      {desk.local_tools.includes('panel_feed') && (
+                        <div className="flex flex-wrap gap-1">
+                          {desk.panel_feeds.map((f) => (
+                            <Chip key={f} tone="muted">
+                              {f}
+                            </Chip>
+                          ))}
+                        </div>
+                      )}
+                      <ToolList title="Hermes profile tools (read-only)" tools={desk.hermes_tools} />
+                      <div className="flex flex-col gap-1">
+                        <Label>Cards it may propose</Label>
+                        <div className="flex flex-wrap gap-1">
+                          {desk.card_kinds.map((k) => (
+                            <Chip key={k}>{k}</Chip>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </DashboardPanel>
+                </div>
+              ) : (
+                <div className="grid grid-cols-12 gap-4" data-desk-tab="desk">
+                  <DashboardPanel
+                    icon={MessagesSquare}
+                    title="Threads"
+                    tag={`${props.threads.length}`}
+                    size="trio"
+                    band="tall"
+                    priority
+                    actions={
+                      <SmallButton tone="accent" onClick={props.onNewThread}>
+                        <Plus size={11} /> New thread
+                      </SmallButton>
+                    }
+                  >
+                    {props.threads.length === 0 ? (
+                      <Quiet>No threads yet.</Quiet>
+                    ) : (
+                      <ul className="flex flex-col gap-1">
+                        {props.threads.map((t) => (
+                          <li key={t.id}>
+                            <button
+                              onClick={() => props.onOpenThread(t.id)}
+                              className="w-full text-left rounded-md px-2 py-1.5 cursor-pointer"
+                              style={{ background: 'var(--color-bg-secondary)', border: 'none' }}
+                            >
+                              <span className="block text-ui-12-5 truncate" style={{ color: 'var(--color-text)' }}>
+                                {t.title}
+                              </span>
+                              <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
+                                {t.turns} turn{t.turns === 1 ? '' : 's'} · {ago(t.updatedAt, now)}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </DashboardPanel>
+
+                  <DashboardPanel icon={Gavel} title="Rulings" tag={`${props.rulings.length}`} size="trio" band="tall">
+                    <RulingsList
+                      rulings={props.rulings}
+                      error={props.rulingsError}
+                      onAdd={props.onAddRuling}
+                      onEdit={props.onEditRuling}
+                      onDelete={props.onDeleteRuling}
+                    />
+                  </DashboardPanel>
+
+                  <DashboardPanel icon={Activity} title="Tool trace" tag={props.live ? 'live' : undefined} size="trio" band="tall">
+                    <TraceList trace={props.trace} now={now} />
+                  </DashboardPanel>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

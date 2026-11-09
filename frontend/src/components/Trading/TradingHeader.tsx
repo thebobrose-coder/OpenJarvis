@@ -1,8 +1,6 @@
 import { AlertTriangle, CheckCircle2, HeartPulse, OctagonX } from 'lucide-react';
 import {
   haltTone,
-  killCause,
-  killWhen,
   sleeveColor,
   sleeveLabel,
   sleeveNames,
@@ -80,24 +78,13 @@ export function TradingHeader({ status, now }: { status: TradingStatus | null; n
 
       {status && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
-          {sleeveNames(status).map((name) => {
-            const s = status.sleeves?.[name];
-            const when = s?.halt_state === 'KILL' ? killWhen(status, name) : null;
-            const cause = s?.halt_state === 'KILL' ? killCause(status) : null;
-            return (
-              <span key={name} className="inline-flex items-center gap-1.5" data-sleeve-pill={name}>
-                <SleeveName name={name} />
-                <HaltPill state={s?.halt_state}>
-                  {s?.halt_state === 'KILL' && (cause || when) && (
-                    <span className="font-normal" data-kill-detail>
-                      · {cause ?? 'cause unknown'}
-                      {when ? ` · ${shortDateTime(when)}` : ''}
-                    </span>
-                  )}
-                </HaltPill>
-              </span>
-            );
-          })}
+          {sleeveNames(status).map((name) => (
+            // The KILL cause and time show once, on the kill switch card (plan 4.6).
+            <span key={name} className="inline-flex items-center gap-1.5" data-sleeve-pill={name}>
+              <SleeveName name={name} />
+              <HaltPill state={status.sleeves?.[name]?.halt_state} />
+            </span>
+          ))}
           {hb && (
             <span className="inline-flex items-center gap-1.5" data-heartbeat={hbBad ? 'alarm' : 'ok'} style={{ color: hbBad ? 'var(--color-error)' : undefined }}>
               <HeartPulse size={12} />

@@ -24,7 +24,7 @@ import {
   type Sleeve,
   type TickToday,
 } from '../../lib/trading-api';
-import { DashboardPanel, type PanelSize } from '../Dashboard/DashboardPanel';
+import { DashboardPanel, type PanelBand, type PanelSize } from '../Dashboard/DashboardPanel';
 import { formatAge } from '../Dashboard/FeedFreshness';
 import { num, shortDateTime } from '../shared/format';
 import { Chip, Quiet, Tile } from '../shared/ui';
@@ -149,6 +149,7 @@ export function SleeveCard({
   error,
   now = Date.now(),
   size = 'half',
+  band,
 }: {
   name: string;
   sleeve: Sleeve | null;
@@ -157,6 +158,8 @@ export function SleeveCard({
   now?: number;
   /** One, two or three across (see `sleeveSize`). */
   size?: PanelSize;
+  /** The row's height band on the page; unset when the card stands alone. */
+  band?: PanelBand;
 }) {
   const Icon = SLEEVE_ICON[name] ?? Layers;
   const dd = sleeve ? drawdownPct(sleeve) : null;
@@ -167,7 +170,7 @@ export function SleeveCard({
   const today = sleeve ? dayChange(sleeve) : null;
   const todayIso = new Date(now).toISOString().slice(0, 10);
   return (
-    <DashboardPanel icon={Icon} iconColor={sleeveColor(name)} title={sleeveLabel(name)} tag={sleeve?.day?.date ?? undefined} size={size} loading={loading} error={error}>
+    <DashboardPanel icon={Icon} iconColor={sleeveColor(name)} title={sleeveLabel(name)} tag={sleeve?.day?.date ?? undefined} size={size} band={band} loading={loading} error={error}>
       {!sleeve ? (
         <Quiet>No status for this sleeve yet.</Quiet>
       ) : (

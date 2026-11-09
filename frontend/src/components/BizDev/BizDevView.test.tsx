@@ -371,11 +371,40 @@ describe('board layout', () => {
     expect(columnWidthClass(0, true)).toBe('flex-none w-[12rem]');
   });
 
-  it('gives a populated column the wide minimum width', () => {
+  it('a populated column shares the row (flex-1) with a minimum width; the row never grows the page', () => {
     const drafted = column(render(), 'Drafted');
     expect(drafted).not.toContain('data-rail');
-    expect(drafted).toContain('min-w-[16rem]');
+    expect(drafted).toContain('flex-[1_1_0] min-w-[13rem]');
+    expect(drafted).toContain('flex-1 min-h-0 overflow-y-auto');
+    expect(drafted).not.toContain('vh');
     expect(columnWidthClass(3, true)).toBe(columnWidthClass(3, false));
+  });
+
+  it('widescreen rows (plan 4.5): follow-ups wide + funnel third, the board full tall with its filters in the header, three dim thirds', () => {
+    const html = render();
+    expect(html).toContain('lg:col-span-8 lg:h-[420px]'); // Follow-ups due
+    expect(html).toContain('data-insights-funnel');
+    expect(html).toContain('col-span-12 lg:h-[860px]'); // Pipeline
+    expect(html).toContain('data-board-filters');
+    expect(html).toContain('data-board');
+    expect(html.match(/opacity:0\.82/g)?.length).toBe(3); // Research log, Engagement, Signal insights
+    expect(html).toContain('>Engagement<');
+    expect(html).toContain('>Signal insights<');
+    // No Templates tab: the templates live in a drawer, closed until asked for.
+    expect(html).not.toContain('aria-label="Business Development view"');
+    expect(html).not.toContain('aria-label="Templates"');
+  });
+
+  it('the Templates drawer opens from the header button and is wired to the composers', () => {
+    const closed = render({ onSaveTemplate: async () => {}, onArchiveTemplate: async () => {} });
+    expect(closed).toContain('>Templates</button>'.replace('>Templates</button>', 'Templates'));
+    expect(closed).toContain('Manage templates');
+    expect(closed).not.toContain('aria-label="Templates"');
+    const open = render({ onSaveTemplate: async () => {}, onArchiveTemplate: async () => {}, templatesOpen: true });
+    expect(open).toContain('aria-label="Templates"');
+    expect(open).toContain('New template');
+    // Without the archive handler there is no drawer and no button.
+    expect(render({ onSaveTemplate: async () => {} })).not.toContain('Manage templates');
   });
 
   it('puts the rank chip on the name row, with the full name as a tooltip', () => {
