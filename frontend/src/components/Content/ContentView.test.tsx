@@ -15,7 +15,7 @@ import { ContentView, type ContentViewProps } from './ContentView';
 import { ALL_PROPERTIES } from './format';
 import { sortAlerts } from './HealthStrip';
 import { socialLine } from './PerformancePanel';
-import { ThesisLane, laneQueue, queueGroups, weeksOut } from './ThesisLane';
+import { ThesisLane, laneQueue, laneSize, queueGroups, weeksOut } from './ThesisLane';
 import { ApproveEditor, ProposalCard, RejectConfirm, approvalEdits, classOptions, deskLabel, deskLanes, episodeEditProblems, isDeskProposal, tagAllowed } from './ProposalsQueue';
 import { SeedbankStrip } from './SeedbankStrip';
 import { lane as baseLane } from '../../test/fixtures';
@@ -548,6 +548,17 @@ describe('ThesisLane', () => {
     expect(html).toMatch(/data-thesis-post="post-1" data-repeat="true"/);
     expect(html).not.toMatch(/data-thesis-queue="sig-1" data-repeat/);
     expect(html).not.toMatch(/data-thesis-post="post-2" data-repeat/);
+  });
+
+  it('three lanes share one row at a third each, queue over posts; one or two go half', () => {
+    expect(laneSize(1)).toBe('half');
+    expect(laneSize(2)).toBe('half');
+    expect(laneSize(3)).toBe('trio');
+    const props = ['alpha', 'beta', 'gamma'].map((id) => ({ id, name: id, thesis_lane: LANE }));
+    const html = renderToStaticMarkup(<ThesisLane properties={props as never} showProperty />);
+    expect(html.match(/data-thesis-lane=/g)).toHaveLength(3);
+    expect(html.match(/col-span-12 lg:col-span-4 lg:h-\[860px\]/g)).toHaveLength(3);
+    expect(html).not.toContain('3xl:col-span-7');
   });
 
   it('says "Nothing queued" for an empty queue', () => {

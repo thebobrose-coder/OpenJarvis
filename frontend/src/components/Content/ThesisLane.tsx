@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ListOrdered } from 'lucide-react';
 import type { SeedbankProperty, ThesisFlag, ThesisLane as Lane, ThesisPost, ThesisQueueItem } from '../../lib/content-api';
-import { DashboardPanel } from '../Dashboard/DashboardPanel';
+import { DashboardPanel, type PanelSize } from '../Dashboard/DashboardPanel';
 import { num } from '../shared/format';
 import { Chip, Quiet, SmallButton, type Tone } from '../shared/ui';
 import { humanize } from './format';
@@ -111,7 +111,7 @@ function SectionLabel({ children }: { children: string }) {
   );
 }
 
-function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lane: Lane; showProperty: boolean }) {
+function LanePanel({ propertyId, lane, showProperty, size }: { propertyId: string; lane: Lane; showProperty: boolean; size: PanelSize }) {
   const flags: ThesisFlag[] = lane.flags ?? [];
   const repeats = flags.filter((f) => f.kind === 'possible_repeat');
   const repeatSignals = new Set(repeats.map((f) => f.signal_id).filter(Boolean));
@@ -124,7 +124,7 @@ function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lan
   const shownPosts = allPosts ? posts : posts.slice(0, POSTS_VISIBLE);
 
   return (
-    <DashboardPanel icon={ListOrdered} title="Thesis lane" tag={showProperty ? propertyId : undefined} size="half" band="tall">
+    <DashboardPanel icon={ListOrdered} title="Thesis lane" tag={showProperty ? propertyId : undefined} size={size} band="tall">
       <div className="flex flex-col gap-3" data-thesis-lane={propertyId}>
         <p className="text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
           Read-only: you queue theses; G1 approves them on Telegram.
@@ -150,8 +150,9 @@ function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lan
           <span style={{ color: 'var(--color-text)' }}>{next ? next.title || next.summary || 'Untitled' : 'nothing queued'}</span>
         </div>
 
-        <div className="grid grid-cols-1 3xl:grid-cols-12 gap-4">
-          <div className="flex flex-col gap-2 3xl:col-span-7 min-w-0" data-section="queue">
+        {/* A third-wide card stacks the queue over the posts; a half-wide one sets them side by side at 3xl. */}
+        <div className={`grid grid-cols-1 gap-4 ${size === 'half' ? '3xl:grid-cols-12' : ''}`.trim()}>
+          <div className={`flex flex-col gap-2 min-w-0 ${size === 'half' ? '3xl:col-span-7' : ''}`.trim()} data-section="queue">
             <SectionLabel>Queue</SectionLabel>
             {groups.length === 0 ? (
               <Quiet>Nothing queued</Quiet>
@@ -172,7 +173,7 @@ function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lan
               ))
             )}
           </div>
-          <div className="flex flex-col gap-2 3xl:col-span-5 min-w-0" data-section="posts">
+          <div className={`flex flex-col gap-2 min-w-0 ${size === 'half' ? '3xl:col-span-5' : ''}`.trim()} data-section="posts">
             <SectionLabel>{`Posted (90 days) · ${posts.length}`}</SectionLabel>
             {posts.length === 0 ? (
               <Quiet>No thesis posts in the last 90 days.</Quiet>
@@ -197,17 +198,24 @@ function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lan
   );
 }
 
+/** One or two lanes take half the row each; three or more go a third each, all in one row. */
+export function laneSize(count: number): PanelSize {
+  return count >= 3 ? 'trio' : 'half';
+}
+
 /**
  * The operator-only thesis lane (contract v1.8), one panel per property
- * whose `thesis_lane` is set. A mirror: no queue, approve or fire control.
+ * whose `thesis_lane` is set, side by side in their own row. A mirror: no
+ * queue, approve or fire control.
  */
 export function ThesisLane({ properties, showProperty }: { properties: SeedbankProperty[]; showProperty: boolean }) {
   const lanes = properties.filter((p) => p.thesis_lane != null);
   if (lanes.length === 0) return null;
+  const size = laneSize(lanes.length);
   return (
     <>
       {lanes.map((p) => (
-        <LanePanel key={p.id} propertyId={p.id} lane={p.thesis_lane as Lane} showProperty={showProperty} />
+        <LanePanel key={p.id} propertyId={p.id} lane={p.thesis_lane as Lane} showProperty={showProperty} size={size} />
       ))}
     </>
   );

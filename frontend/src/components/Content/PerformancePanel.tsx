@@ -165,7 +165,7 @@ export function PerformancePanel({
   const lanePages = properties.flatMap((p) => (p.lane_pages ?? []).map((page) => ({ ...page, property: p.id })));
 
   return (
-    <DashboardPanel icon={Activity} title="Performance" tag="Daily · 30 days" size="half" band="tall" loading={loading} error={error}>
+    <DashboardPanel icon={Activity} title="Performance" tag="Daily · 30 days" size="full" band="tall" loading={loading} error={error}>
       {posts.length === 0 ? (
         <Quiet>Measurement starts when Foundry’s daily snapshot arrives.</Quiet>
       ) : (

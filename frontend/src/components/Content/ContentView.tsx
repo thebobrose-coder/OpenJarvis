@@ -213,8 +213,14 @@ export function ContentView(props: ContentViewProps) {
         />
       </div>
 
+      {thesisLanes.length > 0 && (
+        // The thesis lanes in a row of their own: three across at a third each.
+        <div className="grid grid-cols-12 gap-4 mb-4">
+          <ThesisLane properties={thesisLanes} showProperty={showProperty} />
+        </div>
+      )}
+
       <div className="grid grid-cols-12 gap-4 mb-4">
-        {thesisLanes.length > 0 && <ThesisLane properties={thesisLanes} showProperty={showProperty} />}
         <PerformancePanel
           performance={feeds.content_performance.data}
           selectedProperty={selected}
