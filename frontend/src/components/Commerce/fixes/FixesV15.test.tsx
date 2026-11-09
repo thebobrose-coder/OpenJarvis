@@ -113,6 +113,7 @@ function feed(patches: Patch[], over: Partial<CatalogFixes> = {}): CatalogFixes 
 function tab(f: CatalogFixes, extra: Partial<FixesTabProps> = {}) {
   return renderToStaticMarkup(
     <FixesTab
+      classView="table"
       feed={f}
       pending={{}}
       cardNotes={{}}

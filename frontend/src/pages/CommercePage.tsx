@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageFrame } from '../components/shared/PageFrame';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
-import { CommerceView } from '../components/Commerce/CommerceView';
+import { CommerceView, tabFromLocation, type CommerceTab } from '../components/Commerce/CommerceView';
 import { ALL_STORES } from '../components/Commerce/format';
 import { useCatalogFixes } from '../hooks/useCatalogFixes';
 import { LEDGER_POLL_MS, useCommerceData } from '../hooks/useCommerceData';
 import type { AdsHold, ComplianceFinding, DailyStore, LedgerItem } from '../lib/commerce-api';
+import type { Spark } from '../lib/content-api';
 import { fetchContentFeed } from '../lib/content-api';
 import { contextBlock, fetchPrecheckProperties, runPrecheck, type PrecheckResult } from '../lib/desks-api';
 import { useAppStore } from '../lib/store';
@@ -70,10 +71,13 @@ export function CommercePage() {
   const [store, setStore] = useState(ALL_STORES);
   // ?focus=<id> from "Waiting on you": #fixes means a patch, else a rec.
   const location = useLocation();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const target = params.get('focus');
   const onFixes = location.hash === '#fixes';
   const focus = target ? { fix: onFixes ? target : null, rec: onFixes ? null : target, key: location.key } : null;
+  // The tab lives in the URL (widescreen plan 4.2): `?tab=` or the older hashes.
+  const tab = tabFromLocation(params.get('tab'), location.hash);
+  const onTab = (t: CommerceTab) => setParams(t === 'overview' ? {} : { tab: t }, { replace: true });
   useEffect(() => {
     if (target) setStore(ALL_STORES);
   }, [target, location.key]);
@@ -92,9 +96,13 @@ export function CommercePage() {
   // The ads-hold verdict per flight lives on content_health (v1.21); read
   // with the Commerce ledger poll, so a new publish shows without a reload.
   const [adsHold, setAdsHold] = useState<AdsHold | null>(null);
+  // The spark picks (v1.29) come with the flights on Ads & flights (widescreen plan 5.1).
+  const [sparks, setSparks] = useState<Spark[] | null>(null);
   useEffect(() => {
-    const load = () =>
-      fetchContentFeed('content_health').then((h) => setAdsHold(h?.ads_hold ?? null), () => {}); // a failed read keeps the last verdict
+    const load = () => {
+      void fetchContentFeed('content_health').then((h) => setAdsHold(h?.ads_hold ?? null), () => {}); // a failed read keeps the last verdict
+      void fetchContentFeed('youtube_performance').then((y) => setSparks(y?.spark ?? []), () => {});
+    };
     void load();
     const poll = window.setInterval(() => void load(), LEDGER_POLL_MS);
     return () => window.clearInterval(poll);
@@ -117,6 +125,9 @@ export function CommercePage() {
         fixRecs={fixRecs}
         onOpenReport={setReportOpen}
         adsHold={adsHold}
+        sparks={sparks}
+        initialTab={tab}
+        onTab={onTab}
         onAskDesk={{
           rec: (item) => ask('commerce', recContext(item)),
           kpis: (stores) => ask('commerce', kpiContext(stores)),

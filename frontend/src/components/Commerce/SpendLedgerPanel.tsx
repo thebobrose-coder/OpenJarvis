@@ -135,14 +135,16 @@ export interface SpendLedgerPanelProps {
   ledger: SpendLedger | null;
   loading?: boolean;
   error?: string | null;
+  tag?: string;
+  dim?: boolean;
 }
 
-export function SpendLedgerPanel({ ledger, loading, error }: SpendLedgerPanelProps) {
+export function SpendLedgerPanel({ ledger, loading, error, tag = 'read only', dim }: SpendLedgerPanelProps) {
   const groups = groupLines(ledger?.lines ?? []);
   const errors = ledger?.parse_errors ?? [];
   const alerts = ledger?.alerts ?? [];
   return (
-    <DashboardPanel icon={Wallet} title="Spend ledger" tag="read only" size="full" loading={loading && !ledger} error={error}>
+    <DashboardPanel icon={Wallet} title="Spend ledger" tag={tag} size="full" dim={dim} loading={loading && !ledger} error={error}>
       <div id="spend-ledger" className="flex flex-col gap-3">
         {errors.length > 0 && (
           <p role="alert" className="text-ui-12" style={{ color: 'var(--color-warning)' }} data-parse-errors>

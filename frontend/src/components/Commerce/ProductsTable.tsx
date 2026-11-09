@@ -138,9 +138,9 @@ export function ProductsTable({
             />
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto 3xl:overflow-x-visible">
             <table className="w-full text-ui-12 tabular-nums">
-              <thead>
+              <thead className="sticky top-0 z-[1]" style={{ background: 'var(--color-surface)' }}>
                 <tr style={{ color: 'var(--color-text-tertiary)' }}>
                   {COLUMNS.map((c) => (
                     <th

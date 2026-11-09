@@ -11,7 +11,7 @@ import type {
   LedgerItem,
 } from '../../lib/commerce-api';
 import { applyDecisions, reconcileDecisions, type FeedStates } from '../../hooks/useCommerceData';
-import { CommerceView } from './CommerceView';
+import { CommerceView, isAdsFocus, tabFromLocation } from './CommerceView';
 import { ALL_STORES, kpiTotals } from './format';
 
 // Neutral fixtures only: this repo is public.
@@ -220,11 +220,12 @@ function feeds(over: Partial<FeedStates> = {}): FeedStates {
   };
 }
 
-function render(f: FeedStates, selectedStore = ALL_STORES, pending = {}) {
+function render(f: FeedStates, selectedStore = ALL_STORES, pending = {}, tab: 'overview' | 'compliance' | 'ads' = 'overview') {
   return renderToStaticMarkup(
     <CommerceView
       feeds={f}
       pending={pending}
+      initialTab={tab}
       refreshStatus={{}}
       selectedStore={selectedStore}
       onSelectStore={vi.fn()}
@@ -241,7 +242,7 @@ describe('CommerceView', () => {
     // Header: store switcher and per-feed freshness.
     expect(html).toContain('All stores');
     expect(html).toContain('Store A');
-    expect(html).toContain('Data · updated 60 min ago');
+    expect(html).toContain('Updated 60 min ago');
     // KPIs, summed across stores.
     expect(html).toContain('$40.00'); // yesterday revenue, 2 stores
     expect(html).toContain('+100% vs prior 7');
@@ -253,13 +254,30 @@ describe('CommerceView', () => {
     expect(html).toContain('$10/day · start');
     expect(html).toContain('Accept');
     expect(html).toContain('Reject');
-    // Products, ads, SEO, compliance.
+    // Products and SEO on the Overview; ads and compliance on their tabs.
     expect(html).toContain('Sample Product');
     expect(html).toContain('title="Restricted category"');
-    expect(html).toContain('Sample Campaign');
-    expect(html).toContain('2×'); // campaign ROAS
     expect(html).toContain('www → apex');
-    expect(html).toContain('property-a · 2');
+    expect(html).not.toContain('Sample Campaign');
+    const ads = render(feeds(), ALL_STORES, {}, 'ads');
+    expect(ads).toContain('Sample Campaign');
+    expect(ads).toContain('2×'); // campaign ROAS
+    const compliance = render(feeds(), ALL_STORES, {}, 'compliance');
+    expect(compliance).toContain('property-a · 2');
+    expect(compliance).toContain('id="commerce-compliance"');
+  });
+
+  it('names the tabs with their counts and reads a tab from the URL', () => {
+    const html = render(feeds());
+    expect(html).toContain('Compliance (2)');
+    expect(html).toContain('Ads &amp; flights');
+    expect(tabFromLocation('ads', '')).toBe('ads');
+    expect(tabFromLocation(null, '#fixes')).toBe('fixes');
+    expect(tabFromLocation(null, '#commerce-compliance')).toBe('compliance');
+    expect(tabFromLocation('nonsense', '')).toBe('overview');
+    expect(isAdsFocus('spark-flight-1')).toBe(true);
+    expect(isAdsFocus('spend-line')).toBe(true);
+    expect(isAdsFocus('abc')).toBe(false);
   });
 
   it('shows "no data yet" for feeds that have never run, not errors', () => {
@@ -275,8 +293,15 @@ describe('CommerceView', () => {
     expect(html).toContain('No briefing yet');
     expect(html).toContain('No SEO audit yet');
     expect(html).toContain('No recommendations yet');
-    expect(html).toContain('No compliance run yet');
     expect(html).not.toContain('var(--color-error)');
+    const compliance = render(
+      feeds({ compliance_findings: state(null) }),
+      ALL_STORES,
+      {},
+      'compliance',
+    );
+    expect(compliance).toContain('No compliance run yet');
+    expect(compliance).not.toContain('var(--color-error)');
   });
 
   it('keeps zero sales calm and explains a disconnected GA4', () => {
@@ -292,8 +317,9 @@ describe('CommerceView', () => {
     const html = render(feeds({ ecom_daily: state({ ...DAILY, stores: [zero] }) }), 'store-b');
 
     expect(html).toContain('GA4 not connected -- GA4 property not linked yet');
-    expect(html).toContain('GA4 isn’t connected');
     expect(html).not.toContain('var(--color-error)');
+    const ads = render(feeds({ ecom_daily: state({ ...DAILY, stores: [zero] }) }), 'store-b', {}, 'ads');
+    expect(ads).toContain('GA4 isn’t connected');
   });
 
   it('shows a failed briefing section plainly', () => {

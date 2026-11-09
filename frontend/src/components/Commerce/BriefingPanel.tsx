@@ -45,7 +45,8 @@ export function BriefingPanel({
       icon={Sparkles}
       title="Today’s briefing"
       tag="Daily"
-      size="full"
+      size="third"
+      band="short"
       priority
       loading={loading}
       error={error}

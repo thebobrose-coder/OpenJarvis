@@ -8,6 +8,10 @@ import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { ALL_STORES, num, shortDateTime } from './format';
 import { MessagesSquare } from 'lucide-react';
 import { Chip, ExtLink, Quiet, Select, SmallButton, Tile, type Tone } from '../shared/ui';
+import { Drawer } from '../shared/Drawer';
+
+/** The Recommendations panel shows this many before "Show all" (widescreen plan). */
+export const RECS_VISIBLE = 18;
 
 export const CATEGORY_LABELS: Record<RecCategory, string> = {
   spend: 'Spend',
@@ -439,18 +443,47 @@ function Group({ title, count, hint, children }: { title: string; count: number;
 }
 
 /** Pure: the ledger's accepted recs (Needs you, In flight) and its history. */
+function HistoryList({ history, storeNames, links }: { history: LedgerItem[]; storeNames: Record<string, string>; links: LedgerLinks }) {
+  if (history.length === 0) return <Quiet>No decisions yet. Every accept, reject and done is recorded here.</Quiet>;
+  return (
+    <ul className="flex flex-col gap-2" data-group="history">
+      {history.map((i) => (
+        <li key={i.id} id={`rec-${i.id}`} className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }}>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Chip tone={STATUS_TONE[i.status] ?? 'neutral'}>{i.status}</Chip>
+            <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
+              {storeNames[i.store] ?? i.store} · {shortDateTime(i.decided_at)}
+            </span>
+            <PatchReady id={i.fix_patch_id} onOpenFix={links.onOpenFix} />
+          </div>
+          <span style={{ color: 'var(--color-text)' }}>{i.title}</span>
+          <OwnNote note={i.note} />
+          {splitNote(i.note).auto.map((a) => (
+            <span key={a} className="text-ui-11" data-auto-close style={{ color: 'var(--color-text-secondary)' }}>
+              {a}
+            </span>
+          ))}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function LedgerGroups({
   items,
   storeNames,
   onDecide,
   links = {},
+  historyMode = 'inline',
 }: {
   items: LedgerItem[];
   storeNames: Record<string, string>;
   onDecide: (id: string, d: Decision, note: string) => void;
   links?: LedgerLinks;
+  /** inline: a collapsible list under the groups; drawer: a button that opens one (widescreen plan). */
+  historyMode?: 'inline' | 'drawer';
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(historyMode === 'inline');
   const { needsYou, inFlight, history } = splitLedger(items);
   return (
     <div className="flex flex-col gap-3">
@@ -474,41 +507,36 @@ export function LedgerGroups({
           </ul>
         </Group>
       )}
-      <div className="flex flex-col gap-2">
-        <button
-          onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1.5 text-ui-11 uppercase tracking-wide cursor-pointer"
-          style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-text-tertiary)' }}
-          aria-expanded={open}
-        >
-          <History size={11} /> Recently decided ({history.length}) {open ? '▾' : '▸'}
-        </button>
-        {open &&
-          (history.length === 0 ? (
-            <Quiet>No decisions yet. Every accept, reject and done is recorded here.</Quiet>
-          ) : (
-            <ul className="flex flex-col gap-2" data-group="history">
-              {history.map((i) => (
-                <li key={i.id} id={`rec-${i.id}`} className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }}>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Chip tone={STATUS_TONE[i.status] ?? 'neutral'}>{i.status}</Chip>
-                    <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
-                      {storeNames[i.store] ?? i.store} · {shortDateTime(i.decided_at)}
-                    </span>
-                    <PatchReady id={i.fix_patch_id} onOpenFix={links.onOpenFix} />
-                  </div>
-                  <span style={{ color: 'var(--color-text)' }}>{i.title}</span>
-                  <OwnNote note={i.note} />
-                  {splitNote(i.note).auto.map((a) => (
-                    <span key={a} className="text-ui-11" data-auto-close style={{ color: 'var(--color-text-secondary)' }}>
-                      {a}
-                    </span>
-                  ))}
-                </li>
-              ))}
-            </ul>
-          ))}
-      </div>
+      {historyMode === 'drawer' ? (
+        <div>
+          <SmallButton onClick={() => setOpen(true)} title="Every accept, reject and done">
+            <History size={11} /> Recently decided ({history.length})
+          </SmallButton>
+          <Drawer open={open} onClose={() => setOpen(false)} label="Recently decided" width="narrow">
+            <header className="flex items-center justify-between gap-2">
+              <h2 className="text-ui-15 font-semibold" style={{ color: 'var(--color-text)' }}>
+                Recently decided ({history.length})
+              </h2>
+              <button onClick={() => setOpen(false)} aria-label="Close" className="cursor-pointer" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
+                <X size={16} />
+              </button>
+            </header>
+            <HistoryList history={history} storeNames={storeNames} links={links} />
+          </Drawer>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="flex items-center gap-1.5 text-ui-11 uppercase tracking-wide cursor-pointer"
+            style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-text-tertiary)' }}
+            aria-expanded={open}
+          >
+            <History size={11} /> Recently decided ({history.length}) {open ? '▾' : '▸'}
+          </button>
+          {open && <HistoryList history={history} storeNames={storeNames} links={links} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -517,8 +545,6 @@ export function RecommendationsQueue({
   ledger,
   pending,
   selectedStore,
-  onSelectStore,
-  stores,
   storeNames,
   productTitles,
   onDecide,
@@ -533,8 +559,9 @@ export function RecommendationsQueue({
   ledger: EcomRecommendations | null;
   pending: Record<string, PendingDecision>;
   selectedStore: string;
-  onSelectStore: (slug: string) => void;
-  stores: { slug: string; display_name: string }[];
+  /** Kept for callers; the header's store switcher is the one control now. */
+  onSelectStore?: (slug: string) => void;
+  stores?: { slug: string; display_name: string }[];
   storeNames: Record<string, string>;
   productTitles: Record<string, string>;
   onDecide: (id: string, d: Decision, note: string) => void;
@@ -551,6 +578,7 @@ export function RecommendationsQueue({
 }) {
   const [category, setCategory] = useState<'all' | RecCategory>('all');
   const [owner, setOwner] = useState('all');
+  const [all, setAll] = useState(false);
   const { open, recent } = applyDecisions(ledger, pending);
 
   const owners = [...new Set(open.map((i) => i.detail.owner).filter(Boolean) as string[])].sort();
@@ -571,6 +599,7 @@ export function RecommendationsQueue({
         title="Recommendations"
         tag={ledger ? `${visible.length} open` : undefined}
         size="wide"
+        band="tall"
         priority
         loading={loading}
         error={error}
@@ -580,12 +609,6 @@ export function RecommendationsQueue({
         ) : (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <Select
-                label="Store"
-                value={selectedStore}
-                onChange={onSelectStore}
-                options={[{ value: ALL_STORES, label: 'All' }, ...stores.map((s) => ({ value: s.slug, label: s.display_name }))]}
-              />
               <Select
                 label="Category"
                 value={category}
@@ -602,9 +625,9 @@ export function RecommendationsQueue({
             {visible.length === 0 ? (
               <Quiet>Nothing open for this filter.</Quiet>
             ) : (
-              // Its own scroll, so a long queue doesn't push the rest of the page away.
-              <div className="flex flex-col gap-2.5 max-h-[70vh] overflow-y-auto pr-1">
-                {visible.map((item) => (
+              // The panel's band scrolls; the list shows RECS_VISIBLE before "Show all".
+              <div className="flex flex-col gap-2.5">
+                {(all ? visible : visible.slice(0, RECS_VISIBLE)).map((item) => (
                   <RecommendationCard
                     key={item.id}
                     item={item}
@@ -616,6 +639,13 @@ export function RecommendationsQueue({
                     fix={fixRecs?.has(item.id) ?? false}
                   />
                 ))}
+                {visible.length > RECS_VISIBLE && (
+                  <div>
+                    <SmallButton onClick={() => setAll((a) => !a)} data-more>
+                      {all ? 'Show fewer' : `Show all ${visible.length}`}
+                    </SmallButton>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -626,7 +656,8 @@ export function RecommendationsQueue({
         icon={History}
         title="Decision ledger"
         tag={ledger ? `${split.needsYou.length} need you · ${split.inFlight.length} in flight` : 'Track record'}
-        size="tall"
+        size="third"
+        band="tall"
         loading={loading}
       >
         {!ledger ? (
@@ -634,7 +665,7 @@ export function RecommendationsQueue({
         ) : (
           <div className="flex flex-col gap-3">
             <LedgerStats ledger={ledger} />
-            <LedgerGroups items={recentVisible} storeNames={storeNames} onDecide={onDecide} links={{ onOpenFix, onOpenReport, onOpenCompliance }} />
+            <LedgerGroups items={recentVisible} storeNames={storeNames} onDecide={onDecide} links={{ onOpenFix, onOpenReport, onOpenCompliance }} historyMode="drawer" />
           </div>
         )}
       </DashboardPanel>

@@ -2,7 +2,7 @@ import { ShoppingBag } from 'lucide-react';
 import type { AdsHold, AdsHoldFlight, MerchantHoldItem, MerchantStatus, MerchantStore, StoreRef } from '../../lib/commerce-api';
 import type { Patch } from '../../lib/fixes-api';
 import { isCollectionPatch, needsOperator } from '../../lib/fixes-api';
-import { DashboardPanel } from '../Dashboard/DashboardPanel';
+import { DashboardPanel, type PanelBand, type PanelSize } from '../Dashboard/DashboardPanel';
 import { ALL_STORES, num, shortDateTime } from './format';
 import { Chip, Quiet, Tile } from '../shared/ui';
 import { SeverityChip } from './CompliancePanel';
@@ -203,7 +203,7 @@ function HoldItem({
   );
 }
 
-function HoldFlight({
+export function HoldFlight({
   id,
   flight,
   patches,
@@ -264,6 +264,10 @@ export interface MerchantPanelProps {
   /** catalog_fixes patches, for the disapproval → Fixes link. */
   patches?: Patch[];
   onOpenFix?: (id: string) => void;
+  /** The ads hold by flight; false on the Overview, where Ads & flights owns it. */
+  flights?: boolean;
+  size?: PanelSize;
+  band?: PanelBand;
   loading?: boolean;
   error?: string | null;
 }
@@ -275,6 +279,9 @@ export function MerchantPanel({
   adsHold,
   patches = [],
   onOpenFix,
+  flights: showFlights = true,
+  size = 'full',
+  band,
   loading,
   error,
 }: MerchantPanelProps) {
@@ -282,17 +289,17 @@ export function MerchantPanel({
   const names = Object.fromEntries(stores.map((s) => [s.slug, s.display_name]));
   const covered = new Set((merchant?.stores ?? []).map((r) => r.store));
   const missing = stores.filter((s) => !covered.has(s.slug) && (selectedStore === ALL_STORES || s.slug === selectedStore));
-  const flights = Object.entries(adsHold?.flights ?? {});
+  const flights = showFlights ? Object.entries(adsHold?.flights ?? {}) : [];
 
   return (
-    <DashboardPanel icon={ShoppingBag} title="Merchant Center" tag="read only" size="full" loading={loading && !merchant} error={error}>
+    <DashboardPanel icon={ShoppingBag} title="Merchant Center" tag="read only" size={size} band={band} loading={loading && !merchant} error={error}>
       <div className="flex flex-col gap-3">
         {!merchant ? (
           <Quiet>No Merchant Center read yet.</Quiet>
         ) : rows.length === 0 && missing.length === 0 ? (
           <Quiet>No Merchant Center read for this store.</Quiet>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className={`grid grid-cols-1 ${size === 'full' ? 'lg:grid-cols-2' : '3xl:grid-cols-2'} gap-3`}>
             {rows.map((r) => (
               <StoreCard key={r.store} row={r} name={r.display_name || names[r.store] || r.store} />
             ))}

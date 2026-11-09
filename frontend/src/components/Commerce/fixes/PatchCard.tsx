@@ -343,6 +343,8 @@ export function PatchCard({
   recTitles,
   onOpenRec,
   onOpenPatch,
+  onOpenFinding,
+  collapsible = false,
 }: {
   patch: Patch;
   storeName: string;
@@ -357,8 +359,14 @@ export function PatchCard({
   onOpenRec?: (id: string) => void;
   /** v1.30: open another patch by id; given only when `superseded_by` is in the feed. */
   onOpenPatch?: (id: string) => void;
+  /** Open a compliance finding on its tab (widescreen plan 4.3). */
+  onOpenFinding?: (id: string) => void;
+  /** The diffs fold to a strip until the card is focused or expanded (widescreen plan 4.3). */
+  collapsible?: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const diffOpen = !collapsible || expanded || focused;
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [focused]);
@@ -498,11 +506,27 @@ export function PatchCard({
             </Chip>
           </span>
         ))}
-        {patch.addresses.finding_ids.map((id) => (
-          <Chip key={id} tone="muted" title={`Compliance finding ${id} (OpenJarvis has no per-finding view yet)`}>
-            finding {id.slice(0, 8)}
-          </Chip>
-        ))}
+        {patch.addresses.finding_ids.map((id) =>
+          onOpenFinding ? (
+            <button
+              key={id}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFinding(id);
+              }}
+              data-open-finding={id}
+              className="cursor-pointer"
+              style={{ background: 'transparent', border: 'none', padding: 0 }}
+              title={`Open compliance finding ${id} on the Compliance tab`}
+            >
+              <Chip tone="muted">finding {id.slice(0, 8)}</Chip>
+            </button>
+          ) : (
+            <Chip key={id} tone="muted" title={`Compliance finding ${id}`}>
+              finding {id.slice(0, 8)}
+            </Chip>
+          ),
+        )}
         {patch.addresses.rec_ids.map((id) => (
           <button
             key={id}
@@ -580,13 +604,32 @@ export function PatchCard({
 
       <DropLines drops={drops} />
 
-      {alt && <AltImagesDiff images={alt} rationale={patch.changes[0]?.rationale} />}
-      {patch.changes.map((c) =>
-        alt ? null : isSeoField(c.field) ? (
-          <SeoFieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} ranged={seoProfile} />
-        ) : (
-          <FieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} drops={drops} />
-        ),
+      <div className={diffOpen ? undefined : 'relative max-h-24 overflow-hidden'} data-diff-fold={diffOpen ? 'open' : 'folded'}>
+        {alt && <AltImagesDiff images={alt} rationale={patch.changes[0]?.rationale} />}
+        {patch.changes.map((c) =>
+          alt ? null : isSeoField(c.field) ? (
+            <SeoFieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} ranged={seoProfile} />
+          ) : (
+            <FieldDiff key={c.field} field={c.field} before={c.before} after={c.after} rationale={c.rationale} drops={drops} />
+          ),
+        )}
+        {!diffOpen && (
+          <div
+            className="absolute inset-x-0 bottom-0 h-10"
+            style={{ background: 'linear-gradient(to bottom, transparent, var(--color-surface))' }}
+            aria-hidden="true"
+          />
+        )}
+      </div>
+      {collapsible && !focused && (
+        <div>
+          <SmallButton
+            onClick={() => setExpanded((e) => !e)}
+            title={expanded ? 'Fold the diff back to a strip' : 'Show the whole diff'}
+          >
+            {expanded ? 'Collapse diff' : 'Expand diff'}
+          </SmallButton>
+        </div>
       )}
 
       {seoVerify && (

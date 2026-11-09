@@ -133,6 +133,7 @@ function card(p: Patch, panel: CardPanel = null) {
 function tab(f: CatalogFixes | null, extra: Partial<FixesTabProps> = {}) {
   return renderToStaticMarkup(
     <FixesTab
+      classView="table"
       feed={f}
       pending={{}}
       cardNotes={{}}

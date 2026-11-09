@@ -286,6 +286,11 @@ export function linkFor(item: Pick<WaitingItem, 'link'>): string | null {
   if (!item.link?.page) return null;
   const [path, hash] = item.link.page.split('#');
   const focus = item.link.focus;
+  // Widescreen plan 5.1: a spark pick or a spend line lives on Commerce's Ads & flights
+  // tab now; the feed still names the page it used to (a contract note for later).
+  if (typeof focus === 'string' && (focus.startsWith('spark-') || focus.startsWith('spend-'))) {
+    return `/commerce?tab=ads&focus=${encodeURIComponent(focus)}`;
+  }
   const query = focus == null || focus === '' ? '' : `?focus=${encodeURIComponent(String(focus))}`;
   return `${path}${query}${hash ? `#${hash}` : ''}`;
 }

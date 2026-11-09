@@ -61,11 +61,16 @@ export function ContentPage() {
   };
   useEffect(() => {
     if (!focus) return undefined;
+    // A spark pick (v1.29) lives on Commerce's Ads & flights tab now (widescreen plan 5.1).
+    if (focus.startsWith('spark-')) {
+      navigate(`/commerce?tab=ads&focus=${encodeURIComponent(focus)}`, { replace: true });
+      return undefined;
+    }
     setProperty(ALL_PROPERTIES);
     if (isEpisodeId(focus)) openEpisode(focus);
     // v1.29: a spark row's focus is the block's own id (`spark-<flight>`).
     return scrollToWhenReady([`proposal-${focus}`, `prompt-${focus}`, `episode-${focus}`, focus]);
-  }, [focus, location.key, openEpisode]);
+  }, [focus, location.key, openEpisode, navigate]);
 
   return (
     <PageFrame>

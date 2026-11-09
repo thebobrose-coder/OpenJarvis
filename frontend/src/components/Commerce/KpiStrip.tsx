@@ -34,7 +34,8 @@ export function KpiStrip({
       icon={Gauge}
       title="Store KPIs"
       tag="Daily"
-      size="full"
+      size="wide"
+      band="short"
       loading={loading}
       error={error}
       actions={

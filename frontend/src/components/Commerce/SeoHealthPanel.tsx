@@ -161,7 +161,7 @@ export function SeoHealthPanel({
 }) {
   const stores = storesFor(seo?.stores, selectedStore);
   return (
-    <DashboardPanel icon={SearchCheck} title="SEO health" tag={seo ? `audit ${shortDateTime(seo.run_at)}` : 'Weekly'} size="half" loading={loading} error={error}>
+    <DashboardPanel icon={SearchCheck} title="SEO health" tag={seo ? `audit ${shortDateTime(seo.run_at)}` : 'Weekly'} size="half" band="short" loading={loading} error={error}>
       {!seo ? (
         <Quiet>No SEO audit yet -- Hermes runs it on Sundays.</Quiet>
       ) : (

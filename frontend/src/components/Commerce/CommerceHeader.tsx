@@ -1,7 +1,7 @@
 import { RefreshCw } from 'lucide-react';
 import type { FeedName, RefreshTarget, StoreRef } from '../../lib/commerce-api';
 import type { FeedStates, RefreshStatus } from '../../hooks/useCommerceData';
-import { FeedFreshness } from '../Dashboard/FeedFreshness';
+import { FeedFreshnessLine } from '../Dashboard/FeedFreshnessLine';
 import { ALL_STORES } from './format';
 import { Segmented, SmallButton } from '../shared/ui';
 
@@ -51,14 +51,14 @@ export function CommerceHeader({
   const notes = REFRESH_BUTTONS.filter((b) => (refreshStatus[b.target] ?? 'idle') !== 'idle');
 
   return (
-    <header className="flex flex-col gap-3 mb-6">
+    <header className="flex flex-col gap-3 mb-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
+          <h1 className="text-ui-20 font-semibold" style={{ color: 'var(--color-text)' }}>
             Commerce
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Store KPIs, Hermes’s recommendations, products, ads and SEO in one place.
+          <p className="text-ui-12-5 mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Store KPIs, Hermes’s recommendations and products; fixes, compliance and ads on their tabs.
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -91,20 +91,12 @@ export function CommerceHeader({
         />
       )}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        {FEED_LABELS.map(({ feed, label, staleAfter }) => {
-          const data = feeds[feed].data;
-          return data ? (
-            <FeedFreshness
-              key={feed}
-              label={label}
-              ageSeconds={data.age_seconds}
-              stale={data.stale}
-              staleAfterSeconds={staleAfter}
-            />
-          ) : null;
+      <FeedFreshnessLine
+        feeds={FEED_LABELS.flatMap(({ feed, label, staleAfter }) => {
+          const data = feeds[feed]?.data;
+          return data ? [{ label, ageSeconds: data.age_seconds, stale: data.stale, staleAfterSeconds: staleAfter }] : [];
         })}
-      </div>
+      />
 
       {notes.length > 0 && (
         <div className="flex flex-wrap gap-x-4 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>

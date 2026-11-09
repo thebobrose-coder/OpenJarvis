@@ -1,25 +1,42 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import type { AdsHold, ComplianceFinding, DailyStore, Decision, LedgerItem, RefreshTarget } from '../../lib/commerce-api';
-import type { PrecheckProps } from './PrecheckWidget';
+import type {
+  AdsHold,
+  ComplianceFinding,
+  DailyStore,
+  Decision,
+  LedgerItem,
+  RefreshTarget,
+} from '../../lib/commerce-api';
+import type { Spark } from '../../lib/content-api';
+import type { CatalogFixesState } from '../../hooks/useCatalogFixes';
 import type { FeedStates, PendingDecision, RefreshStatus } from '../../hooks/useCommerceData';
-import { AdsPanel } from './AdsPanel';
+import { scrollToWhenReady } from '../../lib/waiting-api';
+import { Segmented } from '../shared/ui';
+import { AdsFlightsTab } from './AdsFlightsTab';
 import { BriefingPanel } from './BriefingPanel';
 import { CommerceHeader } from './CommerceHeader';
-import { CompliancePanel } from './CompliancePanel';
-import { storesFor } from './format';
+import { ComplianceTab } from './ComplianceTab';
 import { KpiStrip } from './KpiStrip';
 import { MerchantPanel } from './MerchantPanel';
 import { ProductsTable } from './ProductsTable';
 import { RecommendationsQueue } from './RecommendationsQueue';
 import { SeoHealthPanel } from './SeoHealthPanel';
-import { SpendLedgerPanel } from './SpendLedgerPanel';
-import { Segmented } from '../shared/ui';
-import type { CatalogFixesState } from '../../hooks/useCatalogFixes';
 import { FixesTab, waitingCount } from './fixes/FixesTab';
-import { scrollToWhenReady } from '../../lib/waiting-api';
+import type { PrecheckProps } from './PrecheckWidget';
+import { storesFor } from './format';
 
-export type CommerceTab = 'overview' | 'fixes';
+export type CommerceTab = 'overview' | 'fixes' | 'compliance' | 'ads';
+
+/** `?tab=` and the older `#fixes` / `#commerce-compliance` links, as a tab. */
+export function tabFromLocation(tab: string | null, hash: string): CommerceTab {
+  if (hash === '#fixes') return 'fixes';
+  if (hash === '#commerce-compliance') return 'compliance';
+  return tab === 'fixes' || tab === 'compliance' || tab === 'ads' ? tab : 'overview';
+}
+
+/** A focus id that lives on the Ads & flights tab: a spark pick or a spend line. */
+export const isAdsFocus = (id: string | null | undefined) => !!id && (id.startsWith('spark-') || id.startsWith('spend-'));
 
 /** What the Fixes tab needs from useCatalogFixes. */
 export type FixesProps = Pick<
@@ -52,8 +69,11 @@ export interface CommerceViewProps {
   /** Catalog fixes (contract v1.3); without it the page has no Fixes tab. */
   fixes?: FixesProps;
   initialTab?: CommerceTab;
+  /** The page keeps `?tab=` in the URL. */
+  onTab?: (tab: CommerceTab) => void;
   /** A deep link from "Waiting on you": a patch opens on the Fixes tab, a
-   * rec scrolls into view on the Overview. `key` re-runs it per navigation. */
+   * rec scrolls into view on the Overview, a spark or spend line on Ads & flights.
+   * `key` re-runs it per navigation. */
   focus?: { fix?: string | null; rec?: string | null; key?: string } | null;
   /** Desks (hq 0020 P3): "Ask the desk" on a recommendation and the KPIs
    * (Commerce desk) and on a compliance finding (Compliance desk). */
@@ -62,20 +82,23 @@ export interface CommerceViewProps {
     kpis: (stores: DailyStore[]) => void;
     finding: (f?: ComplianceFinding) => void;
   };
-  /** The paste-and-check widget in the compliance panel. */
+  /** The paste-and-check widget on the Compliance tab. */
   precheck?: PrecheckProps;
   /** Rec ids that get Fix it, from the waiting feed (0024 J1). */
   fixRecs?: ReadonlySet<string>;
   /** content_health.ads_hold (v1.21; its Merchant part v1.26), read only. */
   adsHold?: AdsHold | null;
+  /** youtube_performance.spark (v1.29), read only: the Ads & flights tab. */
+  sparks?: Spark[] | null;
   /** Open a work-order report by id: a ledger row's plan or order (v1.28). */
   onOpenReport?: (orderId: string) => void;
 }
 
 /**
- * The Commerce page. Overview, top to bottom: header, KPIs, today's
- * briefing, the recommendations queue with its ledger, products, ads, SEO
- * health and compliance. Fixes: Hermes's catalog fixes to review. Pure:
+ * The Commerce page (widescreen plan 4.2). Four tabs: Overview (KPIs and the briefing,
+ * the recommendations with their ledger, products, then SEO and Merchant status),
+ * Fixes (Hermes's catalog fixes to review), Compliance (property-wide, with the
+ * pre-check first) and Ads & flights (ads hold, GA4, spark picks, spend). Pure:
  * everything comes in through props (see CommercePage).
  */
 export function CommerceView({
@@ -90,16 +113,27 @@ export function CommerceView({
   onClearNotice,
   fixes,
   initialTab = 'overview',
+  onTab,
   focus = null,
   onAskDesk,
   precheck,
   fixRecs,
   adsHold = null,
+  sparks = null,
   onOpenReport,
 }: CommerceViewProps) {
-  const [tab, setTab] = useState<CommerceTab>(fixes ? initialTab : 'overview');
+  const [tab, setTabState] = useState<CommerceTab>(fixes || initialTab !== 'fixes' ? initialTab : 'overview');
+  const setTab = (t: CommerceTab) => {
+    setTabState(t);
+    onTab?.(t);
+  };
+  useEffect(() => {
+    setTabState(fixes || initialTab !== 'fixes' ? initialTab : 'overview');
+  }, [initialTab, fixes]);
   // A fix another panel linked to: the Fixes tab opens on its view.
   const [fixTarget, setFixTarget] = useState<string | null>(null);
+  // A finding a patch card linked to: its rule group opens on the Compliance tab.
+  const [findingTarget, setFindingTarget] = useState<string | null>(null);
   const daily = feeds.ecom_daily.data;
   // Stores and their names come from ecom_daily; other feeds fall back to
   // their own lists if it hasn't run.
@@ -124,27 +158,37 @@ export function CommerceView({
   useEffect(() => {
     if (focus?.fix && fixes) {
       setFixTarget(focus.fix);
-      setTab('fixes');
+      setTabState('fixes');
       return scrollToWhenReady([`fix-${focus.fix}`]);
     }
     if (focus?.rec) {
-      setTab('overview');
-      // A rec, or a block by its own id (a v1.29 spend_cap row: `spend-<line>`).
+      // A rec on the Overview; a spark or spend line (v1.29) on Ads & flights.
+      setTabState(isAdsFocus(focus.rec) ? 'ads' : 'overview');
       return scrollToWhenReady([`rec-${focus.rec}`, focus.rec]);
     }
     return undefined;
     // Once per navigation: not on every fixes poll.
   }, [focus?.key, focus?.fix, focus?.rec]);
   const waiting = waitingCount(fixes?.data ?? null);
-  // A ledger findings row (v1.28): the panel shows every property.
-  const openCompliance = () =>
-    window.setTimeout(() => document.getElementById('commerce-compliance')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
+  const openFindings = feeds.compliance_findings.data?.counts.open ?? 0;
+  // A ledger findings row (v1.28) or a patch card's finding chip: the Compliance tab.
+  const openCompliance = (findingId?: string) => {
+    setFindingTarget(findingId ?? null);
+    setTab('compliance');
+    const ids = findingId ? [`finding-${findingId}`, 'commerce-compliance'] : ['commerce-compliance'];
+    scrollToWhenReady(ids);
+  };
   const openFix = (id: string) => {
     setFixTarget(id);
     setTab('fixes');
     window.setTimeout(() => document.getElementById(`fix-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
   };
-
+  const tabs: { value: CommerceTab; label: string }[] = [
+    { value: 'overview', label: ledger ? `Overview (${(ledger.open ?? []).length})` : 'Overview' },
+    ...(fixes ? [{ value: 'fixes' as const, label: waiting ? `Fixes (${waiting})` : 'Fixes' }] : []),
+    { value: 'compliance', label: openFindings ? `Compliance (${openFindings})` : 'Compliance' },
+    { value: 'ads', label: 'Ads & flights' },
+  ];
   return (
     <div>
       <CommerceHeader
@@ -155,7 +199,6 @@ export function CommerceView({
         refreshStatus={refreshStatus}
         onRefresh={onRefresh}
       />
-
       {notice && (
         <div
           className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 mb-4 text-ui-12"
@@ -170,24 +213,17 @@ export function CommerceView({
           )}
         </div>
       )}
-
-      {fixes && (
-        <div className="mb-4">
-          <Segmented
-            ariaLabel="Commerce view"
-            value={tab}
-            onChange={(t) => {
-              setFixTarget(null);
-              setTab(t);
-            }}
-            options={[
-              { value: 'overview', label: 'Overview' },
-              { value: 'fixes', label: waiting ? `Fixes (${waiting})` : 'Fixes' },
-            ]}
-          />
-        </div>
-      )}
-
+      <div className="mb-4">
+        <Segmented
+          ariaLabel="Commerce view"
+          value={tab}
+          onChange={(t) => {
+            setFixTarget(null);
+            setTab(t);
+          }}
+          options={tabs}
+        />
+      </div>
       {tab === 'fixes' && fixes ? (
         <FixesTab
           feed={fixes.data}
@@ -204,12 +240,34 @@ export function CommerceView({
           onDecideClass={fixes.decideClass}
           onPause={(p) => void fixes.setPaused(p)}
           onOpenRec={openRec}
+          onOpenFinding={(id) => openCompliance(id)}
           notice={fixes.notice}
           onClearNotice={fixes.clearNotice}
           policy={fixes.policy}
           tierPending={fixes.tierPending}
           onSetTier={fixes.setTier}
           initialFocus={fixTarget}
+        />
+      ) : tab === 'compliance' ? (
+        <ComplianceTab
+          findings={feeds.compliance_findings.data}
+          loading={feeds.compliance_findings.loading}
+          error={feeds.compliance_findings.error}
+          onOpenFix={fixes ? openFix : undefined}
+          onAskDesk={onAskDesk?.finding}
+          precheck={precheck}
+          focusFinding={findingTarget}
+        />
+      ) : tab === 'ads' ? (
+        <AdsFlightsTab
+          stores={selectedDaily}
+          adsHold={adsHold}
+          sparks={sparks}
+          spend={feeds.spend_ledger?.data ?? null}
+          patches={fixes?.data?.patches ?? []}
+          onOpenFix={fixes ? openFix : undefined}
+          loading={{ daily: dailyState.loading, spend: feeds.spend_ledger?.loading }}
+          error={{ daily: dailyState.error, spend: feeds.spend_ledger?.error }}
         />
       ) : (
         <>
@@ -220,9 +278,6 @@ export function CommerceView({
               error={dailyState.error}
               onAskDesk={onAskDesk ? () => onAskDesk.kpis(selectedDaily) : undefined}
             />
-          </div>
-
-          <div className="grid grid-cols-12 gap-4 mb-4">
             <BriefingPanel
               briefing={feeds.ecom_briefing.data}
               selectedStore={selectedStore}
@@ -233,27 +288,23 @@ export function CommerceView({
               error={feeds.ecom_briefing.error}
             />
           </div>
-
           <div className="grid grid-cols-12 gap-4 mb-4">
             <RecommendationsQueue
               ledger={feeds.ecom_recommendations.data}
               pending={pending}
               selectedStore={selectedStore}
-              onSelectStore={onSelectStore}
-              stores={storeRefs}
               storeNames={storeNames}
               productTitles={productTitles}
               onDecide={onDecide}
               onAskDesk={onAskDesk?.rec}
               onOpenFix={fixes ? openFix : undefined}
               onOpenReport={onOpenReport}
-              onOpenCompliance={openCompliance}
+              onOpenCompliance={() => openCompliance()}
               fixRecs={fixRecs}
               loading={feeds.ecom_recommendations.loading}
               error={feeds.ecom_recommendations.error}
             />
           </div>
-
           <div className="grid grid-cols-12 gap-4 mb-4">
             <ProductsTable
               products={feeds.ecom_products.data}
@@ -263,42 +314,22 @@ export function CommerceView({
               error={feeds.ecom_products.error}
             />
           </div>
-
-          <div className="grid grid-cols-12 gap-4 mb-4">
-            <AdsPanel stores={selectedDaily} loading={dailyState.loading} error={dailyState.error} />
+          <div className="grid grid-cols-12 gap-4 mb-10">
             <SeoHealthPanel
               seo={feeds.ecom_seo_health.data}
               selectedStore={selectedStore}
               loading={feeds.ecom_seo_health.loading}
               error={feeds.ecom_seo_health.error}
             />
-          </div>
-
-          <div className="grid grid-cols-12 gap-4 mb-4">
             <MerchantPanel
               merchant={feeds.merchant_status.data}
               selectedStore={selectedStore}
               stores={storeRefs}
-              adsHold={adsHold}
-              patches={fixes?.data?.patches ?? []}
-              onOpenFix={fixes ? openFix : undefined}
+              flights={false}
+              size="half"
+              band="short"
               loading={feeds.merchant_status.loading}
               error={feeds.merchant_status.error}
-            />
-          </div>
-
-          <div className="grid grid-cols-12 gap-4 mb-4">
-            <SpendLedgerPanel ledger={feeds.spend_ledger?.data ?? null} loading={feeds.spend_ledger?.loading} error={feeds.spend_ledger?.error} />
-          </div>
-
-          <div id="commerce-compliance" className="grid grid-cols-12 gap-4 mb-10">
-            <CompliancePanel
-              findings={feeds.compliance_findings.data}
-              loading={feeds.compliance_findings.loading}
-              error={feeds.compliance_findings.error}
-              onOpenFix={fixes ? openFix : undefined}
-              onAskDesk={onAskDesk?.finding}
-              precheck={precheck}
             />
           </div>
         </>

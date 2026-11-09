@@ -323,6 +323,9 @@ export type SourceFilter = 'all' | FixSource;
  * possible). */
 export type FixView = 'needs' | 'progress' | 'archive';
 
+/** The Fix classes panel: cards for the tier work, the table for the full record. */
+export type ClassView = 'cards' | 'table';
+
 const IN_PROGRESS = new Set<FixStatus>(['approved', 'applied', 'failed-verify']);
 
 export function fixView(status: FixStatus): FixView {
@@ -340,6 +343,9 @@ const VIEW_EMPTY: Record<FixView, string> = {
 
 /** The archive renders this many cards at a time. */
 export const ARCHIVE_PAGE = 50;
+/** Needs you and In progress show this many before "Show all" (widescreen plan). */
+export const VIEW_PAGE = 15;
+export const pageFor = (v: FixView) => (v === 'archive' ? ARCHIVE_PAGE : VIEW_PAGE);
 
 /** How many fixes each view holds, for the switcher's labels. */
 export function viewCounts(patches: Patch[]): Record<FixView, number> {
@@ -493,17 +499,80 @@ function ClassPanel({
   policy,
   tierPending,
   onSetTier,
+  initialView = 'cards',
 }: {
   classes: ClassStats[];
   storeNames: Record<string, string>;
   policy?: AutofixPolicy | null;
   tierPending?: string | null;
   onSetTier?: (c: ClassStats, tier: 0 | 1) => Promise<boolean>;
+  initialView?: ClassView;
 }) {
+  const [view, setView] = useState<ClassView>(initialView);
   return (
-    <DashboardPanel icon={CheckCheck} title="Fix classes" tag="Tier control" size="full">
+    <DashboardPanel
+      icon={CheckCheck}
+      title="Fix classes"
+      tag="Tier control"
+      size="third"
+      band="tall"
+      headerExtra={
+        classes.length > 0 ? (
+          <Segmented<ClassView>
+            ariaLabel="Fix classes view"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'cards', label: 'Cards' },
+              { value: 'table', label: 'Table' },
+            ]}
+          />
+        ) : undefined
+      }
+    >
       {classes.length === 0 ? (
         <Quiet>No fix classes yet.</Quiet>
+      ) : view === 'cards' ? (
+        <div className="flex flex-col gap-2" data-class-cards>
+          <p className="text-ui-11" data-policy-line style={{ color: 'var(--color-text-secondary)' }}>
+            {policyLine(policy)}
+          </p>
+          {classes.map((c) => {
+            const label = `${storeNames[c.store] ?? c.store} · ${ruleLabel(c.rule)} · ${c.field}`;
+            const listed = inPolicy(c, policy);
+            return (
+              <div key={classKey(c)} data-class={classKey(c)} className="flex flex-col gap-1.5 rounded-lg p-2.5" style={{ background: 'var(--color-bg-secondary)' }}>
+                <span className="text-ui-12-5 font-medium" style={{ color: 'var(--color-text)' }}>
+                  {label}
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Chip tone={listed ? 'accent' : 'muted'} title="Tier: 1 applies without asking">tier {c.tier} · policy {listed ? 1 : 0}</Chip>
+                  <Chip tone="neutral" title={STREAK_EXPLAINED}>streak {num(c.streak)}</Chip>
+                  <Chip tone="neutral" title="Approvals · edits · rejects · reverts">
+                    {num(c.approvals)} · {num(c.edits)} · {num(c.rejects)} · {num(c.reverts)}
+                  </Chip>
+                  {c.spot_check && (
+                    <Chip tone={c.spot_check.passed ? 'success' : 'warning'} title="Spot-check: P1 approvals confirmed of required">
+                      spot {c.spot_check.confirmed}/{c.spot_check.required}
+                    </Chip>
+                  )}
+                  {(c.auto_applied ?? 0) > 0 && <Chip tone="muted">{num(c.auto_applied ?? 0)} auto applied</Chip>}
+                </div>
+                <span className="text-ui-11" data-progress={suggestAt(c)} style={{ color: c.eligible ? 'var(--color-success)' : 'var(--color-text-tertiary)' }}>
+                  {c.eligible ? 'Eligible for auto-apply' : progressText(c)}
+                </span>
+                {c.demoted && (
+                  <span className="text-ui-11" data-demoted style={{ color: 'var(--color-warning)' }}>
+                    {demotedNote(c.demoted)}
+                  </span>
+                )}
+                {onSetTier && (
+                  <TierControl c={c} label={label} listed={listed} busy={tierPending === classKey(c)} onSetTier={onSetTier} />
+                )}
+              </div>
+            );
+          })}
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <p className="text-ui-11 mb-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -636,6 +705,10 @@ export interface FixesTabProps {
   initialView?: FixView;
   /** A fix to open on (a link from another panel): its view opens, and the archive pages far enough to show it. */
   initialFocus?: string | null;
+  /** Open a compliance finding (a card's chip) on the Compliance tab. */
+  onOpenFinding?: (id: string) => void;
+  /** The Fix classes panel: cards (default) or the full table. */
+  classView?: ClassView;
 }
 
 /** The Fixes tab (hq 0011 §7): review Hermes's catalog fixes quickly.
@@ -662,12 +735,14 @@ export function FixesTab({
   onSetTier,
   initialView = 'needs',
   initialFocus = null,
+  onOpenFinding,
+  classView = 'cards',
 }: FixesTabProps) {
   const [view, setViewState] = useState<FixView>(() => {
     const target = initialFocus ? feed?.patches?.find((p) => p.id === initialFocus) : null;
     return target ? fixView(target.status) : initialView;
   });
-  const [shown, setShown] = useState(ARCHIVE_PAGE);
+  const [shown, setShown] = useState(() => pageFor(initialView));
   const [status, setStatus] = useState<StatusFilter>('all');
   const [cls, setCls] = useState('all');
   const [source, setSource] = useState<SourceFilter>('all');
@@ -705,14 +780,14 @@ export function FixesTab({
     const visible = visiblePatches(patches ?? [], { store: selectedStore, cls, status, source, view });
     const sorted = sortPatches(visible, spotBlockers(classes, patches));
     const at = focusId ? sorted.findIndex((p) => p.id === focusId) : -1;
-    const page = view === 'archive' ? sorted.slice(0, Math.max(shown, at + 1)) : sorted;
+    const page = sorted.slice(0, Math.max(shown, at + 1));
     return { groups: groupPatches(page), hidden: sorted.length - page.length };
   }, [patches, classes, selectedStore, cls, status, source, view, shown, focusId]);
 
   const setView = (v: FixView) => {
     setViewState(v);
     setStatus('all');
-    setShown(ARCHIVE_PAGE);
+    setShown(pageFor(v));
     setPanel(null);
   };
   const titles = useMemo(() => new Map((patches ?? []).map((p) => [p.id, p.product_title])), [patches]);
@@ -790,7 +865,20 @@ export function FixesTab({
 
   return (
     <div className="grid grid-cols-12 gap-4 mb-10">
-      <DashboardPanel icon={Wrench} title="Catalog fixes" tag="Hermes · catalog-fixer" size="full" loading={loading} error={error}>
+      <DashboardPanel
+        icon={Wrench}
+        title="Catalog fixes"
+        tag="Hermes · catalog-fixer"
+        size="wide"
+        band="tall"
+        loading={loading}
+        error={error}
+        actions={
+          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }} title="Keyboard: on the focused card">
+            j / k move · a approve · e edit · r reject or withdraw · c confirm
+          </span>
+        }
+      >
         {!feed ? (
           <Quiet>No fixer run yet.</Quiet>
         ) : (
@@ -829,9 +917,6 @@ export function FixesTab({
               <Select label="Status" value={status} options={statusOptions} onChange={setStatus} />
               <Select label="Class" value={cls} options={[{ value: 'all', label: 'All' }, ...classOptions]} onChange={setCls} />
               <Select label="Source" value={source} options={sourceOptions} onChange={setSource} />
-              <span className="text-ui-11 ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
-                j / k move · a approve · e edit · r reject or withdraw · c confirm
-              </span>
             </div>
 
             {flat.length === 0 ? (
@@ -942,18 +1027,27 @@ export function FixesTab({
                         recTitles={recTitles}
                         onOpenRec={onOpenRec}
                         onOpenPatch={p.superseded_by && titles.has(p.superseded_by) ? openCard : undefined}
+                        onOpenFinding={onOpenFinding}
+                        collapsible
                       />
                     ))}
                   </section>
                 );
               })
             )}
-            {hidden > 0 && (
-              <div className="flex items-center gap-2 text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
-                <SmallButton onClick={() => setShown((n) => n + ARCHIVE_PAGE)}>Show {Math.min(ARCHIVE_PAGE, hidden)} more</SmallButton>
-                <span>{hidden} older not shown</span>
-              </div>
-            )}
+            {hidden > 0 &&
+              (view === 'archive' ? (
+                <div className="flex items-center gap-2 text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <SmallButton onClick={() => setShown((n) => n + ARCHIVE_PAGE)}>Show {Math.min(ARCHIVE_PAGE, hidden)} more</SmallButton>
+                  <span>{hidden} older not shown</span>
+                </div>
+              ) : (
+                <div>
+                  <SmallButton onClick={() => setShown(Number.MAX_SAFE_INTEGER)} data-more>
+                    Show all {flat.length + hidden}
+                  </SmallButton>
+                </div>
+              ))}
           </div>
         )}
       </DashboardPanel>
@@ -965,6 +1059,7 @@ export function FixesTab({
           policy={policy}
           tierPending={tierPending}
           onSetTier={onSetTier}
+          initialView={classView}
         />
       )}
     </div>

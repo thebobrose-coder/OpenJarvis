@@ -1,6 +1,6 @@
 import { Megaphone } from 'lucide-react';
 import type { DailyStore } from '../../lib/commerce-api';
-import { DashboardPanel } from '../Dashboard/DashboardPanel';
+import { DashboardPanel, type PanelBand, type PanelSize } from '../Dashboard/DashboardPanel';
 import { money, num, ratio } from './format';
 import { Quiet } from '../shared/ui';
 
@@ -8,7 +8,19 @@ import { Quiet } from '../shared/ui';
  * Google Ads, as GA4 reports it (ecom_daily.ga4.ads). Per-day history isn't
  * in the feed yet; a trend chart joins here once it is.
  */
-export function AdsPanel({ stores, loading, error }: { stores: DailyStore[]; loading?: boolean; error?: string | null }) {
+export function AdsPanel({
+  stores,
+  loading,
+  error,
+  size = 'half',
+  band,
+}: {
+  stores: DailyStore[];
+  loading?: boolean;
+  error?: string | null;
+  size?: PanelSize;
+  band?: PanelBand;
+}) {
   const connected = stores.filter((s) => s.ga4?.connected);
   const multi = stores.length > 1;
   const campaigns = connected.flatMap((s) =>
@@ -20,7 +32,7 @@ export function AdsPanel({ stores, loading, error }: { stores: DailyStore[]; loa
   const queryColumns = [...new Set(queries.flatMap((q) => Object.keys(q.row)))];
 
   return (
-    <DashboardPanel icon={Megaphone} title="Ads" tag="GA4 · 28 d" size="half" loading={loading} error={error}>
+    <DashboardPanel icon={Megaphone} title="Ads" tag="GA4 · 28 d" size={size} band={band} loading={loading} error={error}>
       {connected.length === 0 ? (
         <Quiet>
           {stores.length === 0 ? 'No store data yet.' : 'GA4 isn’t connected, so there’s no ads data to show.'}

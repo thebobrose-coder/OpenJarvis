@@ -84,7 +84,15 @@ export function groupFindings(g: RuleGroup, f: ComplianceFindings): ComplianceFi
 }
 
 /** v1.22 roll-up: one collapsed line per (store, rule), as served (no merging). */
-function RuleGroups({ findings, onAskDesk }: { findings: ComplianceFindings; onAskDesk?: (f: ComplianceFinding) => void }) {
+function RuleGroups({
+  findings,
+  onAskDesk,
+  focusFinding,
+}: {
+  findings: ComplianceFindings;
+  onAskDesk?: (f: ComplianceFinding) => void;
+  focusFinding?: string | null;
+}) {
   const groups = orderGroups(findings.by_rule ?? []);
   if (groups.length === 0) return null;
   const now = Date.now();
@@ -96,7 +104,7 @@ function RuleGroups({ findings, onAskDesk }: { findings: ComplianceFindings; onA
       {groups.map((g) => {
         const rows = groupFindings(g, findings);
         return (
-          <details key={`${g.store}|${g.rule_no ?? g.rule}`} data-rule-group={g.store}>
+          <details key={`${g.store}|${g.rule_no ?? g.rule}`} data-rule-group={g.store} open={focusFinding != null && rows.some((f) => f.id === focusFinding) ? true : undefined}>
             <summary className="cursor-pointer flex-wrap gap-1.5" style={{ color: 'var(--color-text)' }}>
               <span className="inline-flex flex-wrap items-center gap-1.5">
                 <SeverityChip severity={g.severity} />
@@ -111,7 +119,7 @@ function RuleGroups({ findings, onAskDesk }: { findings: ComplianceFindings; onA
                 <li style={{ color: 'var(--color-text-tertiary)' }}>The findings aren't in this copy of the feed.</li>
               ) : (
                 rows.map((f) => (
-                  <li key={f.id} className="flex flex-wrap items-center gap-1.5">
+                  <li key={f.id} id={`finding-${f.id}`} className="flex flex-wrap items-center gap-1.5" data-finding={f.id}>
                     <FindingLine f={f} onAskDesk={onAskDesk} />
                   </li>
                 ))
@@ -137,6 +145,7 @@ export function CompliancePanel({
   onOpenFix,
   onAskDesk,
   precheck,
+  focusFinding,
 }: {
   findings: ComplianceFindings | null;
   loading?: boolean;
@@ -147,6 +156,8 @@ export function CompliancePanel({
   onAskDesk?: (f?: ComplianceFinding) => void;
   /** The paste-and-check widget (0020 P3); absent, the panel is as before. */
   precheck?: PrecheckProps;
+  /** A finding to show open: its rule group expands (a patch card's chip). */
+  focusFinding?: string | null;
 }) {
   const byProperty = Object.entries(findings?.counts.open_by_property ?? {}).sort((a, b) => b[1] - a[1]);
   const advisory = findings?.advisory_findings ?? [];
@@ -193,7 +204,7 @@ export function CompliancePanel({
               </Chip>
             ))}
           </div>
-          <RuleGroups findings={findings} onAskDesk={onAskDesk} />
+          <RuleGroups findings={findings} onAskDesk={onAskDesk} focusFinding={focusFinding} />
           {majority.length > 0 && (
             <details className="text-ui-11-5" data-majority style={{ color: 'var(--color-text-secondary)' }}>
               <summary className="cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}>
