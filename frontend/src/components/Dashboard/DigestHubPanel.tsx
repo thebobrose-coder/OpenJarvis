@@ -30,7 +30,7 @@ export function DigestHubPanel() {
       title="Briefings"
       tag={tab === 'brief' ? 'Flagship' : tab === 'culture' ? 'Daily' : listen.queue?.voice_name}
       size="half"
-      band="tall"
+      band="short"
       priority
       loading={digest ? digest.loading : listen.loading}
       error={digest ? digest.error : listen.error}

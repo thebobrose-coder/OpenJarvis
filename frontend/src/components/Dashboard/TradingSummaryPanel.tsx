@@ -149,7 +149,7 @@ export function TradingSummaryPanel() {
       title="Trading Summary"
       tag="Paper · 5 min"
       size="quarter"
-      band="tall"
+      band="short"
       priority
       loading={loading}
       error={error}

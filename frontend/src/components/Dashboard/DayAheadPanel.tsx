@@ -111,7 +111,7 @@ export function DayAheadPanel() {
   }, [load]);
 
   return (
-    <DashboardPanel icon={CalendarClock} title="Day Ahead" tag="5 min" size="quarter" band="tall" priority loading={loading} error={error}>
+    <DashboardPanel icon={CalendarClock} title="Day Ahead" tag="5 min" size="quarter" band="short" priority loading={loading} error={error}>
       {data && <DayAheadView data={data} onConnect={() => navigate('/data-sources')} />}
     </DashboardPanel>
   );

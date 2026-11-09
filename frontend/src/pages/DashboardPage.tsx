@@ -18,7 +18,8 @@ function DashboardFreshness() {
 
 /**
  * The hub (widescreen plan, Phase 1). Row 1 is the act band: the For you lane with its
- * controls. Row 2 is the work row: the digests, the day ahead and the trader. Row 3 is
+ * controls. Row 2 is the work row: the digests, the day ahead and the trader (short band too:
+ * the operator wants all three rows above the fold). Row 3 is
  * reference: weather, the stores and the stack. The local-LLM telemetry stays below,
  * dimmed, until the Ops page takes it (Phase 5).
  */
