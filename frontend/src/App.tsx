@@ -26,6 +26,7 @@ import { fetchModels, fetchServerInfo, fetchSavings, submitSavings, isTauri } fr
 import { OptInModal } from './components/OptInModal';
 import { UpdateChecker } from './components/Desktop/UpdateChecker';
 import { track, hashId } from './lib/analytics';
+import { isModLetter } from './lib/shortcuts';
 
 export default function App() {
   const [setupDone, setSetupDone] = useState(!isTauri());
@@ -170,18 +171,20 @@ export default function App() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if (e.repeat) return;
+      if (isModLetter(e, 'k')) {
         e.preventDefault();
         setCommandPaletteOpen(!commandPaletteOpen);
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
+      if (isModLetter(e, 'i')) {
         e.preventDefault();
         // On Chat: the context rail (widescreen plan 4.8; the System panel moved to /ops).
         toggleSystemPanel();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    // Capture phase: the shortcut fires before any field or panel handler sees the key.
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [commandPaletteOpen, setCommandPaletteOpen, toggleSystemPanel]);
 
 
