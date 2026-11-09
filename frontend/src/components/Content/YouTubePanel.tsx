@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { MonitorPlay } from 'lucide-react';
 import type { Spark, YouTubeChannel, YouTubePerformance, YouTubeVideo } from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
-import { Chip, ExtLink, Quiet } from '../shared/ui';
+import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
 import { ALL_PROPERTIES } from './format';
 
 /**
@@ -51,7 +52,9 @@ function goTo(id: string) {
   el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 
-function VideoRows({ property, videos, label }: { property: string; videos: YouTubeVideo[]; label: string }) {
+function VideoRows({ property, videos, label, limit }: { property: string; videos: YouTubeVideo[]; label: string; limit?: number }) {
+  const [all, setAll] = useState(false);
+  const shown = limit != null && !all ? videos.slice(0, limit) : videos;
   return (
     <div className="flex flex-col gap-1" data-kind-group={label}>
       <span className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -70,7 +73,7 @@ function VideoRows({ property, videos, label }: { property: string; videos: YouT
             </tr>
           </thead>
           <tbody>
-            {videos.map((v, i) => {
+            {shown.map((v, i) => {
               const f = figures(v);
               return (
                 <tr key={v.video_id} id={rowId(property, v.video_id)} style={{ borderTop: i ? '1px solid var(--color-border)' : undefined }} data-video={v.video_id}>
@@ -109,11 +112,18 @@ function VideoRows({ property, videos, label }: { property: string; videos: YouT
           </tbody>
         </table>
       )}
+      {limit != null && videos.length > limit && (
+        <div>
+          <SmallButton onClick={() => setAll((a) => !a)} data-more>
+            {all ? 'Show fewer' : `Show all ${videos.length}`}
+          </SmallButton>
+        </div>
+      )}
     </div>
   );
 }
 
-function ChannelCard({ ch, now }: { ch: YouTubeChannel; now: number }) {
+export function ChannelCard({ ch, now, limit }: { ch: YouTubeChannel; now: number; limit?: number }) {
   const { shorts, long } = recentVideos(ch, now);
   return (
     <div className="flex flex-col gap-2 rounded-lg p-3 min-w-0" style={{ background: 'var(--color-bg-secondary)' }} data-channel={ch.property}>
@@ -134,8 +144,8 @@ function ChannelCard({ ch, now }: { ch: YouTubeChannel; now: number }) {
           )}
         </p>
       )}
-      <VideoRows property={ch.property} videos={long} label="Long-form" />
-      <VideoRows property={ch.property} videos={shorts} label="Shorts" />
+      <VideoRows property={ch.property} videos={long} label="Long-form" limit={limit} />
+      <VideoRows property={ch.property} videos={shorts} label="Shorts" limit={limit} />
       {ch.kind_rule && (
         <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }} data-kind-rule>
           Short or long by: {ch.kind_rule}

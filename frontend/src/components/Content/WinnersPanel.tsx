@@ -191,6 +191,8 @@ export function WinnersPanel({
       title="Winners / laggards"
       tag={winners ? `Weekly · ${num(winners.window_days ?? 28)} days` : 'Weekly'}
       size="full"
+      band="short"
+      dim
       loading={loading}
       error={error}
     >

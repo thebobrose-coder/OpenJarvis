@@ -75,7 +75,7 @@ function RecentPosts({ posts, showProperty }: { posts: (Post & { property: strin
   return (
     <div className="flex flex-col gap-1 min-w-0">
       <SectionLabel>Recent posts{posts.length > RECENT_MAX ? ` (latest ${RECENT_MAX} of ${posts.length})` : ''}</SectionLabel>
-      <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+      <div className="overflow-x-auto">
         <table className="w-full text-ui-12 tabular-nums">
           <thead>
             <tr style={{ color: 'var(--color-text-tertiary)' }}>
@@ -165,7 +165,7 @@ export function PerformancePanel({
   const lanePages = properties.flatMap((p) => (p.lane_pages ?? []).map((page) => ({ ...page, property: p.id })));
 
   return (
-    <DashboardPanel icon={Activity} title="Performance" tag="Daily · 30 days" size="full" loading={loading} error={error}>
+    <DashboardPanel icon={Activity} title="Performance" tag="Daily · 30 days" size="half" band="tall" loading={loading} error={error}>
       {posts.length === 0 ? (
         <Quiet>Measurement starts when Foundry’s daily snapshot arrives.</Quiet>
       ) : (
@@ -191,7 +191,7 @@ export function PerformancePanel({
               <NotJoinedYet />
             ))}
           {single ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 3xl:grid-cols-3 gap-4">
               {ROLLUPS.map((r) => (
                 <RollupTable key={r.key} label={r.label} dim={r.key} rows={single.rollups?.[r.key] ?? []} />
               ))}

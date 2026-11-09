@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { ListOrdered } from 'lucide-react';
 import type { SeedbankProperty, ThesisFlag, ThesisLane as Lane, ThesisPost, ThesisQueueItem } from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { num } from '../shared/format';
-import { Chip, Quiet, type Tone } from '../shared/ui';
+import { Chip, Quiet, SmallButton, type Tone } from '../shared/ui';
 import { humanize } from './format';
+
+/** The posted list shows this many before "Show all" (widescreen plan). */
+export const POSTS_VISIBLE = 12;
 
 /** Queue in `lane_position` order; items without a position keep feed order, last. */
 export function laneQueue(items: ThesisQueueItem[]): ThesisQueueItem[] {
@@ -116,9 +120,11 @@ function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lan
   const grouped = groups.some((g) => g.template != null);
   const posts = lane.posts ?? [];
   const next = lane.next_up;
+  const [allPosts, setAllPosts] = useState(false);
+  const shownPosts = allPosts ? posts : posts.slice(0, POSTS_VISIBLE);
 
   return (
-    <DashboardPanel icon={ListOrdered} title="Thesis lane" tag={showProperty ? propertyId : undefined} size="full">
+    <DashboardPanel icon={ListOrdered} title="Thesis lane" tag={showProperty ? propertyId : undefined} size="half" band="tall">
       <div className="flex flex-col gap-3" data-thesis-lane={propertyId}>
         <p className="text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
           Read-only: you queue theses; G1 approves them on Telegram.
@@ -144,8 +150,8 @@ function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lan
           <span style={{ color: 'var(--color-text)' }}>{next ? next.title || next.summary || 'Untitled' : 'nothing queued'}</span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <div className="flex flex-col gap-2 lg:col-span-7 min-w-0" data-section="queue">
+        <div className="grid grid-cols-1 3xl:grid-cols-12 gap-4">
+          <div className="flex flex-col gap-2 3xl:col-span-7 min-w-0" data-section="queue">
             <SectionLabel>Queue</SectionLabel>
             {groups.length === 0 ? (
               <Quiet>Nothing queued</Quiet>
@@ -166,15 +172,22 @@ function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lan
               ))
             )}
           </div>
-          <div className="flex flex-col gap-2 lg:col-span-5 min-w-0" data-section="posts">
+          <div className="flex flex-col gap-2 3xl:col-span-5 min-w-0" data-section="posts">
             <SectionLabel>{`Posted (90 days) · ${posts.length}`}</SectionLabel>
             {posts.length === 0 ? (
               <Quiet>No thesis posts in the last 90 days.</Quiet>
             ) : (
-              <ul className="flex flex-col gap-1.5 max-h-[60vh] overflow-y-auto pr-1">
-                {posts.map((p, i) => (
+              <ul className="flex flex-col gap-1.5">
+                {shownPosts.map((p, i) => (
                   <PostRow key={p.post_id ?? i} post={p} repeat={!!p.post_id && repeatPosts.has(p.post_id)} />
                 ))}
+                {posts.length > POSTS_VISIBLE && (
+                  <li>
+                    <SmallButton onClick={() => setAllPosts((a) => !a)} data-more>
+                      {allPosts ? 'Show fewer' : `Show all ${posts.length}`}
+                    </SmallButton>
+                  </li>
+                )}
               </ul>
             )}
           </div>

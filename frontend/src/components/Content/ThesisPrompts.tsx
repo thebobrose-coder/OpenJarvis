@@ -1,8 +1,12 @@
+import { useState } from 'react';
 import { Check, Clapperboard, Lightbulb, Sprout, X } from 'lucide-react';
 import type { PromptAction, ThesisPrompt } from '../../lib/content-api';
 import { DashboardPanel } from '../Dashboard/DashboardPanel';
 import { shortDateTime } from '../shared/format';
 import { Chip, ExtLink, SmallButton } from '../shared/ui';
+
+/** The prompts panel shows this many before "Show all" (widescreen plan). */
+export const PROMPTS_VISIBLE = 10;
 
 /** CIO long-form theses are the operator's own: Hermes only offers prompts. */
 export function ThesisPrompts({
@@ -26,15 +30,17 @@ export function ThesisPrompts({
   /** Prompts with a seed sent this session; Hermes marks them used once the file is written. */
   seeded?: string[];
 }) {
+  const [all, setAll] = useState(false);
   if (prompts.length === 0) return null;
+  const shown = all ? prompts : prompts.slice(0, PROMPTS_VISIBLE);
   return (
-    <DashboardPanel icon={Lightbulb} title="Thesis prompts" tag={`${prompts.length} open`} size="tall">
+    <DashboardPanel icon={Lightbulb} title="Thesis prompts" tag={`${prompts.length} open`} size="tall" band="tall">
       <div className="flex flex-col gap-2.5">
         <p className="text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
           Prompts for you; Hermes doesn’t write theses.{onSeed ? ' Seed this opens one as your own thesis seed.' : ''}
         </p>
-        <ul className="flex flex-col gap-2.5 max-h-[75vh] overflow-y-auto pr-1">
-          {prompts.map((t) => (
+        <ul className="flex flex-col gap-2.5">
+          {shown.map((t) => (
             <li key={t.id} id={`prompt-${t.id}`} className="flex flex-col gap-1.5 rounded-lg p-3" style={{ background: 'var(--color-bg-secondary)' }}>
               <div className="flex flex-wrap items-center gap-1.5">
                 {showProperty && <Chip tone="accent">{t.property_id}</Chip>}
@@ -86,6 +92,13 @@ export function ThesisPrompts({
             </li>
           ))}
         </ul>
+        {prompts.length > PROMPTS_VISIBLE && (
+          <div>
+            <SmallButton onClick={() => setAll((a) => !a)} data-more>
+              {all ? 'Show fewer' : `Show all ${prompts.length}`}
+            </SmallButton>
+          </div>
+        )}
       </div>
     </DashboardPanel>
   );

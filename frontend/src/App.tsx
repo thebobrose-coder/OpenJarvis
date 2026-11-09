@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { ChatPage } from './pages/ChatPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { InboxPage } from './pages/InboxPage';
+import { StudioPage } from './pages/StudioPage';
 import { CommercePage } from './pages/CommercePage';
 import { BizDevPage } from './pages/BizDevPage';
 import { ContentPage } from './pages/ContentPage';
@@ -197,6 +198,7 @@ export default function App() {
           <Route path="commerce" element={<CommercePage />} />
           <Route path="bizdev" element={<BizDevPage />} />
           <Route path="content" element={<ContentPage />} />
+          <Route path="studio" element={<StudioPage />} />
           <Route path="trading" element={<TradingPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="get-started" element={<GetStartedPage />} />

@@ -1,23 +1,20 @@
 import { firstBlock } from '../../lib/voice-api';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { ApprovalEdits, EpisodeClass, PromptAction, PropertyMotion, Proposal, SeedBody, VerifyResult } from '../../lib/content-api';
 import { applyDecisions, type ContentFeedStates, type PendingDecision } from '../../hooks/useContentData';
 import type { EpisodeAction, EpisodeDetail, EpisodeSummary, StudioStatus } from '../../lib/studio-api';
 import { ContentHeader } from './ContentHeader';
-import { EpisodeDrawer, type EpisodeActions } from './EpisodeDrawer';
-import { EpisodesPanel, type OpenEpisode, type RunStatus } from './EpisodesPanel';
-import { nextRunAt } from './episodes';
 import { ALL_PROPERTIES, matchesProperty } from './format';
 import { HealthStrip } from './HealthStrip';
 import { PerformancePanel } from './PerformancePanel';
 import { ProposalsQueue, deskLanes, type DeskDecision, type QueueTab } from './ProposalsQueue';
 import { SeedbankStrip } from './SeedbankStrip';
+import { Drawer } from '../shared/Drawer';
 import { SeedComposer, draftFromPrompt, emptyDraft, episodeDraftFromPrompt, promptEpisodeClass, type SeedDraft } from './SeedComposer';
 import { ThesisLane } from './ThesisLane';
 import { ThesisPrompts } from './ThesisPrompts';
 import { WinnersPanel } from './WinnersPanel';
-import { YouTubePanel } from './YouTubePanel';
 
 export interface ContentViewProps {
   feeds: ContentFeedStates;
@@ -50,38 +47,16 @@ export interface ContentViewProps {
   seededPrompts?: string[];
   /** For tests: the composer open with this draft. */
   initialComposer?: SeedDraft | null;
-  /** hq 0019 Part B: the studio's episodes; absent hides the panel. */
-  studio?: StudioProps;
+  /** The studio's one line in the header; the page is /studio (widescreen plan 5.2). */
+  studio?: { text: string; onOpen: () => void } | null;
 }
 
-export interface StudioProps {
-  status: StudioStatus | null;
-  episodes: EpisodeSummary[];
-  loading: boolean;
-  error: string | null;
-  onOpen: OpenEpisode;
-  onRun: () => void;
-  runStatus?: RunStatus;
-  runAvailableAt?: number | null;
-  runError?: string | null;
-  onPause: (propertyId: string, paused: boolean) => void;
-  pausing?: Record<string, boolean>;
-  /** The open episode's drawer. */
-  openId: string | null;
-  /** v0.4.5: the drawer opened on this action's confirm. */
-  openAction?: EpisodeAction | null;
-  detail: EpisodeDetail | null;
-  detailLoading: boolean;
-  detailError: string | null;
-  actions: EpisodeActions | null;
-  onClose: () => void;
-}
 
 /**
- * The Content page: the Foundry content loop per property. Header, health
- * alerts, the seedbank, the proposals queue (with thesis prompts beside it
- * when there are any), the thesis lane where a property has one,
- * performance, and the weekly winners. Generic by property. Pure:
+ * The Content page: the Foundry content loop per property (widescreen plan 4.4).
+ * Header, health alerts, the seedbank, the proposals queue (with thesis prompts
+ * beside it when there are any), the thesis lane where a property has one beside
+ * performance, and the weekly winners. The studio has its own page since Phase 3. Generic by property. Pure:
  * everything comes in through props (see ContentPage).
  */
 export function ContentView(props: ContentViewProps) {
@@ -109,10 +84,6 @@ export function ContentView(props: ContentViewProps) {
   const [composer, setComposer] = useState<{ draft: SeedDraft; key: number } | null>(
     props.initialComposer ? { draft: props.initialComposer, key: 0 } : null,
   );
-  const composerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (composer) composerRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-  }, [composer]);
   const seeds = props.onQueueSeed && props.onVerifyProduct ? { queue: props.onQueueSeed, verify: props.onVerifyProduct } : null;
   const openComposer = (draft: SeedDraft) => setComposer((c) => ({ draft, key: (c?.key ?? 0) + 1 }));
 
@@ -156,6 +127,7 @@ export function ContentView(props: ContentViewProps) {
         onRunIntake={props.onRunIntake}
         intakeStatus={props.intakeStatus}
         intakeAvailableAt={props.intakeAvailableAt}
+        studio={props.studio ?? null}
       />
 
       {props.notice && (
@@ -174,21 +146,23 @@ export function ContentView(props: ContentViewProps) {
       )}
 
       {seeds && composer && (
-        <div ref={composerRef} className="grid grid-cols-12 gap-4 mb-4 scroll-mt-4">
-          <SeedComposer
-            key={composer.key}
-            seedbank={seedbank}
-            draft={composer.draft}
-            proposals={[...applied.pending, ...applied.recent]}
-            lanePositions={lanePositions}
-            onQueue={seeds.queue}
-            onVerify={seeds.verify}
-            onClose={() => setComposer(null)}
-          />
-        </div>
+        <Drawer open onClose={() => setComposer(null)} label="Seed composer" width="wide">
+          <div className="grid grid-cols-12 gap-4">
+            <SeedComposer
+              key={composer.key}
+              seedbank={seedbank}
+              draft={composer.draft}
+              proposals={[...applied.pending, ...applied.recent]}
+              lanePositions={lanePositions}
+              onQueue={seeds.queue}
+              onVerify={seeds.verify}
+              onClose={() => setComposer(null)}
+            />
+          </div>
+        </Drawer>
       )}
 
-      <HealthStrip alerts={alerts} showProperty={showProperty} />
+      <HealthStrip alerts={alerts} showProperty={showProperty} state={{ loading: feeds.content_health.loading, error: feeds.content_health.error }} />
 
       <div className="grid grid-cols-12 gap-4 mb-4">
         <SeedbankStrip
@@ -199,37 +173,6 @@ export function ContentView(props: ContentViewProps) {
         />
       </div>
 
-      {props.studio && (
-        <div className="grid grid-cols-12 gap-4 mb-4">
-          <EpisodesPanel
-            status={props.studio.status}
-            episodes={props.studio.episodes}
-            selectedProperty={selected}
-            showProperty={showProperty}
-            loading={props.studio.loading}
-            error={props.studio.error}
-            now={props.now ?? Date.now()}
-            onOpen={props.studio.onOpen}
-            onRun={props.studio.onRun}
-            runStatus={props.studio.runStatus}
-            runAvailableAt={props.studio.runAvailableAt}
-            runError={props.studio.runError}
-            onPause={props.studio.onPause}
-            pausing={props.studio.pausing}
-          />
-        </div>
-      )}
-
-      {/* v1.29: the channels' last 28 days and the spark pick (read only). */}
-      <div className="grid grid-cols-12 gap-4 mb-4">
-        <YouTubePanel
-          feed={feeds.youtube_performance?.data ?? null}
-          selectedProperty={selected}
-          now={props.now ?? Date.now()}
-          loading={feeds.youtube_performance?.loading}
-          error={feeds.youtube_performance?.error}
-        />
-      </div>
 
       <div className="grid grid-cols-12 gap-4 mb-4 items-start">
         <ProposalsQueue
@@ -270,13 +213,8 @@ export function ContentView(props: ContentViewProps) {
         />
       </div>
 
-      {thesisLanes.length > 0 && (
-        <div className="grid grid-cols-12 gap-4 mb-4">
-          <ThesisLane properties={thesisLanes} showProperty={showProperty} />
-        </div>
-      )}
-
       <div className="grid grid-cols-12 gap-4 mb-4">
+        {thesisLanes.length > 0 && <ThesisLane properties={thesisLanes} showProperty={showProperty} />}
         <PerformancePanel
           performance={feeds.content_performance.data}
           selectedProperty={selected}
@@ -295,21 +233,6 @@ export function ContentView(props: ContentViewProps) {
         />
       </div>
 
-      {props.studio?.actions && (
-        <EpisodeDrawer
-          open={!!props.studio.openId}
-          title={props.studio.detail?.summary.title || props.studio.detail?.manifest.topic || 'Episode'}
-          onClose={props.studio.onClose}
-          detail={props.studio.detail}
-          loading={props.studio.detailLoading}
-          error={props.studio.detailError}
-          actions={props.studio.actions}
-          now={props.now ?? Date.now()}
-          initialAction={props.studio.openAction ?? null}
-          run={{ onRun: props.studio.onRun, status: props.studio.runStatus ?? 'idle', availableAt: props.studio.runAvailableAt ?? null }}
-          nextRunAt={nextRunAt(props.studio.status)}
-        />
-      )}
     </div>
   );
 }

@@ -13,7 +13,7 @@ export type OpenEpisode = (id: string, action?: EpisodeAction) => void;
 
 const ACTION_ICON: Record<EpisodeAction, typeof RotateCcw> = { retry: RotateCcw, reject: X, requeue: Undo2, link: Link2 };
 
-function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+export function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <span>
       <span style={{ color: 'var(--color-text-tertiary)' }}>{label} </span>
@@ -24,7 +24,7 @@ function Stat({ label, value, warn }: { label: string; value: string; warn?: boo
   );
 }
 
-function EpisodeRow({ ep, now, onOpen }: { ep: EpisodeSummary; now: number; onOpen: OpenEpisode }) {
+export function EpisodeRow({ ep, now, onOpen }: { ep: EpisodeSummary; now: number; onOpen: OpenEpisode }) {
   const stage = stageInfo(ep.stage);
   const atG0 = ep.stage === 'awaiting-g0';
   // The row's actions open the drawer on that action's confirm. At G0 the
@@ -78,7 +78,7 @@ function EpisodeRow({ ep, now, onOpen }: { ep: EpisodeSummary; now: number; onOp
 }
 
 /** The lane's unclaimed seeds, in lane order (v0.4.5), folded when long. */
-function LaneQueue({ queue, now }: { queue: QueuedSeed[]; now: number }) {
+export function LaneQueue({ queue, now }: { queue: QueuedSeed[]; now: number }) {
   const list = (
     <ul className="flex flex-col gap-1" aria-label="Lane queue">
       {queue.map((s, i) => (
@@ -124,7 +124,7 @@ function LaneQueue({ queue, now }: { queue: QueuedSeed[]; now: number }) {
 }
 
 /** Ended or stopped episodes still holding their seed: Requeue opens that episode's confirm. */
-function HeldSeeds({ seeds, onOpen }: { seeds: HeldSeed[]; onOpen: OpenEpisode }) {
+export function HeldSeeds({ seeds, onOpen }: { seeds: HeldSeed[]; onOpen: OpenEpisode }) {
   return (
     <div className="flex flex-col gap-1" data-held-seeds>
       <span className="text-ui-11-5" style={{ color: 'var(--color-warning)' }}>

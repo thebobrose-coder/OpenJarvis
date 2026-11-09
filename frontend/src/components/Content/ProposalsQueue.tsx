@@ -20,6 +20,9 @@ import { Chip, ExtIcon, ExtLink, Quiet, Segmented, SmallButton } from '../shared
 import { PROPOSAL_STATUS, humanize, isRefusal, isSeedRefusal, laneLabel } from './format';
 import { VideoChip, VideoFields, assetKeyProblem, beatEnabled, choiceOf, motionOf, videoAllowed, type MotionChoice } from './Video';
 
+/** The Proposals panel shows this many per tab before "Show all" (widescreen plan). */
+export const PROPOSALS_VISIBLE = 12;
+
 const OTHER = '__other__';
 /** A proposal without a priority gets the default (v1.10). */
 const DEFAULT_PRIORITY = 2;
@@ -907,7 +910,10 @@ export function ProposalsQueue({
   deskDecision?: DeskDecision | null;
 }) {
   const [tab, setTab] = useState<QueueTab>(initialTab);
+  const [all, setAll] = useState(false);
   const newest = [...pending].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+  const shownPending = all ? newest : newest.slice(0, PROPOSALS_VISIBLE);
+  const shownRecent = all ? recent : recent.slice(0, PROPOSALS_VISIBLE);
 
   return (
     <DashboardPanel
@@ -915,6 +921,7 @@ export function ProposalsQueue({
       title="Proposals"
       tag={hasFeed ? `${pending.length} pending` : undefined}
       size={size}
+      band="tall"
       priority
       loading={loading}
       error={error}
@@ -937,9 +944,9 @@ export function ProposalsQueue({
             newest.length === 0 ? (
               <Quiet>Nothing waiting for you. New proposals arrive with the daily ideation run.</Quiet>
             ) : (
-              // Its own scroll, so a long queue doesn't push the rest of the page away.
-              <div className="flex flex-col gap-2.5 max-h-[75vh] overflow-y-auto pr-1">
-                {newest.map((p) => (
+              // The panel's band scrolls; the list shows PROPOSALS_VISIBLE before "Show all".
+              <div className="flex flex-col gap-2.5">
+                {shownPending.map((p) => (
                   <ProposalCard
                     key={deskDecision?.id === p.id ? `${p.id}:${deskDecision.nonce}` : p.id}
                     proposal={p}
@@ -954,15 +961,29 @@ export function ProposalsQueue({
                     deskDecision={deskDecision?.id === p.id ? deskDecision : null}
                   />
                 ))}
+                {newest.length > PROPOSALS_VISIBLE && (
+                  <div>
+                    <SmallButton onClick={() => setAll((a) => !a)} data-more>
+                      {all ? 'Show fewer' : `Show all ${newest.length}`}
+                    </SmallButton>
+                  </div>
+                )}
               </div>
             )
           ) : recent.length === 0 ? (
             <Quiet>No decisions in the last 30 days.</Quiet>
           ) : (
-            <ul className="flex flex-col gap-2 max-h-[75vh] overflow-y-auto pr-1">
-              {recent.map((p) => (
+            <ul className="flex flex-col gap-2">
+              {shownRecent.map((p) => (
                 <DecidedItem key={p.id} proposal={p} showProperty={showProperty} lanePositions={lanePositions} />
               ))}
+              {recent.length > PROPOSALS_VISIBLE && (
+                <li>
+                  <SmallButton onClick={() => setAll((a) => !a)} data-more>
+                    {all ? 'Show fewer' : `Show all ${recent.length}`}
+                  </SmallButton>
+                </li>
+              )}
             </ul>
           )}
         </div>

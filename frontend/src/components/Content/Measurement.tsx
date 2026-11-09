@@ -203,7 +203,7 @@ export function LongFormTable({
   return (
     <div className="flex flex-col gap-1 min-w-0">
       <SectionLabel>Long-form pages ({posts.length})</SectionLabel>
-      <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+      <div className="overflow-x-auto">
         <table className="w-full text-ui-12 tabular-nums">
           <thead>
             <tr style={{ color: 'var(--color-text-tertiary)' }}>

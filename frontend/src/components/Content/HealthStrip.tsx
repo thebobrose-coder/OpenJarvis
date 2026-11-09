@@ -22,8 +22,26 @@ export const badPages = (a: HealthAlert): [string, string][] =>
   Object.entries(a.pages ?? {}).filter(([, status]) => FAILED_TAG.has(status));
 
 /** Hermes's report on the pipeline (it never acts on it): a strip under the header. */
-export function HealthStrip({ alerts, showProperty }: { alerts: HealthAlert[]; showProperty: boolean }) {
-  if (alerts.length === 0) return null;
+export function HealthStrip({
+  alerts,
+  showProperty,
+  state,
+}: {
+  alerts: HealthAlert[];
+  showProperty: boolean;
+  /** The content_health fetch: a failed read is said, not mistaken for "no alerts". */
+  state?: { loading?: boolean; error?: string | null };
+}) {
+  if (alerts.length === 0) {
+    if (state?.error && !state.loading) {
+      return (
+        <p className="text-ui-11-5 mb-4" role="status" data-health-error style={{ color: 'var(--color-warning)' }}>
+          Content health is unavailable: {state.error}
+        </p>
+      );
+    }
+    return null;
+  }
   return (
     <section
       aria-label="Content health"

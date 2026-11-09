@@ -280,6 +280,9 @@ export function groupItems(w: Pick<Waiting, 'items' | 'counts'> | null, lane?: L
     .filter((g) => g.count > 0);
 }
 
+/** A studio episode id (a ULID), as `components/Content/episodes.ts` knows it. */
+const EPISODE_ID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
 /** The route a row opens: `link.page` (which may carry a hash, as
  * `/commerce#fixes` does) with `?focus=<id>`; null when it has no page. */
 export function linkFor(item: Pick<WaitingItem, 'link'>): string | null {
@@ -290,6 +293,10 @@ export function linkFor(item: Pick<WaitingItem, 'link'>): string | null {
   // tab now; the feed still names the page it used to (a contract note for later).
   if (typeof focus === 'string' && (focus.startsWith('spark-') || focus.startsWith('spend-'))) {
     return `/commerce?tab=ads&focus=${encodeURIComponent(focus)}`;
+  }
+  // Widescreen plan 5.2: an episode (a ULID, the G0 rows) lives on /studio now.
+  if (typeof focus === 'string' && EPISODE_ID.test(focus)) {
+    return `/studio?focus=${encodeURIComponent(focus)}`;
   }
   const query = focus == null || focus === '' ? '' : `?focus=${encodeURIComponent(String(focus))}`;
   return `${path}${query}${hash ? `#${hash}` : ''}`;

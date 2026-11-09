@@ -1,4 +1,4 @@
-import { Play, Sprout, Telescope } from 'lucide-react';
+import { Clapperboard, Play, Sprout, Telescope } from 'lucide-react';
 import type { ContentProposals, ContentSeedbank } from '../../lib/content-api';
 import { FeedFreshness } from '../Dashboard/FeedFreshness';
 import { engineLabel, shortDateTime } from '../shared/format';
@@ -24,6 +24,7 @@ export function ContentHeader({
   onRunIntake,
   intakeStatus = 'idle',
   intakeAvailableAt = null,
+  studio = null,
 }: {
   properties: string[];
   selectedProperty: string;
@@ -42,6 +43,8 @@ export function ContentHeader({
   intakeStatus?: 'idle' | 'running' | 'started' | 'ran_recently' | 'error';
   /** Epoch ms when "Run intake now" unlocks again (2-minute cooldown). */
   intakeAvailableAt?: number | null;
+  /** The studio's one line and its page (widescreen plan 5.2). */
+  studio?: { text: string; onOpen: () => void } | null;
 }) {
   const locked = researchAvailableAt != null && researchAvailableAt > now;
   const intakeLocked = intakeAvailableAt != null && intakeAvailableAt > now;
@@ -50,13 +53,13 @@ export function ContentHeader({
   const cost = proposals?.cost;
 
   return (
-    <header className="flex flex-col gap-3 mb-6">
+    <header className="flex flex-col gap-3 mb-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
+          <h1 className="text-ui-20 font-semibold" style={{ color: 'var(--color-text)' }}>
             Content
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+          <p className="text-ui-12-5 mt-1" style={{ color: 'var(--color-text-secondary)' }}>
             Hermes proposes seed topics and measures what posted; you decide what reaches Foundry’s intake.
           </p>
         </div>
@@ -117,6 +120,11 @@ export function ContentHeader({
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        {studio && (
+          <SmallButton onClick={studio.onOpen} title="The episode pipeline on its own page" data-studio-chip>
+            <Clapperboard size={11} /> Studio: {studio.text}
+          </SmallButton>
+        )}
         {snapshot?.present && snapshot.age_hours != null ? (
           <FeedFreshness label="Foundry snapshot" ageSeconds={snapshot.age_hours * 3600} staleAfterSeconds={26 * 3600} />
         ) : (

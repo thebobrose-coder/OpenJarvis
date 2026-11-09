@@ -16,8 +16,7 @@ import {
   type PlanBeat,
   type PublishFile,
   type ShortEntry,
-  type SourceCopyHit,
-} from '../../lib/studio-api';
+  type SourceCopyHit, PUBLISH_LIMITS } from '../../lib/studio-api';
 import { ago } from '../../lib/waiting-api';
 import { shortDateTime } from '../shared/format';
 import { Chip, ExtLink, Quiet, SmallButton } from '../shared/ui';
@@ -919,7 +918,7 @@ export function PublishForm({ detail, actions }: { detail: EpisodeDetail; action
         <span className="flex justify-between text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
           Title <span>{body.title.length} / 100</span>
         </span>
-        <input value={title} onChange={(e) => setTitle(e.target.value.slice(0, 120))} disabled={!editable} className="rounded-md px-2 py-1 text-ui-12-5" style={field} />
+        <input value={title} onChange={(e) => setTitle(e.target.value.slice(0, PUBLISH_LIMITS.titleMax))} disabled={!editable} className="rounded-md px-2 py-1 text-ui-12-5" style={field} />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>

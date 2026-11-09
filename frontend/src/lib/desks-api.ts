@@ -53,7 +53,7 @@ export const DESK_DEFAULTS: Record<DeskId, Pick<DeskInfo, 'id' | 'name' | 'defau
     id: 'content',
     name: 'Content desk',
     default_route: 'local',
-    pages: ['/content'],
+    pages: ['/content', '/studio'],
     card_kinds: ['open', 'tick', 'proposal_decision', 'ruling'],
   },
   bd: { id: 'bd', name: 'BD desk', default_route: 'hermes', pages: ['/bizdev'], card_kinds: ['open', 'ruling'] },

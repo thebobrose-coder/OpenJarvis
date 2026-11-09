@@ -5,8 +5,9 @@ import { ContentView } from '../components/Content/ContentView';
 import { isEpisodeId } from '../components/Content/episodes';
 import { ALL_PROPERTIES } from '../components/Content/format';
 import { useContentData } from '../hooks/useContentData';
-import { useStudioData } from '../hooks/useStudioData';
 import { scrollToWhenReady } from '../lib/waiting-api';
+import { fetchStudioStatus, type StudioStatus } from '../lib/studio-api';
+import { studioLine } from '../components/Studio/summary';
 import { useAppStore } from '../lib/store';
 import { contextBlock } from '../lib/desks-api';
 import type { Proposal } from '../lib/content-api';
@@ -30,13 +31,19 @@ export function proposalContext(p: Proposal): { block: string; label: string } {
 /** Hermes's content loop on one page: see components/Content. */
 export function ContentPage() {
   const data = useContentData();
-  const studio = useStudioData();
   const [property, setProperty] = useState(ALL_PROPERTIES);
+  // The studio's one line (widescreen plan 5.2): its page holds the rest.
+  const [studioStatus, setStudioStatus] = useState<StudioStatus | null>(null);
+  useEffect(() => {
+    const load = () => fetchStudioStatus().then(setStudioStatus, () => {});
+    void load();
+    const poll = window.setInterval(() => void load(), 5 * 60 * 1000);
+    return () => window.clearInterval(poll);
+  }, []);
   // ?focus=<id> from "Waiting on you": a proposal, a thesis prompt, or a G0 episode.
   const location = useLocation();
   const [params] = useSearchParams();
   const focus = params.get('focus');
-  const openEpisode = studio.open;
 
   // Desks (hq 0020 P2): "Ask the desk" on a proposal, and a desk's
   // proposal_decision card opening the editor filled in. The operator's own
@@ -66,11 +73,14 @@ export function ContentPage() {
       navigate(`/commerce?tab=ads&focus=${encodeURIComponent(focus)}`, { replace: true });
       return undefined;
     }
+    // An episode (a G0 row) lives on /studio now.
+    if (isEpisodeId(focus)) {
+      navigate(`/studio?focus=${encodeURIComponent(focus)}`, { replace: true });
+      return undefined;
+    }
     setProperty(ALL_PROPERTIES);
-    if (isEpisodeId(focus)) openEpisode(focus);
-    // v1.29: a spark row's focus is the block's own id (`spark-<flight>`).
-    return scrollToWhenReady([`proposal-${focus}`, `prompt-${focus}`, `episode-${focus}`, focus]);
-  }, [focus, location.key, openEpisode, navigate]);
+    return scrollToWhenReady([`proposal-${focus}`, `prompt-${focus}`, focus]);
+  }, [focus, location.key, navigate]);
 
   return (
     <PageFrame>
@@ -96,28 +106,9 @@ export function ContentPage() {
         intakeStatus={data.intakeStatus}
         intakeAvailableAt={data.intakeAvailableAt}
         seededPrompts={data.seededPrompts}
-        notice={data.notice ?? studio.notice}
-        onClearNotice={data.notice ? data.clearNotice : studio.clearNotice}
-        studio={{
-          status: studio.status,
-          episodes: studio.episodes,
-          loading: studio.loading,
-          error: studio.error,
-          onOpen: studio.open,
-          onRun: () => void studio.run(),
-          runStatus: studio.runStatus,
-          runAvailableAt: studio.runAvailableAt,
-          runError: studio.runError,
-          onPause: (id, paused) => void studio.pause(id, paused),
-          pausing: studio.pausing,
-          openId: studio.openId,
-          openAction: studio.openAction,
-          detail: studio.detail,
-          detailLoading: studio.detailLoading,
-          detailError: studio.detailError,
-          actions: studio.actions,
-          onClose: studio.close,
-        }}
+        notice={data.notice}
+        onClearNotice={data.clearNotice}
+        studio={studioLine(studioStatus, () => navigate('/studio'))}
       />
     </PageFrame>
   );

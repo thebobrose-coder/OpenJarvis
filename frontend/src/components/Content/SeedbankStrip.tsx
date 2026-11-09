@@ -96,7 +96,7 @@ function PropertyRow({ property, showName }: { property: SeedbankProperty; showN
           {property.channels?.length ? <span style={{ color: 'var(--color-text-tertiary)' }}>{property.channels.join(' · ')}</span> : null}
         </div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 3xl:grid-cols-6 gap-2">
         {property.lanes.map((lane) => (
           <LaneCard key={lane.lane} lane={lane} />
         ))}
@@ -123,6 +123,7 @@ export function SeedbankStrip({
       title="Seedbank"
       tag={seedbank ? `Target ${num(seedbank.target_runway_days)}-day runway` : undefined}
       size="full"
+      band="short"
       loading={loading}
       error={error}
     >
