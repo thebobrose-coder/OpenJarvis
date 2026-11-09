@@ -38,7 +38,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LaneCard({ lane }: { lane: Lane }) {
+export function LaneCard({ lane }: { lane: Lane }) {
   const status = LANE_STATUS[lane.status] ?? { label: lane.status, tone: 'neutral' as Tone };
   const note = laneNote(lane);
   return (

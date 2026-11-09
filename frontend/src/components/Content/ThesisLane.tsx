@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { ListOrdered } from 'lucide-react';
-import type { SeedbankProperty, ThesisFlag, ThesisLane as Lane, ThesisPost, ThesisQueueItem } from '../../lib/content-api';
+import type { Lane as SeedbankLane, SeedbankProperty, ThesisFlag, ThesisLane as Lane, ThesisPost, ThesisQueueItem } from '../../lib/content-api';
 import { DashboardPanel, type PanelSize } from '../Dashboard/DashboardPanel';
 import { num } from '../shared/format';
 import { Chip, Quiet, SmallButton, type Tone } from '../shared/ui';
 import { humanize } from './format';
+import { LaneCard } from './SeedbankStrip';
 
 /** The posted list shows this many before "Show all" (widescreen plan). */
 export const POSTS_VISIBLE = 12;
@@ -111,7 +112,7 @@ function SectionLabel({ children }: { children: string }) {
   );
 }
 
-function LanePanel({ propertyId, lane, showProperty, size }: { propertyId: string; lane: Lane; showProperty: boolean; size: PanelSize }) {
+function LanePanel({ propertyId, lane, size, tag }: { propertyId: string; lane: Lane; size: PanelSize; tag: string }) {
   const flags: ThesisFlag[] = lane.flags ?? [];
   const repeats = flags.filter((f) => f.kind === 'possible_repeat');
   const repeatSignals = new Set(repeats.map((f) => f.signal_id).filter(Boolean));
@@ -124,10 +125,10 @@ function LanePanel({ propertyId, lane, showProperty, size }: { propertyId: strin
   const shownPosts = allPosts ? posts : posts.slice(0, POSTS_VISIBLE);
 
   return (
-    <DashboardPanel icon={ListOrdered} title="Thesis lane" tag={showProperty ? propertyId : undefined} size={size} band="tall">
+    <DashboardPanel icon={ListOrdered} title="Long lane" tag={tag} size={size} band="tall">
       <div className="flex flex-col gap-3" data-thesis-lane={propertyId}>
         <p className="text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
-          Read-only: you queue theses; G1 approves them on Telegram.
+          Read-only: you queue this lane; G1 approves it on Telegram.
         </p>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-ui-12">
           <Stat label="Runway" value={runwayText(lane)} />
@@ -203,25 +204,48 @@ export function laneSize(count: number): PanelSize {
   return count >= 3 ? 'trio' : 'half';
 }
 
-/** A property whose feed carries `thesis_lane: null`: a muted card, so the row
- * keeps one card per property and the others keep their width. */
-function NoLanePanel({ propertyId, size }: { propertyId: string; size: PanelSize }) {
+/** A property's long lane in the seedbank (`lane: "long"`), if it has one. */
+export function longLaneOf(p: Pick<SeedbankProperty, 'lanes'>): SeedbankLane | undefined {
+  return (p.lanes ?? []).find((l) => l.lane === 'long');
+}
+
+/** The card's tag: the property and its long lane's content type, as the feed names it. */
+export function longLaneTag(p: Pick<SeedbankProperty, 'id' | 'lanes'>): string {
+  const type = longLaneOf(p)?.content_type;
+  return type ? `${p.id} · ${humanize(type)}` : p.id;
+}
+
+/**
+ * A long lane Hermes seeds itself (its `thesis_lane` is null): its seedbank
+ * counts, as the Seedbank card shows them. Hermes publishes the queue and the
+ * posted list only for the long lanes the operator queues.
+ */
+function SeededLongLanePanel({ property, size }: { property: SeedbankProperty; size: PanelSize }) {
+  const lane = longLaneOf(property);
   return (
-    <DashboardPanel icon={ListOrdered} title="Thesis lane" tag={propertyId} size={size} band="tall" dim>
-      <div data-thesis-lane-none={propertyId}>
-        <Quiet>No thesis lane for {propertyId} in today’s seedbank: Hermes’s run set none.</Quiet>
+    <DashboardPanel icon={ListOrdered} title="Long lane" tag={longLaneTag(property)} size={size} band="tall">
+      <div className="flex flex-col gap-3" data-long-lane-seeded={property.id}>
+        {lane ? (
+          <>
+            <LaneCard lane={lane} />
+            <Quiet>Hermes seeds this lane. Its queue and posted list show here once Hermes publishes them for it.</Quiet>
+          </>
+        ) : (
+          <Quiet>No long lane for {property.id} in today’s seedbank.</Quiet>
+        )}
       </div>
     </DashboardPanel>
   );
 }
 
 /**
- * The operator-only thesis lane (contract v1.8), one card per property side by
- * side in their own row: the lane where `thesis_lane` is set, a muted card
- * where it is null. Nothing renders unless some lane is set, or for a feed
+ * Each property's long lane (the contract's thesis lane, v1.8), one card per
+ * property side by side in their own row: the full mirror (queue, next up,
+ * posted) where Hermes publishes `thesis_lane`, the seedbank counts where it
+ * is null. Nothing renders unless some lane is published, or for a feed
  * without the key. A mirror: no queue, approve or fire control.
  */
-export function ThesisLane({ properties, showProperty }: { properties: SeedbankProperty[]; showProperty: boolean }) {
+export function ThesisLane({ properties }: { properties: SeedbankProperty[]; showProperty?: boolean }) {
   const shown = properties.filter((p) => p.thesis_lane !== undefined);
   if (!shown.some((p) => p.thesis_lane != null)) return null;
   const size = laneSize(shown.length);
@@ -229,9 +253,9 @@ export function ThesisLane({ properties, showProperty }: { properties: SeedbankP
     <>
       {shown.map((p) =>
         p.thesis_lane != null ? (
-          <LanePanel key={p.id} propertyId={p.id} lane={p.thesis_lane as Lane} showProperty={showProperty} size={size} />
+          <LanePanel key={p.id} propertyId={p.id} lane={p.thesis_lane as Lane} size={size} tag={longLaneTag(p)} />
         ) : (
-          <NoLanePanel key={p.id} propertyId={p.id} size={size} />
+          <SeededLongLanePanel key={p.id} property={p} size={size} />
         ),
       )}
     </>

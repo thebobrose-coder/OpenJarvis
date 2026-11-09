@@ -561,19 +561,28 @@ describe('ThesisLane', () => {
     expect(html).not.toContain('3xl:col-span-7');
   });
 
-  it('a property whose lane is null keeps its third as a muted card; a feed without the key adds none', () => {
+  it('each card is the property’s long lane; a Hermes-seeded one (lane null) shows its seedbank counts', () => {
+    const long = (content_type: string, over: Record<string, unknown> = {}) => ({
+      lane: 'long', content_type, cadence_per_week: 2, seedable: true, operator_only: false, feed_lane: false,
+      queued: 6, in_flight: 0, pending: 0, runway_days: 21, status: 'ok', ...over,
+    });
     const props = [
-      { id: 'alpha', name: 'alpha', thesis_lane: LANE },
-      { id: 'beta', name: 'beta', thesis_lane: LANE },
-      { id: 'gamma', name: 'gamma', thesis_lane: null },
+      { id: 'alpha', name: 'alpha', lanes: [long('thesis', { operator_only: true, status: 'operator-only' })], thesis_lane: LANE },
+      { id: 'beta', name: 'beta', lanes: [long('thesis', { operator_only: true, status: 'operator-only' })], thesis_lane: LANE },
+      { id: 'gamma', name: 'gamma', lanes: [long('expeditionDebrief')], thesis_lane: null },
       { id: 'delta', name: 'delta' },
     ];
     const html = renderToStaticMarkup(<ThesisLane properties={props as never} showProperty />);
     expect(html.match(/data-thesis-lane=/g)).toHaveLength(2);
-    expect(html).toContain('data-thesis-lane-none="gamma"');
+    expect(html.match(/>Long lane</g)).toHaveLength(3);
+    expect(html).not.toContain('Thesis lane');
+    expect(html).toContain('alpha · thesis');
+    expect(html).toContain('gamma · expeditionDebrief');
+    expect(html).toContain('data-long-lane-seeded="gamma"');
+    expect(html).toMatch(/data-long-lane-seeded="gamma"[\s\S]*Queued[\s\S]*6[\s\S]*Runway[\s\S]*21/);
     expect(html).not.toContain('delta');
     expect(html.match(/col-span-12 lg:col-span-4 lg:h-\[860px\]/g)).toHaveLength(3);
-    expect(html.match(/opacity:0\.82/g)).toHaveLength(1);
+    expect(html).not.toContain('opacity:0.82');
     // Every lane null: nothing at all.
     expect(renderToStaticMarkup(<ThesisLane properties={[{ id: 'gamma', name: 'gamma', thesis_lane: null }] as never} showProperty />)).toBe('');
   });
