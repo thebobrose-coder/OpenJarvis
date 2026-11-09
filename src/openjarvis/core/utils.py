@@ -15,6 +15,77 @@ import time
 import webbrowser
 
 
+def _windows_process_image(pid: int) -> str | None:
+    """The full path of *pid*'s executable, or ``None`` when Windows won't say."""
+    import ctypes
+    from ctypes import wintypes
+
+    query_limited_information = 0x1000
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.QueryFullProcessImageNameW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.OpenProcess(query_limited_information, False, pid)
+    if not handle:
+        return None
+    try:
+        size = wintypes.DWORD(32768)
+        buf = ctypes.create_unicode_buffer(size.value)
+        if not kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+            return None
+        return buf.value or None
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def process_image_name(pid: int | None) -> str | None:
+    """Return the executable name of *pid* (``python.exe``, ``chrome``), lowercased.
+
+    ``None`` means the name could not be read (no such process, access denied,
+    or no way to ask on this host): callers must treat that as "unknown", not
+    as "some other program". Used to tell a live daemon from a process that
+    inherited its recycled PID after an abrupt exit.
+    """
+    if not pid or pid <= 0:
+        return None
+    if platform.system() == "Windows":
+        try:
+            path = _windows_process_image(pid)
+        except (OSError, AttributeError):
+            return None
+        return os.path.basename(path).lower() if path else None
+    try:
+        with open(f"/proc/{pid}/comm", encoding="utf-8") as fh:
+            name = fh.read().strip()
+        if name:
+            return name.lower()
+    except OSError:
+        pass
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "comm=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    name = result.stdout.strip()
+    if result.returncode != 0 or not name:
+        return None
+    return os.path.basename(name).lower()
+
+
 def _windows_process_alive(pid: int) -> bool:
     """Query a Windows process handle without sending it a signal."""
     import ctypes
@@ -189,5 +260,6 @@ __all__ = [
     "get_python_executable",
     "open_browser",
     "process_alive",
+    "process_image_name",
     "terminate_process",
 ]

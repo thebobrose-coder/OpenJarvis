@@ -266,3 +266,66 @@ def test_cleanup_waits_for_in_progress_registration(state_dir, monkeypatch):
     assert not cleanup.is_alive()
     assert daemon_cmd._read_state()["pid"] == 1234
     assert (state_dir / "server.pid").read_text() == "1234"
+
+
+# -- a recycled PID ------------------------------------------------------------
+# The server can die without clearing server.pid (an abort, a closed console);
+# Windows then reuses the number, often for a browser. A live PID that runs some
+# other program must read as a stale registration, not as a running server.
+
+
+def _alive_as(monkeypatch, name):
+    monkeypatch.setattr(daemon_cmd, "process_alive", lambda pid: True)
+    monkeypatch.setattr(daemon_cmd, "process_image_name", lambda pid: name)
+
+
+@pytest.mark.parametrize(
+    "name", ["python.exe", "pythonw.exe", "python3.11", "jarvis.exe", "uv.exe"]
+)
+def test_a_server_image_still_blocks_a_second_server(state_dir, monkeypatch, name):
+    _alive_as(monkeypatch, name)
+    daemon_cmd._write_pid(4321, "127.0.0.1", 8000)
+
+    with pytest.raises(RuntimeError, match="Another server is already registered"):
+        daemon_cmd._write_pid(9876, "127.0.0.1", 8000)
+
+
+def test_a_recycled_pid_does_not_block_a_launch(state_dir, monkeypatch):
+    daemon_cmd._write_pid(4321, "127.0.0.1", 8000)
+    _alive_as(monkeypatch, "chrome.exe")
+
+    assert daemon_cmd._pid_alive(4321) is False
+    daemon_cmd._write_pid(9876, "127.0.0.1", 8000)
+    assert daemon_cmd._read_pid_file() == 9876
+    assert daemon_cmd._read_state()["pid"] == 9876
+
+
+def test_a_recycled_pid_is_cleared_on_read(state_dir, monkeypatch):
+    daemon_cmd._write_pid(4321, "127.0.0.1", 8000)
+    _alive_as(monkeypatch, "chrome.exe")
+
+    # `status` and `stop` read through here: they must not see (or kill) it.
+    assert daemon_cmd._read_pid() is None
+    assert not (state_dir / "server.pid").exists()
+    assert not (state_dir / "server.json").exists()
+
+
+def test_an_unreadable_name_stays_conservatively_alive(state_dir, monkeypatch):
+    _alive_as(monkeypatch, None)
+    assert daemon_cmd._pid_alive(4321) is True
+
+
+def test_a_dead_pid_is_not_alive_whatever_its_name(monkeypatch):
+    monkeypatch.setattr(daemon_cmd, "process_alive", lambda pid: False)
+    monkeypatch.setattr(daemon_cmd, "process_image_name", lambda pid: "python.exe")
+    assert daemon_cmd._pid_alive(4321) is False
+
+
+def test_process_image_name_reads_this_python():
+    import os
+
+    from openjarvis.core.utils import process_image_name
+
+    name = process_image_name(os.getpid())
+    assert name is not None and name.startswith("python")
+    assert process_image_name(0) is None

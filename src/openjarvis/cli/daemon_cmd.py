@@ -15,7 +15,11 @@ import click
 from rich.console import Console
 
 from openjarvis.core.config import DEFAULT_CONFIG_DIR, load_config
-from openjarvis.core.utils import process_alive, terminate_process
+from openjarvis.core.utils import (
+    process_alive,
+    process_image_name,
+    terminate_process,
+)
 from openjarvis.security.file_utils import secure_write_json, secure_write_text
 
 _PID_FILE = DEFAULT_CONFIG_DIR / "server.pid"
@@ -30,9 +34,28 @@ _LAUNCH_TOKEN_ENV = "OPENJARVIS_DAEMON_LAUNCH_TOKEN"
 LAUNCH_TOKEN_ENV = _LAUNCH_TOKEN_ENV
 
 
+def _is_server_image(name: str) -> bool:
+    """Whether an executable name can be this server: the venv's Python, the
+    ``jarvis`` entry point, or ``uv`` running it."""
+    stem = name.lower().removesuffix(".exe")
+    return stem.startswith(("python", "jarvis", "uv"))
+
+
 def _pid_alive(pid: int) -> bool:
-    """Return whether *pid* identifies a running process without signaling it."""
-    return process_alive(pid)
+    """Return whether *pid* is still the server that registered it.
+
+    A live PID is not enough: when the server dies without clearing its files
+    (an abort, a killed console), Windows soon hands the number to another
+    program, and trusting it would block every launch with "Another server is
+    already registered" and point `stop` at the wrong process. A PID whose
+    executable name is known and isn't Python, ``jarvis`` or ``uv`` is a
+    recycled PID, so the registration is stale. An unreadable name stays
+    conservatively alive, as before.
+    """
+    if not process_alive(pid):
+        return False
+    name = process_image_name(pid)
+    return name is None or _is_server_image(name)
 
 
 @contextmanager
