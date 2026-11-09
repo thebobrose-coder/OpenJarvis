@@ -561,6 +561,33 @@ describe('ThesisLane', () => {
     expect(html).not.toContain('3xl:col-span-7');
   });
 
+  it('a property whose lane is null keeps its third as a muted card; a feed without the key adds none', () => {
+    const props = [
+      { id: 'alpha', name: 'alpha', thesis_lane: LANE },
+      { id: 'beta', name: 'beta', thesis_lane: LANE },
+      { id: 'gamma', name: 'gamma', thesis_lane: null },
+      { id: 'delta', name: 'delta' },
+    ];
+    const html = renderToStaticMarkup(<ThesisLane properties={props as never} showProperty />);
+    expect(html.match(/data-thesis-lane=/g)).toHaveLength(2);
+    expect(html).toContain('data-thesis-lane-none="gamma"');
+    expect(html).not.toContain('delta');
+    expect(html.match(/col-span-12 lg:col-span-4 lg:h-\[860px\]/g)).toHaveLength(3);
+    expect(html.match(/opacity:0\.82/g)).toHaveLength(1);
+    // Every lane null: nothing at all.
+    expect(renderToStaticMarkup(<ThesisLane properties={[{ id: 'gamma', name: 'gamma', thesis_lane: null }] as never} showProperty />)).toBe('');
+  });
+
+  it('the Seedbank sets three properties side by side, lanes two by two, with no height band', () => {
+    const props = ['alpha', 'beta', 'gamma'].map((id) => ({ ...SEEDBANK.properties[0], id }));
+    const html = renderToStaticMarkup(<SeedbankStrip seedbank={{ ...SEEDBANK, properties: props }} selectedProperty={ALL_PROPERTIES} />);
+    expect(html).toContain('data-seedbank-columns="3"');
+    expect(html).toContain('lg:grid-cols-3');
+    expect(html.match(/data-seedbank-property=/g)).toHaveLength(3);
+    expect(html).not.toContain('lg:h-[420px]');
+    expect(html).not.toContain('3xl:grid-cols-6');
+  });
+
   it('says "Nothing queued" for an empty queue', () => {
     const html = panel(render({ feeds: withLane({ ...LANE, queued: 0, queue: [], next_up: null, flags: [] }) }));
     expect(html).toContain('Nothing queued');

@@ -76,7 +76,10 @@ export function ContentView(props: ContentViewProps) {
   const pending = applied.pending.filter((p) => matchesProperty(selected, p.property_id));
   const recent = applied.recent.filter((p) => matchesProperty(selected, p.property_id));
   const prompts = applied.prompts.filter((t) => matchesProperty(selected, t.property_id));
-  const thesisLanes = (seedbank?.properties ?? []).filter((p) => p.thesis_lane != null && matchesProperty(selected, p.id));
+  // Every shown property that carries the key: a null lane gets a muted card, so the row
+  // keeps one card per property. Nothing renders unless at least one lane is set.
+  const thesisLanes = (seedbank?.properties ?? []).filter((p) => p.thesis_lane !== undefined && matchesProperty(selected, p.id));
+  const anyThesisLane = thesisLanes.some((p) => p.thesis_lane != null);
   const alerts = (feeds.content_health.data?.alerts ?? []).filter((a) => !a.property || matchesProperty(selected, a.property));
 
   // The composer is open with a draft ("New seed" or a prompt's "Seed this");
@@ -213,7 +216,7 @@ export function ContentView(props: ContentViewProps) {
         />
       </div>
 
-      {thesisLanes.length > 0 && (
+      {anyThesisLane && (
         // The thesis lanes in a row of their own: three across at a third each.
         <div className="grid grid-cols-12 gap-4 mb-4">
           <ThesisLane properties={thesisLanes} showProperty={showProperty} />

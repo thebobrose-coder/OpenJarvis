@@ -203,20 +203,37 @@ export function laneSize(count: number): PanelSize {
   return count >= 3 ? 'trio' : 'half';
 }
 
+/** A property whose feed carries `thesis_lane: null`: a muted card, so the row
+ * keeps one card per property and the others keep their width. */
+function NoLanePanel({ propertyId, size }: { propertyId: string; size: PanelSize }) {
+  return (
+    <DashboardPanel icon={ListOrdered} title="Thesis lane" tag={propertyId} size={size} band="tall" dim>
+      <div data-thesis-lane-none={propertyId}>
+        <Quiet>No thesis lane for {propertyId} in today’s seedbank: Hermes’s run set none.</Quiet>
+      </div>
+    </DashboardPanel>
+  );
+}
+
 /**
- * The operator-only thesis lane (contract v1.8), one panel per property
- * whose `thesis_lane` is set, side by side in their own row. A mirror: no
- * queue, approve or fire control.
+ * The operator-only thesis lane (contract v1.8), one card per property side by
+ * side in their own row: the lane where `thesis_lane` is set, a muted card
+ * where it is null. Nothing renders unless some lane is set, or for a feed
+ * without the key. A mirror: no queue, approve or fire control.
  */
 export function ThesisLane({ properties, showProperty }: { properties: SeedbankProperty[]; showProperty: boolean }) {
-  const lanes = properties.filter((p) => p.thesis_lane != null);
-  if (lanes.length === 0) return null;
-  const size = laneSize(lanes.length);
+  const shown = properties.filter((p) => p.thesis_lane !== undefined);
+  if (!shown.some((p) => p.thesis_lane != null)) return null;
+  const size = laneSize(shown.length);
   return (
     <>
-      {lanes.map((p) => (
-        <LanePanel key={p.id} propertyId={p.id} lane={p.thesis_lane as Lane} showProperty={showProperty} size={size} />
-      ))}
+      {shown.map((p) =>
+        p.thesis_lane != null ? (
+          <LanePanel key={p.id} propertyId={p.id} lane={p.thesis_lane as Lane} showProperty={showProperty} size={size} />
+        ) : (
+          <NoLanePanel key={p.id} propertyId={p.id} size={size} />
+        ),
+      )}
     </>
   );
 }

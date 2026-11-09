@@ -85,9 +85,12 @@ function toneVar(tone: Tone): string {
   return tone === 'neutral' || tone === 'muted' ? 'border' : tone;
 }
 
-function PropertyRow({ property, showName }: { property: SeedbankProperty; showName: boolean }) {
+/** Properties side by side, one column each (up to three), so every channel shows at once. */
+const COLUMNS: Record<number, string> = { 1: '', 2: 'lg:grid-cols-2', 3: 'lg:grid-cols-3' };
+
+function PropertyRow({ property, showName, alone }: { property: SeedbankProperty; showName: boolean; alone: boolean }) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 min-w-0" data-seedbank-property={property.id}>
       {showName && (
         <div className="flex items-center gap-2 text-ui-11">
           <span className="font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>
@@ -96,7 +99,8 @@ function PropertyRow({ property, showName }: { property: SeedbankProperty; showN
           {property.channels?.length ? <span style={{ color: 'var(--color-text-tertiary)' }}>{property.channels.join(' · ')}</span> : null}
         </div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 3xl:grid-cols-6 gap-2">
+      {/* In a column, the lanes go two by two; one property alone spreads them across. */}
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-2 ${alone ? 'lg:grid-cols-4 3xl:grid-cols-6' : ''}`.trim()}>
         {property.lanes.map((lane) => (
           <LaneCard key={lane.lane} lane={lane} />
         ))}
@@ -123,7 +127,6 @@ export function SeedbankStrip({
       title="Seedbank"
       tag={seedbank ? `Target ${num(seedbank.target_runway_days)}-day runway` : undefined}
       size="full"
-      band="short"
       loading={loading}
       error={error}
     >
@@ -132,9 +135,10 @@ export function SeedbankStrip({
       ) : properties.length === 0 ? (
         <Quiet>No lanes for this property.</Quiet>
       ) : (
-        <div className="flex flex-col gap-4">
+        // No height band: the strip is as tall as its lanes, never a scroller.
+        <div className={`grid grid-cols-1 gap-x-6 gap-y-4 ${COLUMNS[Math.min(properties.length, 3)] ?? ''}`.trim()} data-seedbank-columns={Math.min(properties.length, 3)}>
           {properties.map((p) => (
-            <PropertyRow key={p.id} property={p} showName={properties.length > 1} />
+            <PropertyRow key={p.id} property={p} showName={properties.length > 1} alone={properties.length === 1} />
           ))}
         </div>
       )}
