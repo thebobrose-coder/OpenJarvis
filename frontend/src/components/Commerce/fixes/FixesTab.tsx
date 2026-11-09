@@ -515,7 +515,7 @@ function ClassPanel({
       title="Fix classes"
       tag="Tier control"
       size="third"
-      band="tall"
+      band="fill"
       headerExtra={
         classes.length > 0 ? (
           <Segmented<ClassView>
@@ -870,7 +870,7 @@ export function FixesTab({
         title="Catalog fixes"
         tag="Hermes · catalog-fixer"
         size="wide"
-        band="tall"
+        band="fill"
         loading={loading}
         error={error}
         actions={

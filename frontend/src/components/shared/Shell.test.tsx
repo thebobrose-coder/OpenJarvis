@@ -51,6 +51,7 @@ describe('DashboardPanel', () => {
     expect(html).toContain('lg:h-[420px]');
     expect(html).toContain('overflow-y-auto');
     expect(panel({ band: 'tall' })).toContain('lg:h-[860px]');
+    expect(panel({ band: 'fill' })).toContain('lg:h-[calc(100dvh-13rem)]');
     expect(panel({})).not.toContain('overflow-y-auto');
   });
   it('headerExtra sits between the header and the body', () => {

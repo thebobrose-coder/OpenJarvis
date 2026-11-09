@@ -4,8 +4,9 @@ import { Loader2, RefreshCw, RotateCw } from 'lucide-react';
 export type PanelSize = 'hero' | 'tall' | 'third' | 'trio' | 'half' | 'wide' | 'quarter' | 'sixth' | 'full';
 
 /** A row's height (widescreen plan, Phase 0): panels in a banded row scroll inside
- * instead of growing the row. short = 420 px, tall = two shorts plus the gap. */
-export type PanelBand = 'short' | 'tall';
+ * instead of growing the row. short = 420 px, tall = two shorts plus the gap, fill = the
+ * rest of the viewport (for a row with nothing beneath it). */
+export type PanelBand = 'short' | 'tall' | 'fill';
 
 /* Spans at lg (today's layout) and at 3xl, the operator's 2560 px viewport, where a
  * third is 735 px: wider than today's half. */
@@ -25,6 +26,7 @@ const SIZE_CLASSES: Record<PanelSize, string> = {
 const BAND_CLASSES: Record<PanelBand, string> = {
   short: 'lg:h-[420px]',
   tall: 'lg:h-[860px]',
+  fill: 'lg:h-[calc(100dvh-13rem)]',
 };
 
 interface DashboardPanelProps {
