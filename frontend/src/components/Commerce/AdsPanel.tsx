@@ -31,7 +31,7 @@ export function AdsPanel({ stores, loading, error }: { stores: DailyStore[]; loa
             <Quiet>No campaigns have run yet.</Quiet>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-[12px] tabular-nums">
+              <table className="w-full text-ui-12 tabular-nums">
                 <thead>
                   <tr style={{ color: 'var(--color-text-tertiary)' }}>
                     <th className="py-1.5 px-2 text-left font-medium">Campaign</th>
@@ -49,7 +49,7 @@ export function AdsPanel({ stores, loading, error }: { stores: DailyStore[]; loa
                       <tr key={i} style={{ borderTop: '1px solid var(--color-border)' }}>
                         <td className="py-1.5 px-2">
                           <div style={{ color: 'var(--color-text)' }}>{c.sessionGoogleAdsCampaignName || '(unnamed)'}</div>
-                          {multi && <div className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>{c.store}</div>}
+                          {multi && <div className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>{c.store}</div>}
                         </td>
                         <td className="py-1.5 px-2 text-right">{money(c.advertiserAdCost ?? 0, c.currency)}</td>
                         <td className="py-1.5 px-2 text-right">{num(c.advertiserAdClicks)}</td>
@@ -65,13 +65,13 @@ export function AdsPanel({ stores, loading, error }: { stores: DailyStore[]; loa
           )}
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
               Top ads search queries
             </span>
             {queries.length === 0 ? (
               <Quiet>None yet.</Quiet>
             ) : (
-              <table className="w-full text-[12px] tabular-nums">
+              <table className="w-full text-ui-12 tabular-nums">
                 <tbody>
                   {queries.slice(0, 10).map(({ row, store }, i) => (
                     <tr key={i} style={{ borderTop: i ? '1px solid var(--color-border)' : undefined }}>
@@ -83,7 +83,7 @@ export function AdsPanel({ stores, loading, error }: { stores: DailyStore[]; loa
                           </td>
                         );
                       })}
-                      {multi && <td className="py-1 px-2 text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>{store}</td>}
+                      {multi && <td className="py-1 px-2 text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>{store}</td>}
                     </tr>
                   ))}
                 </tbody>

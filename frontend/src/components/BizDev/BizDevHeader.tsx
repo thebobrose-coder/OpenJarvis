@@ -49,7 +49,7 @@ export function BizDevHeader({
           >
             <Telescope size={11} /> Research more
           </SmallButton>
-          <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
             {researchStatus === 'queued'
               ? 'Queued -- the batch appears within a few minutes'
               : researchStatus === 'error'
@@ -68,7 +68,7 @@ export function BizDevHeader({
         />
       )}
       {lines.length === 1 && (
-        <div className="text-[12px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+        <div className="text-ui-12 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
           {lines[0].display_name}
         </div>
       )}
@@ -79,12 +79,12 @@ export function BizDevHeader({
         )}
         {pipeline && <FeedFreshness label="Pipeline" ageSeconds={pipeline.age_seconds} stale={pipeline.stale} staleAfterSeconds={WEEK} />}
         {stats && (
-          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             {num(stats.researched)} of {num(stats.universe)} researched ({num(stats.coverage_pct, 0)}%)
           </span>
         )}
         {stats && (
-          <span className="flex flex-wrap items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="flex flex-wrap items-center gap-1 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             This month ${stats.cost.month_usd.toFixed(2)}:
             {Object.entries(stats.cost.by_engine).map(([engine, usd]) => (
               <Chip key={engine} tone="muted">

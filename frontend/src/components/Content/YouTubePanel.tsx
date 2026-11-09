@@ -54,15 +54,15 @@ function goTo(id: string) {
 function VideoRows({ property, videos, label }: { property: string; videos: YouTubeVideo[]; label: string }) {
   return (
     <div className="flex flex-col gap-1" data-kind-group={label}>
-      <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
         {label} ({videos.length})
       </span>
       {videos.length === 0 ? (
         <Quiet>None in the last {WINDOW_DAYS} days.</Quiet>
       ) : (
-        <table className="w-full text-[12px] tabular-nums">
+        <table className="w-full text-ui-12 tabular-nums">
           <thead>
-            <tr className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+            <tr className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
               <th className="py-1 px-2 text-left font-normal">Video</th>
               <th className="py-1 px-2 text-right font-normal">Views</th>
               <th className="py-1 px-2 text-right font-normal">Avg viewed</th>
@@ -79,7 +79,7 @@ function VideoRows({ property, videos, label }: { property: string; videos: YouT
                       <span style={{ color: 'var(--color-accent)' }}>
                         <ExtLink url={watchUrl(v.video_id)}>{v.title || v.video_id}</ExtLink>
                       </span>
-                      <span className="flex flex-wrap items-center gap-1.5 text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                      <span className="flex flex-wrap items-center gap-1.5 text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
                         {v.published_at.slice(0, 10)}
                         {v.duration_s != null && <span>{fmtSeconds(v.duration_s)}</span>}
                         {v.episode_id ? (
@@ -117,14 +117,14 @@ function ChannelCard({ ch, now }: { ch: YouTubeChannel; now: number }) {
   const { shorts, long } = recentVideos(ch, now);
   return (
     <div className="flex flex-col gap-2 rounded-lg p-3 min-w-0" style={{ background: 'var(--color-bg-secondary)' }} data-channel={ch.property}>
-      <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+      <div className="flex flex-wrap items-center gap-1.5 text-ui-12">
         <span className="font-medium" style={{ color: 'var(--color-text)' }}>
           {ch.channel_title || ch.property}
         </span>
         <Chip tone="accent">{ch.property}</Chip>
       </div>
       {ch.error && (
-        <p className="text-[11.5px]" style={{ color: 'var(--color-warning)' }} data-channel-error>
+        <p className="text-ui-11-5" style={{ color: 'var(--color-warning)' }} data-channel-error>
           {ch.error}
           {isTokenError(ch.error) && (
             <>
@@ -137,7 +137,7 @@ function ChannelCard({ ch, now }: { ch: YouTubeChannel; now: number }) {
       <VideoRows property={ch.property} videos={long} label="Long-form" />
       <VideoRows property={ch.property} videos={shorts} label="Shorts" />
       {ch.kind_rule && (
-        <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }} data-kind-rule>
+        <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }} data-kind-rule>
           Short or long by: {ch.kind_rule}
         </span>
       )}
@@ -149,19 +149,19 @@ function ChannelCard({ ch, now }: { ch: YouTubeChannel; now: number }) {
 export function SparkBlock({ spark }: { spark: Spark }) {
   return (
     <div id={`spark-${spark.flight}`} className="flex flex-col gap-1.5 rounded-lg p-3" style={{ border: '1px solid var(--color-border)' }} data-spark={spark.flight}>
-      <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+      <div className="flex flex-wrap items-center gap-1.5 text-ui-12">
         <span className="font-medium" style={{ color: 'var(--color-text)' }}>
           Spark: {spark.flight}
         </span>
         {spark.pick ? <Chip tone="success">pick ready</Chip> : <Chip tone="muted">no pick</Chip>}
       </div>
       {spark.rule && (
-        <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
           {spark.rule}
         </span>
       )}
       {spark.candidates.length > 0 && (
-        <ol className="flex flex-col gap-1 text-[12px] tabular-nums">
+        <ol className="flex flex-col gap-1 text-ui-12 tabular-nums">
           {spark.candidates.map((c, i) => (
             <li key={c.video_id} className="flex flex-wrap items-center gap-1.5" data-candidate={c.video_id}>
               <span style={{ color: 'var(--color-text-tertiary)' }}>{i + 1}.</span>
@@ -176,11 +176,11 @@ export function SparkBlock({ spark }: { spark: Spark }) {
           ))}
         </ol>
       )}
-      <span className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+      <span className="text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
         {spark.reason}
       </span>
       {spark.pick && (
-        <span className="text-[11.5px]" style={{ color: 'var(--color-text)' }}>
+        <span className="text-ui-11-5" style={{ color: 'var(--color-text)' }}>
           The swap is yours to make, in Google Ads.
         </span>
       )}
@@ -221,7 +221,7 @@ export function YouTubePanel({ feed, selectedProperty, now, loading, error }: Yo
           <Quiet>Not available from YouTube: {(feed?.not_available ?? []).join('; ')}.</Quiet>
         )}
         {quota && (
-          <span className="text-[10.5px] tabular-nums" style={{ color: quota.stopped ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }} data-quota>
+          <span className="text-ui-10-5 tabular-nums" style={{ color: quota.stopped ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }} data-quota>
             API quota today: {fmtNum(quota.used_today)} / {fmtNum(quota.cap)} units{quota.stopped ? ' (stopped for the rest of the Pacific day)' : ''}
           </span>
         )}

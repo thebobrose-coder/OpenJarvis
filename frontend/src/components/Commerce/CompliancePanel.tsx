@@ -89,8 +89,8 @@ function RuleGroups({ findings, onAskDesk }: { findings: ComplianceFindings; onA
   if (groups.length === 0) return null;
   const now = Date.now();
   return (
-    <div className="flex flex-col gap-1 text-[11.5px]" data-by-rule style={{ color: 'var(--color-text-secondary)' }}>
-      <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+    <div className="flex flex-col gap-1 text-ui-11-5" data-by-rule style={{ color: 'var(--color-text-secondary)' }}>
+      <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
         By rule
       </span>
       {groups.map((g) => {
@@ -176,12 +176,12 @@ export function CompliancePanel({
       ) : (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[12.5px]" data-open-count style={{ color: 'var(--color-text)' }}>
+            <span className="text-ui-12-5" data-open-count style={{ color: 'var(--color-text)' }}>
               {num(findings.counts.open)} open finding{findings.counts.open === 1 ? '' : 's'}
               {findings.counts.new ? ` · ${num(findings.counts.new)} new` : ''}
             </span>
             {(findings.counts.block != null || findings.counts.fix != null) && (
-              <span className="text-[11.5px]" data-severity-counts style={{ color: 'var(--color-text-secondary)' }}>
+              <span className="text-ui-11-5" data-severity-counts style={{ color: 'var(--color-text-secondary)' }}>
                 <span style={{ color: findings.counts.block ? 'var(--color-error)' : undefined }}>{num(findings.counts.block ?? 0)} block</span>
                 {' · '}
                 {num(findings.counts.fix ?? 0)} fix
@@ -195,7 +195,7 @@ export function CompliancePanel({
           </div>
           <RuleGroups findings={findings} onAskDesk={onAskDesk} />
           {majority.length > 0 && (
-            <details className="text-[11.5px]" data-majority style={{ color: 'var(--color-text-secondary)' }}>
+            <details className="text-ui-11-5" data-majority style={{ color: 'var(--color-text-secondary)' }}>
               <summary className="cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}>
                 Opened on writer copy by majority ({majority.length})
               </summary>
@@ -209,7 +209,7 @@ export function CompliancePanel({
             </details>
           )}
           {advisory.length > 0 && (
-            <details className="text-[11.5px]" data-advisory style={{ color: 'var(--color-text-secondary)' }}>
+            <details className="text-ui-11-5" data-advisory style={{ color: 'var(--color-text-secondary)' }}>
               <summary className="cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}>
                 Advisory ({advisory.length})
               </summary>

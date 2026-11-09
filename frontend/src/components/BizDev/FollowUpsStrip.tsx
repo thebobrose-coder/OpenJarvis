@@ -67,7 +67,7 @@ export function FollowUpsStrip({
               style={{ background: 'var(--color-bg-secondary)' }}
             >
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[12.5px] font-medium" style={{ color: 'var(--color-text)' }}>
+                <span className="text-ui-12-5 font-medium" style={{ color: 'var(--color-text)' }}>
                   {p?.name ?? `Prospect ${f.prospect_id}`}
                 </span>
                 <Chip tone="accent">touch {f.touch}</Chip>
@@ -89,7 +89,7 @@ export function FollowUpsStrip({
                 />
               ) : (
                 <>
-                  <div className="text-[12px]" style={{ color: 'var(--color-text)' }}>
+                  <div className="text-ui-12" style={{ color: 'var(--color-text)' }}>
                     {f.draft.subject}
                   </div>
                   <MailActions

@@ -31,7 +31,7 @@ export function eventTone(type: string): Tone {
 }
 
 // Columns: time, type, sleeve, then the text, which wraps in its own column.
-const ROWS = 'grid grid-cols-[auto_auto_auto_minmax(0,1fr)] gap-x-2 gap-y-1.5 items-baseline text-[12px]';
+const ROWS = 'grid grid-cols-[auto_auto_auto_minmax(0,1fr)] gap-x-2 gap-y-1.5 items-baseline text-ui-12';
 
 /**
  * The last 20 events across sleeves, or one sleeve's, without repeats: a
@@ -78,18 +78,18 @@ export function EventsPanel({ status, loading, error }: { status: TradingStatus 
                 <span>
                   <Chip tone={eventTone(e.type)}>{e.type}</Chip>
                 </span>
-                <span className="whitespace-nowrap text-[11.5px]">
+                <span className="whitespace-nowrap text-ui-11-5">
                   <SleeveName name={e.sleeve} muted />
                 </span>
                 <span className="min-w-0 break-words" style={{ color: 'var(--color-text)' }}>
                   {e.summary ? localizeStamps(e.summary) : ''}
                   {e.repeat && (
-                    <span className="ml-1.5 text-[11px] whitespace-nowrap" data-event-repeat={e.repeat} style={{ color: 'var(--color-text-tertiary)' }}>
+                    <span className="ml-1.5 text-ui-11 whitespace-nowrap" data-event-repeat={e.repeat} style={{ color: 'var(--color-text-tertiary)' }}>
                       ×{e.repeat} since {shortDateTime(e.first_ts)}
                     </span>
                   )}
                   {e.reason && (
-                    <span className="block text-[11px]" data-event-reason style={{ color: 'var(--color-text-tertiary)' }}>
+                    <span className="block text-ui-11" data-event-reason style={{ color: 'var(--color-text-tertiary)' }}>
                       {localizeStamps(e.reason)}
                     </span>
                   )}
@@ -103,7 +103,7 @@ export function EventsPanel({ status, loading, error }: { status: TradingStatus 
         {alerts.length === 0 ? (
           <Quiet>No alerts in the last 24 hours.</Quiet>
         ) : (
-          <div className="grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-2 gap-y-1.5 items-baseline text-[12px]" data-alerts>
+          <div className="grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-2 gap-y-1.5 items-baseline text-ui-12" data-alerts>
             {alerts.map((a, i) => (
               <div key={`${a.ts}-${i}`} className="contents">
                 <span className="tabular-nums whitespace-nowrap" style={{ color: 'var(--color-text-tertiary)' }}>

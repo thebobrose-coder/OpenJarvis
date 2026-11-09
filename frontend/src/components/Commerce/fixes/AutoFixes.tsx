@@ -31,8 +31,8 @@ export function AutoFixesList({
   const [asking, setAsking] = useState<string | null>(null);
   if (!fixes.length) return null;
   return (
-    <section className="flex flex-col gap-1.5 text-[12px]" data-auto-fixes>
-      <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
+    <section className="flex flex-col gap-1.5 text-ui-12" data-auto-fixes>
+      <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
         Fixes applied automatically ({fixes.length})
       </span>
       <ul className="flex flex-col gap-1.5">
@@ -49,7 +49,7 @@ export function AutoFixesList({
                 <Chip tone="muted">
                   {ruleLabel(f.fix_class.rule)} · {f.fix_class.field}
                 </Chip>
-                <span className="tabular-nums text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <span className="tabular-nums text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                   {shortDateTime(f.applied_at)}
                 </span>
                 {pending[f.patch_id] && <Chip tone="muted">revert requested · recording…</Chip>}
@@ -74,7 +74,7 @@ export function AutoFixesList({
                 </div>
               )}
               {notes[f.patch_id] && (
-                <span className="text-[11.5px]" role="status" style={{ color: 'var(--color-warning)' }}>
+                <span className="text-ui-11-5" role="status" style={{ color: 'var(--color-warning)' }}>
                   {notes[f.patch_id]}
                 </span>
               )}

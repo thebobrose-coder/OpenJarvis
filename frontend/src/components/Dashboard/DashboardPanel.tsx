@@ -1,10 +1,16 @@
 import type { ComponentType, ReactNode } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw, RotateCw } from 'lucide-react';
 
-export type PanelSize = 'hero' | 'tall' | 'third' | 'trio' | 'half' | 'wide' | 'quarter' | 'full';
+export type PanelSize = 'hero' | 'tall' | 'third' | 'trio' | 'half' | 'wide' | 'quarter' | 'sixth' | 'full';
 
+/** A row's height (widescreen plan, Phase 0): panels in a banded row scroll inside
+ * instead of growing the row. short = 420 px, tall = two shorts plus the gap. */
+export type PanelBand = 'short' | 'tall';
+
+/* Spans at lg (today's layout) and at 3xl, the operator's 2560 px viewport, where a
+ * third is 735 px: wider than today's half. */
 const SIZE_CLASSES: Record<PanelSize, string> = {
-  hero: 'col-span-12 lg:col-span-5',
+  hero: 'col-span-12 lg:col-span-5 3xl:col-span-4',
   tall: 'col-span-12 md:col-span-6 lg:col-span-4',
   third: 'col-span-12 sm:col-span-6 lg:col-span-4',
   /** A row of exactly three: stacked, then three across, never 2 + 1. */
@@ -12,7 +18,13 @@ const SIZE_CLASSES: Record<PanelSize, string> = {
   half: 'col-span-12 lg:col-span-6',
   wide: 'col-span-12 lg:col-span-8',
   quarter: 'col-span-6 lg:col-span-3',
+  sixth: 'col-span-6 lg:col-span-3 3xl:col-span-2',
   full: 'col-span-12',
+};
+
+const BAND_CLASSES: Record<PanelBand, string> = {
+  short: 'lg:h-[420px]',
+  tall: 'lg:h-[860px]',
 };
 
 interface DashboardPanelProps {
@@ -23,8 +35,12 @@ interface DashboardPanelProps {
   loading?: boolean;
   error?: string | null;
   onRegenerate?: () => void;
+  /** 'regenerate' asks Hermes to rebuild (a flag file); 'reload' only re-fetches here. */
+  regenerateKind?: 'regenerate' | 'reload';
   regenerating?: boolean;
   size?: PanelSize;
+  /** The row's height band; the body scrolls inside it. */
+  band?: PanelBand;
   /** Demoted styling for the existing energy/cost/trace panels. */
   dim?: boolean;
   /** Subtle accent border for the new priority briefing panels. */
@@ -32,6 +48,8 @@ interface DashboardPanelProps {
   onTitleClick?: () => void;
   /** Extra header controls, e.g. a speaker button. */
   actions?: ReactNode;
+  /** A second header row, e.g. a Segmented for tabs inside the panel. */
+  headerExtra?: ReactNode;
   /** The header icon's colour, when the panel stands for one series (a
    * trading sleeve); the accent otherwise. */
   iconColor?: string;
@@ -51,18 +69,21 @@ export function DashboardPanel({
   loading,
   error,
   onRegenerate,
+  regenerateKind = 'regenerate',
   regenerating,
   size = 'third',
+  band,
   dim,
   priority,
   onTitleClick,
   actions,
+  headerExtra,
   iconColor,
   children,
 }: DashboardPanelProps) {
   return (
     <div
-      className={`flex flex-col gap-3 rounded-xl p-4 ${SIZE_CLASSES[size]}`}
+      className={`flex flex-col gap-3 rounded-xl p-4 ${SIZE_CLASSES[size]} ${band ? `${BAND_CLASSES[band]} min-h-0` : ''}`.trim()}
       style={{
         background: 'var(--color-surface)',
         border: `1px solid ${priority ? 'var(--color-accent-subtle)' : 'var(--color-border)'}`,
@@ -78,7 +99,7 @@ export function DashboardPanel({
         >
           <Icon size={14} style={{ color: iconColor ?? 'var(--color-accent)', flexShrink: 0 }} />
           <span
-            className="text-[13px] font-semibold truncate text-left"
+            className="text-ui-13 font-semibold truncate text-left"
             style={{ color: 'var(--color-text)' }}
           >
             {title}
@@ -87,7 +108,7 @@ export function DashboardPanel({
         <div className="flex items-center gap-2 shrink-0">
           {actions}
           {tag && (
-            <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
               {tag}
             </span>
           )}
@@ -97,21 +118,27 @@ export function DashboardPanel({
               disabled={regenerating}
               className="flex items-center justify-center w-6 h-6 rounded-md transition-colors cursor-pointer disabled:opacity-50"
               style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)' }}
-              title="Regenerate"
+              title={regenerateKind === 'reload' ? 'Reload' : 'Regenerate'}
             >
-              <RefreshCw size={11} className={regenerating ? 'animate-spin' : ''} />
+              {regenerateKind === 'reload' ? (
+                <RotateCw size={11} className={regenerating ? 'animate-spin' : ''} />
+              ) : (
+                <RefreshCw size={11} className={regenerating ? 'animate-spin' : ''} />
+              )}
             </button>
           )}
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 text-[12.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+      {headerExtra && <div className="shrink-0">{headerExtra}</div>}
+
+      <div className={`flex-1 min-h-0 text-ui-12-5 ${band ? 'overflow-y-auto pr-1' : ''}`.trim()} style={{ color: 'var(--color-text-secondary)' }}>
         {loading ? (
           <div className="flex items-center justify-center py-6" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={16} className="animate-spin" />
           </div>
         ) : error ? (
-          <div style={{ color: 'var(--color-error)' }}>{error}</div>
+          <div className="line-clamp-3 break-words" style={{ color: 'var(--color-error)' }} title={error}>{error}</div>
         ) : (
           children
         )}

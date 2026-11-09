@@ -21,12 +21,19 @@ import {
   ScrollText,
   Database,
   CandlestickChart,
+  Inbox,
+  Clapperboard,
+  Gauge,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { LatestNewsPanel } from './LatestNewsPanel';
 import { StackHealthDock } from './StackHealthDock';
 import { useAppStore } from '../../lib/store';
 import { modelDisplayName } from '../../lib/chat-routing';
+
+/** Pages the widescreen plan adds; each flips on in its own phase so no dead route
+ * ever shows in the nav. */
+export const ROUTES_READY: { inbox: boolean; studio: boolean; ops: boolean } = { inbox: false, studio: false, ops: false };
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -64,16 +71,19 @@ export function Sidebar() {
   const navItems = [
     { path: '/', icon: MessageSquare, label: 'Chat' },
     { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
+    { path: '/inbox', icon: Inbox, label: 'Inbox', ready: ROUTES_READY.inbox },
     { path: '/bizdev', icon: Handshake, label: 'Business Dev' },
     { path: '/commerce', icon: ShoppingBag, label: 'Commerce' },
     { path: '/content', icon: Sprout, label: 'Content' },
+    { path: '/studio', icon: Clapperboard, label: 'Studio', ready: ROUTES_READY.studio },
     { path: '/trading', icon: CandlestickChart, label: 'Trading' },
     { path: '/agents', icon: Bot, label: 'Desks' },
+    { path: '/ops', icon: Gauge, label: 'Ops', ready: ROUTES_READY.ops },
     { path: '/data-sources', icon: Database, label: 'Data Sources' },
     { path: '/logs', icon: ScrollText, label: 'Logs' },
     { path: '/settings', icon: Settings, label: 'Settings' },
     { path: '/get-started', icon: Rocket, label: 'Get Started' },
-  ];
+  ].filter((item) => item.ready !== false);
 
   return (
     <>
@@ -166,14 +176,14 @@ export function Sidebar() {
                   : (selectedModel && modelDisplayName(selectedModel)) || serverInfo?.model || 'Select model'}
               </span>
               {modelLoading && (
-                <span className="text-[10px] block text-left" style={{ color: 'var(--color-accent)' }}>
+                <span className="text-ui-10 block text-left" style={{ color: 'var(--color-accent)' }}>
                   Loading model...
                 </span>
               )}
             </div>
             {!modelLoading && (
               <kbd
-                className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                className="text-ui-10 px-1.5 py-0.5 rounded font-mono"
                 style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-tertiary)' }}
               >
                 ⌘K
@@ -204,15 +214,8 @@ export function Sidebar() {
             <ConversationList searchQuery={searchQuery} />
           </div>
 
-          {/* Stack health (hq 0017 A2) -- one quiet line when green, a
-              strip when something is wrong; sits on top of Latest News */}
-          <StackHealthDock />
-
-          {/* Latest News -- breaking news + Daily Brief anchor, persists
-              across pages, sits above the nav menu */}
-          <LatestNewsPanel />
-
-          {/* Bottom nav */}
+          {/* Nav: a fixed position under the conversation list; the docks below
+              it come and go with their data (widescreen plan, Phase 0) */}
           <nav className="px-2 pb-3 pt-2 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--color-border)' }}>
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
@@ -249,6 +252,17 @@ export function Sidebar() {
               );
             })}
           </nav>
+
+          <div style={{ borderTop: '1px solid var(--color-border)' }} />
+
+          {/* Stack health (hq 0017 A2) -- one quiet line when green, a
+              strip when something is wrong; sits on top of Latest News */}
+          <StackHealthDock />
+
+          {/* Latest News -- breaking news + Daily Brief anchor, persists
+              across pages, sits above the nav menu */}
+          <LatestNewsPanel />
+
         </div>
       </aside>
     </>

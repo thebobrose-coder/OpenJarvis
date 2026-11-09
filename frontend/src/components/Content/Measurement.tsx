@@ -61,7 +61,7 @@ export function Td({ children, right, title }: { children: ReactNode; right?: bo
 
 export function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+    <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
       {children}
     </span>
   );
@@ -86,7 +86,7 @@ export function TargetsHitLine({ post }: { post: Pick<Post, 'target_queries' | '
   const check = latestCheck(post.targets_hit);
   if (!check && !post.target_queries?.length) return null;
   return (
-    <span className="flex flex-wrap items-center gap-1 text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+    <span className="flex flex-wrap items-center gap-1 text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
       {check ? (
         <>
           <span>Targets, day {check.day}:</span>
@@ -204,7 +204,7 @@ export function LongFormTable({
     <div className="flex flex-col gap-1 min-w-0">
       <SectionLabel>Long-form pages ({posts.length})</SectionLabel>
       <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-        <table className="w-full text-[12px] tabular-nums">
+        <table className="w-full text-ui-12 tabular-nums">
           <thead>
             <tr style={{ color: 'var(--color-text-tertiary)' }}>
               <Th>Page</Th>
@@ -221,7 +221,7 @@ export function LongFormTable({
                     <span className="line-clamp-2" style={{ color: 'var(--color-text)' }}>
                       {p.excerpt || p.post_id}
                     </span>
-                    <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
                       {showProperty ? `${p.property} · ` : ''}
                       {p.url ? <ExtLink url={p.url}>{p.site_path}</ExtLink> : p.site_path}
                       {p.pillar ? ` · ${p.pillar}` : ''}
@@ -257,7 +257,7 @@ export function LanePagesTable({ pages, showProperty }: { pages: (LanePage & { p
     <div className="flex flex-col gap-1 min-w-0">
       <SectionLabel>Short-form feed pages, per lane</SectionLabel>
       <div className="overflow-x-auto">
-        <table className="w-full text-[12px] tabular-nums">
+        <table className="w-full text-ui-12 tabular-nums">
           <thead>
             <tr style={{ color: 'var(--color-text-tertiary)' }}>
               <Th>Feed page</Th>
@@ -276,7 +276,7 @@ export function LanePagesTable({ pages, showProperty }: { pages: (LanePage & { p
               <tr key={`${p.property}:${p.site_path}`} style={{ borderTop: '1px solid var(--color-border)' }}>
                 <Td>
                   <span style={{ color: 'var(--color-text)' }}>{p.site_path}</span>
-                  <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
                     {' '}
                     {[showProperty ? p.property : null, humanize(p.content_type)].filter(Boolean).join(' · ')}
                   </span>

@@ -79,7 +79,7 @@ export function DismissControl({ id, busy, onDismiss }: { id: string; busy?: boo
         maxLength={DISMISS_NOTE_MAX}
         placeholder="Note (optional)"
         onChange={(e) => setNote(e.target.value.replace(/[\r\n]+/g, ' '))}
-        className="text-[11px] rounded px-1.5 py-0.5 min-w-0 w-40"
+        className="text-ui-11 rounded px-1.5 py-0.5 min-w-0 w-40"
         style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
       />
       <span data-confirm-dismiss={id}>
@@ -118,7 +118,7 @@ function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) 
   return (
     <div className="flex flex-col gap-1 px-2 pb-1.5">
       {patchId && (
-        <span className="flex items-center gap-1.5 text-[11px]">
+        <span className="flex items-center gap-1.5 text-ui-11">
           <button
             type="button"
             data-patch-ready={patchId}
@@ -172,7 +172,7 @@ function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) 
                 value={days}
                 disabled={busy}
                 onChange={(e) => setDays(Number(e.target.value))}
-                className="text-[11px] rounded px-1 py-0.5"
+                className="text-ui-11 rounded px-1 py-0.5"
                 style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
               >
                 {SNOOZE_DAYS.map((d) => (
@@ -192,7 +192,7 @@ function Actions({ item, actions }: { item: WaitingItem; actions: RowActions }) 
       )}
       {status && (
         <span
-          className="text-[11px]"
+          className="text-ui-11"
           data-row-status={status.kind}
           style={{ color: status.kind === 'error' ? 'var(--color-error)' : 'var(--color-text-secondary)' }}
         >
@@ -249,11 +249,11 @@ function Row({
         }
       >
         <span className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[12.5px] truncate" style={{ color: 'var(--color-text)' }}>
+          <span className="text-ui-12-5 truncate" style={{ color: 'var(--color-text)' }}>
             {title}
           </span>
         </span>
-        <span className="flex flex-wrap items-center gap-1.5 text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="flex flex-wrap items-center gap-1.5 text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
           {item.scope && <Chip tone="muted">{item.scope}</Chip>}
           {due && <Chip tone={overdue ? 'error' : 'warning'}>{due}</Chip>}
           {seen >= 2 && (
@@ -264,7 +264,7 @@ function Row({
           {age && <span>{ago(age, now)}</span>}
         </span>
         {(!compact || notice) && detail && (
-          <span className="text-[11.5px] line-clamp-2" style={{ color: 'var(--color-text-secondary)' }} data-detail>
+          <span className="text-ui-11-5 line-clamp-2" style={{ color: 'var(--color-text-secondary)' }} data-detail>
             {detail}
           </span>
         )}
@@ -312,12 +312,12 @@ export function WaitingListView({
   return (
     <div className="flex flex-col gap-3">
       {stale.length > 0 && (
-        <p className="text-[11px]" style={{ color: 'var(--color-warning)' }} data-stale>
+        <p className="text-ui-11" style={{ color: 'var(--color-warning)' }} data-stale>
           {stale.map((s) => `${s.label}: ${s.error ? 'unavailable' : fmtAge(s.age)}`).join(' · ')}
         </p>
       )}
       {groups.length === 0 ? (
-        <div className="flex items-center gap-2 py-4 text-[12.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+        <div className="flex items-center gap-2 py-4 text-ui-12-5" style={{ color: 'var(--color-text-secondary)' }}>
           <CheckCircle size={15} style={{ opacity: 0.5 }} />
           {empty}
         </div>
@@ -331,7 +331,7 @@ export function WaitingListView({
           return (
             <section key={g.kind} data-group={g.kind}>
               <h3
-                className="flex items-center justify-between text-[10.5px] uppercase tracking-wide px-2 mb-0.5"
+                className="flex items-center justify-between text-ui-10-5 uppercase tracking-wide px-2 mb-0.5"
                 style={{ color: 'var(--color-text-tertiary)' }}
               >
                 <span>{g.label}</span>
@@ -343,7 +343,7 @@ export function WaitingListView({
                 ))}
               </ul>
               {more > 0 && limit == null && (
-                <p className="text-[10.5px] px-2" style={{ color: 'var(--color-text-tertiary)' }}>
+                <p className="text-ui-10-5 px-2" style={{ color: 'var(--color-text-tertiary)' }}>
                   + {more} more on the page
                 </p>
               )}
@@ -356,7 +356,7 @@ export function WaitingListView({
           type="button"
           data-more
           onClick={onMore}
-          className="self-start text-[11px] px-2 cursor-pointer"
+          className="self-start text-ui-11 px-2 cursor-pointer"
           style={{ background: 'transparent', border: 'none', color: 'var(--color-accent)' }}
         >
           {total - shownAll} more
@@ -370,7 +370,7 @@ export function WaitingListView({
 export function FiledView({ rows, onOpen }: { rows: FiledRow[]; onOpen: (row: FiledRow) => void }) {
   if (rows.length === 0) {
     return (
-      <div className="flex items-center gap-2 py-4 text-[12.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+      <div className="flex items-center gap-2 py-4 text-ui-12-5" style={{ color: 'var(--color-text-secondary)' }}>
         <CheckCircle size={15} style={{ opacity: 0.5 }} />
         {EMPTY_LANE.fyi}
       </div>
@@ -385,7 +385,7 @@ export function FiledView({ rows, onOpen }: { rows: FiledRow[]; onOpen: (row: Fi
             data-filed={r.key}
             data-href={r.href}
             onClick={() => onOpen(r)}
-            className="w-full text-left flex items-center justify-between gap-2 rounded-md px-2 py-1.5 cursor-pointer text-[12.5px]"
+            className="w-full text-left flex items-center justify-between gap-2 rounded-md px-2 py-1.5 cursor-pointer text-ui-12-5"
             style={{ background: 'transparent', border: 'none', color: 'var(--color-text)' }}
           >
             <span>{r.label}</span>
@@ -396,9 +396,9 @@ export function FiledView({ rows, onOpen }: { rows: FiledRow[]; onOpen: (row: Fi
           {r.notes && r.notes.length > 0 && (
             <ul className="flex flex-col gap-0.5 px-2 pb-1.5">
               {r.notes.map((n) => (
-                <li key={n.id} data-filed-note={n.id} className="flex flex-col text-[11.5px]">
+                <li key={n.id} data-filed-note={n.id} className="flex flex-col text-ui-11-5">
                   <span style={{ color: 'var(--color-text-secondary)' }}>{n.title}</span>
-                  <span className="flex flex-wrap items-center gap-1.5 text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <span className="flex flex-wrap items-center gap-1.5 text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
                     {n.store && <Chip tone="muted">{n.store}</Chip>}
                     <span>{n.note}</span>
                   </span>
@@ -445,7 +445,7 @@ export function WaitingTabsView({
             aria-selected={tab === t.lane}
             data-tab={t.lane}
             onClick={() => onTab(t.lane)}
-            className="text-[11.5px] rounded-md px-2 py-1 cursor-pointer"
+            className="text-ui-11-5 rounded-md px-2 py-1 cursor-pointer"
             style={{
               background: tab === t.lane ? 'var(--color-bg-tertiary)' : 'transparent',
               color: tab === t.lane ? 'var(--color-text)' : 'var(--color-text-secondary)',

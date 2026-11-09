@@ -1,4 +1,5 @@
 import { Pause, Play, RefreshCw, Newspaper } from 'lucide-react';
+import { PageFrame } from '../components/shared/PageFrame';
 import { useDailyBriefAudio } from '../lib/DailyBriefAudioContext';
 import { AutoFixes } from '../components/Commerce/fixes/AutoFixes';
 
@@ -23,8 +24,7 @@ export function BriefingPage() {
   const handleRegenerate = regenerate;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden px-6 py-10">
-      <div className="max-w-3xl mx-auto w-full flex flex-col flex-1 overflow-y-auto">
+    <PageFrame narrow className="flex flex-col">
         <header className="mb-6 shrink-0">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -102,7 +102,6 @@ export function BriefingPage() {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </PageFrame>
   );
 }

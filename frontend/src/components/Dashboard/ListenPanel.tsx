@@ -32,10 +32,10 @@ export function ListenRow({ item, voiceName }: { item: VoiceQueueItem; voiceName
         {busy ? <Loader2 size={12} className="animate-spin" /> : active ? <Pause size={12} /> : <Play size={12} />}
       </button>
       <div className="flex flex-col min-w-0 flex-1">
-        <span className="truncate text-[12.5px]" style={{ color: 'var(--color-text)' }}>
+        <span className="truncate text-ui-12-5" style={{ color: 'var(--color-text)' }}>
           {item.title}
         </span>
-        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           {[SOURCE_LABELS[item.source_feed] ?? item.source_feed, item.mood, item.duration ? `${Math.round(item.duration)} s` : null]
             .filter(Boolean)
             .join(' · ')}
@@ -61,7 +61,7 @@ export function ListenList({ queue }: { queue: VoiceQueue }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           {queue.items.length} item{queue.items.length === 1 ? '' : 's'}
           {queue.worker ? '' : ' · voice worker offline'}
         </span>
@@ -111,7 +111,7 @@ export function ListenPanel({ initial }: { initial?: VoiceQueue }) {
     <DashboardPanel icon={Headphones} title="Listen" tag={queue?.voice_name} size="half" loading={loading} error={error}>
       {queue && <ListenList queue={queue} />}
       {playError && (
-        <p className="mt-2 text-[11px]" style={{ color: 'var(--color-warning)' }}>
+        <p className="mt-2 text-ui-11" style={{ color: 'var(--color-warning)' }}>
           {playError}
         </p>
       )}

@@ -41,7 +41,7 @@ function TickTimeline({ ticks }: { ticks: TickToday[] }) {
       {ticks.map((t, i) => (
         <li
           key={`${t.time}-${i}`}
-          className="inline-flex items-center gap-1.5 text-[11.5px]"
+          className="inline-flex items-center gap-1.5 text-ui-11-5"
           data-tick={t.done ? 'done' : 'due'}
           title={`${t.time} ET${t.done && t.at ? ` · done ${shortDateTime(t.at)}` : ''}`}
         >
@@ -71,7 +71,7 @@ export function RollBlock({ roll, now }: { roll: Roll | null | undefined; now: n
   const when = shortDateTime(roll.requested_at);
   if (rollFolded(roll, now)) {
     return (
-      <p className="text-[11px]" data-roll="folded" style={{ color: 'var(--color-text-tertiary)' }}>
+      <p className="text-ui-11" data-roll="folded" style={{ color: 'var(--color-text-tertiary)' }}>
         Last roll ({source}) done, requested {when}
       </p>
     );
@@ -79,13 +79,13 @@ export function RollBlock({ roll, now }: { roll: Roll | null | undefined; now: n
   const legs = roll.legs ?? [];
   return (
     <div className="flex flex-col gap-1" data-roll={roll.state}>
-      <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]" style={{ color: 'var(--color-text)' }}>
+      <div className="flex flex-wrap items-center gap-1.5 text-ui-11-5" style={{ color: 'var(--color-text)' }}>
         <span>Roll ({source}),</span>
         <Chip tone={rollTone(roll.state)}>{roll.state}</Chip>
         <span style={{ color: 'var(--color-text-tertiary)' }}>, requested {when}</span>
       </div>
       {legs.length > 0 && (
-        <ul className="flex flex-col gap-0.5 pl-2 text-[11.5px] tabular-nums" data-roll-legs>
+        <ul className="flex flex-col gap-0.5 pl-2 text-ui-11-5 tabular-nums" data-roll-legs>
           {legs.map((l, i) => (
             <li key={`${l.from}-${i}`} className="flex flex-wrap items-baseline gap-1.5" data-roll-leg={l.state}>
               <span style={{ color: 'var(--color-text)' }}>
@@ -115,7 +115,7 @@ function StopCell({ p }: { p: Position }) {
       {p.stop ? fmtMoney(p.stop) : '—'}
       {pct != null && (
         <div
-          className="text-[10.5px] leading-tight"
+          className="text-ui-10-5 leading-tight"
           style={{ color: tone ? `var(--color-${tone})` : 'var(--color-text-tertiary)' }}
           title={pct <= 0 ? 'The mark is through the stop' : `The mark is ${num(pct, 1)}% from the stop`}
         >
@@ -216,14 +216,14 @@ export function SleeveCard({
           />
 
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+            <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
               Positions ({positions.length})
             </span>
             {positions.length === 0 ? (
               <Quiet>No open positions.</Quiet>
             ) : (
               <div className="overflow-x-auto">
-              <table className="w-full text-[11.5px] @md:text-[12px] tabular-nums whitespace-nowrap [&_td:last-child]:pr-0 [&_th:last-child]:pr-0" data-positions>
+              <table className="w-full text-ui-11-5 @md:text-ui-12 tabular-nums whitespace-nowrap [&_td:last-child]:pr-0 [&_th:last-child]:pr-0" data-positions>
                 <thead>
                   <tr className="text-left" style={{ color: 'var(--color-text-tertiary)' }}>
                     {['Product', 'Side', 'Size', 'Entry', 'Mark', 'Stop', 'Held'].map((h) => (
@@ -254,13 +254,13 @@ export function SleeveCard({
           </div>
 
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+            <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
               Open orders ({orders.length})
             </span>
             {orders.length === 0 ? (
               <Quiet>No open orders.</Quiet>
             ) : (
-              <ul className="flex flex-col gap-0.5 text-[12px] tabular-nums" data-open-orders style={{ color: 'var(--color-text)' }}>
+              <ul className="flex flex-col gap-0.5 text-ui-12 tabular-nums" data-open-orders style={{ color: 'var(--color-text)' }}>
                 {orders.map((o, i) => (
                   <li key={orderId(o) ?? i}>
                     {o.side} {orderSize(o)} {orderProduct(o)}
@@ -275,13 +275,13 @@ export function SleeveCard({
           </div>
 
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+            <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
               Today’s ticks
             </span>
             {ticks?.today?.length ? (
               <TickTimeline ticks={ticks.today} />
             ) : ticks?.interval_s != null ? (
-              <p className="text-[11.5px]" data-tick-interval style={{ color: 'var(--color-text-secondary)' }}>
+              <p className="text-ui-11-5" data-tick-interval style={{ color: 'var(--color-text-secondary)' }}>
                 Every {num(ticks.interval_s / 60)} min
                 {ticks.entry_window ? (
                   <span title={`${ticks.entry_window} (UTC)`}> · entry window {utcWindowLocal(ticks.entry_window, now) ?? ticks.entry_window}</span>
@@ -294,14 +294,14 @@ export function SleeveCard({
               <Quiet>No tick schedule reported.</Quiet>
             )}
             {ticks?.next_due && (
-              <span className="text-[11px]" data-next-due style={{ color: 'var(--color-text-tertiary)' }} title={shortDateTime(ticks.next_due)}>
+              <span className="text-ui-11" data-next-due style={{ color: 'var(--color-text-tertiary)' }} title={shortDateTime(ticks.next_due)}>
                 Next due {untilLabel(ticks.next_due, now)} ({localTime(ticks.next_due)})
               </span>
             )}
           </div>
 
           {sleeve.last_tick && (
-            <p className="text-[11px]" data-last-tick style={{ color: 'var(--color-text-tertiary)' }}>
+            <p className="text-ui-11" data-last-tick style={{ color: 'var(--color-text-tertiary)' }}>
               Last tick {sleeve.last_tick.at ? shortDateTime(sleeve.last_tick.at) : '—'}
               {sleeve.last_tick.kind ? ` · ${sleeve.last_tick.kind}` : ''}
               {sleeve.last_tick.submitted != null ? ` · ${num(sleeve.last_tick.submitted)} submitted` : ''}

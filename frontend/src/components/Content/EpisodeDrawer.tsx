@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { Drawer } from '../shared/Drawer';
 import { Check, Film, Link2, PlayCircle, RotateCcw, Save, Undo2, X } from 'lucide-react';
 import {
   ACTION_NOTE_MAX,
@@ -147,7 +147,7 @@ export function EpisodeActionsBar({
           <span style={{ color: 'var(--color-text)' }}>{ACTION_LABEL[pending.action].toLowerCase()}</span>
           {pending.url && <span style={{ color: 'var(--color-text-secondary)' }}>{pending.url}</span>}
           {pending.note &&<span style={{ color: 'var(--color-text-tertiary)' }}>“{pending.note}”</span>}
-          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             sent {ago(pending.at, now)}
             {untilRun(nextRunAt, now) ? ` · next run ${untilRun(nextRunAt, now)}` : ''}
           </span>
@@ -159,13 +159,13 @@ export function EpisodeActionsBar({
         </p>
       )}
       {outcome && (
-        <p role="status" className="text-[11.5px]" style={{ color: outcome.refused ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>
+        <p role="status" className="text-ui-11-5" style={{ color: outcome.refused ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>
           Studio: {outcome.note}
         </p>
       )}
       {hint && <Quiet>{hint}</Quiet>}
       {message && (
-        <p role="alert" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+        <p role="alert" className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
           {message}
         </p>
       )}
@@ -180,11 +180,11 @@ export function EpisodeActionsBar({
                   onChange={(e) => setUrl(e.target.value.slice(0, 500))}
                   placeholder="https://www.youtube.com/watch?v=… or https://youtu.be/…"
                   aria-label="Full episode URL"
-                  className="w-full rounded-md px-2 py-1 text-[12px]"
+                  className="w-full rounded-md px-2 py-1 text-ui-12"
                   style={field}
                 />
                 {url.trim() && urlProblem && (
-                  <span role="alert" className="text-[11.5px]" style={{ color: 'var(--color-warning)' }}>
+                  <span role="alert" className="text-ui-11-5" style={{ color: 'var(--color-warning)' }}>
                     {urlProblem}
                   </span>
                 )}
@@ -195,7 +195,7 @@ export function EpisodeActionsBar({
               onChange={(e) => setNote(e.target.value.slice(0, ACTION_NOTE_MAX))}
               placeholder="Note for the studio's log (optional)"
               aria-label="Action note"
-              className="w-full rounded-md px-2 py-1 text-[12px]"
+              className="w-full rounded-md px-2 py-1 text-ui-12"
               style={field}
             />
             <div className="flex flex-wrap gap-1.5">
@@ -224,7 +224,7 @@ export function EpisodeActionsBar({
                   <SmallButton tone="neutral" onClick={() => {}} disabled title={why}>
                     <Icon size={11} /> {ACTION_LABEL[a]}
                   </SmallButton>
-                  <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                     {why}
                   </span>
                 </span>
@@ -241,7 +241,7 @@ function Section({ title, children, aside }: { title: string; children: ReactNod
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+        <h3 className="text-ui-11 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
           {title}
         </h3>
         {aside}
@@ -254,7 +254,7 @@ function Section({ title, children, aside }: { title: string; children: ReactNod
 function Problems({ items }: { items: string[] }) {
   if (!items.length) return null;
   return (
-    <ul className="text-[11.5px] pl-4 list-disc" style={{ color: 'var(--color-warning)' }}>
+    <ul className="text-ui-11-5 pl-4 list-disc" style={{ color: 'var(--color-warning)' }}>
       {items.map((p) => (
         <li key={p}>{p}</li>
       ))}
@@ -317,7 +317,7 @@ export function SourceCopy({
                   <span style={{ color: 'var(--color-text)' }}>
                     <Marked sentence={h.sentence} run={h.run} />
                   </span>
-                  <span className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <span className="flex flex-wrap items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                     <Chip tone={h.kind === 'run' ? 'warning' : 'muted'}>{h.kind === 'run' ? 'copied run' : 'dense overlap'}</Chip>
                     <span>shared: “{h.run}”</span>
                     {url && isCanonSource(url) ? (
@@ -366,19 +366,19 @@ export function PlanTable({ beats, copyHits, pullQuote }: { beats: PlanBeat[]; c
             {copyHits?.[b.beat] ? <Chip tone="warning">{copyHits[b.beat]} source-copy hit{copyHits[b.beat] > 1 ? 's' : ''}</Chip> : null}
           </span>
           {beatVisual(b) && (
-            <span className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+            <span className="text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
               {beatVisual(b)}
             </span>
           )}
           {(b.visual?.shots ?? []).length > 0 && (
-            <ul className="text-[11px] pl-4 list-disc" style={{ color: 'var(--color-text-tertiary)' }}>
+            <ul className="text-ui-11 pl-4 list-disc" style={{ color: 'var(--color-text-tertiary)' }}>
               {b.visual?.shots?.map((shot, i) => (
                 <li key={i}>{shot}</li>
               ))}
             </ul>
           )}
           {pullQuote && pullQuote.beat === b.beat && (
-            <span className="text-[11.5px] italic" style={{ color: 'var(--color-text)' }} title="The pull quote: on screen on this beat, said word for word">
+            <span className="text-ui-11-5 italic" style={{ color: 'var(--color-text)' }} title="The pull quote: on screen on this beat, said word for word">
               “{pullQuote.text}”
             </span>
           )}
@@ -423,14 +423,14 @@ export function ClaimsTable({
           />
           <div className="flex flex-col gap-1 flex-1 min-w-0">
             <span className="flex flex-wrap items-center gap-1.5">
-              <code className="text-[11px]">{c.id}</code>
+              <code className="text-ui-11">{c.id}</code>
               <Chip tone="muted">beat {c.beat}</Chip>
               {c.kind === 'canon' ? (
                 <Chip tone="success" title="Read from the company's canon, not the web">
                   canon
                 </Chip>
               ) : editing ? (
-                <select value={c.kind} onChange={(e) => onEdit({ ...c, kind: e.target.value as Claim['kind'] })} className="rounded px-1 text-[11px]" style={field} aria-label={`Kind ${c.id}`}>
+                <select value={c.kind} onChange={(e) => onEdit({ ...c, kind: e.target.value as Claim['kind'] })} className="rounded px-1 text-ui-11" style={field} aria-label={`Kind ${c.id}`}>
                   <option value="fact">fact</option>
                   <option value="lore">lore</option>
                 </select>
@@ -445,7 +445,7 @@ export function ClaimsTable({
             </span>
             {editing ? (
               <>
-                <textarea value={c.text} onChange={(e) => onEdit({ ...c, text: e.target.value })} rows={2} className="w-full rounded px-1.5 py-1 text-[12px] resize-y" style={field} aria-label={`Text ${c.id}`} />
+                <textarea value={c.text} onChange={(e) => onEdit({ ...c, text: e.target.value })} rows={2} className="w-full rounded px-1.5 py-1 text-ui-12 resize-y" style={field} aria-label={`Text ${c.id}`} />
                 {c.kind === 'canon' ? (
                   <CanonPath source={c.source} />
                 ) : (
@@ -453,7 +453,7 @@ export function ClaimsTable({
                     value={c.source}
                     onChange={(e) => onEdit({ ...c, source: e.target.value.trim() })}
                     placeholder="https:// source, unsourced, or empty for lore"
-                    className="w-full rounded px-1.5 py-1 text-[11.5px]"
+                    className="w-full rounded px-1.5 py-1 text-ui-11-5"
                     style={field}
                     aria-label={`Source ${c.id}`}
                   />
@@ -464,7 +464,7 @@ export function ClaimsTable({
                 <span style={{ color: 'var(--color-text)' }}>{c.text}</span>
                 {isCanonSource(c.source) && <CanonPath source={c.source} />}
                 {c.source.startsWith('https://') && (
-                  <span className="text-[11px] truncate" style={{ color: 'var(--color-accent)' }}>
+                  <span className="text-ui-11 truncate" style={{ color: 'var(--color-accent)' }}>
                     <ExtLink url={c.source}>{c.source}</ExtLink>
                   </span>
                 )}
@@ -480,7 +480,7 @@ export function ClaimsTable({
 /** A canon source's repo path, as text: the studio read it from disk, so there is nothing to open. */
 function CanonPath({ source }: { source: string }) {
   return (
-    <span className="text-[11px] truncate" style={{ color: 'var(--color-text-tertiary)' }} data-canon-source>
+    <span className="text-ui-11 truncate" style={{ color: 'var(--color-text-tertiary)' }} data-canon-source>
       {canonPath(source)}
     </span>
   );
@@ -577,13 +577,13 @@ export function G0Review({ detail, actions, now }: { detail: EpisodeDetail; acti
           </Chip>
           {m.prescreen && <Chip tone={m.prescreen.verdict === 'pass' ? 'success' : 'error'}>pre-screen {m.prescreen.verdict}</Chip>}
           {(detail.edited || m.operatorEdited) && <Chip tone="accent">edited by you</Chip>}
-          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             at G0 {ago(detail.summary.since, now)}
           </span>
         </div>
         {notes.length > 0 && <Problems items={notes} />}
         {refusals.length > 0 && (
-          <ul className="text-[11.5px] pl-4 list-disc" style={{ color: 'var(--color-error)' }}>
+          <ul className="text-ui-11-5 pl-4 list-disc" style={{ color: 'var(--color-error)' }}>
             {refusals.map((r) => (
               <li key={r}>{r}</li>
             ))}
@@ -614,11 +614,11 @@ export function G0Review({ detail, actions, now }: { detail: EpisodeDetail; acti
             onChange={(e) => setScript(e.target.value)}
             rows={24}
             aria-label="Script"
-            className="w-full rounded-md px-2 py-1.5 text-[12.5px] resize-y"
+            className="w-full rounded-md px-2 py-1.5 text-ui-12-5 resize-y"
             style={{ ...field, fontFamily: 'inherit' }}
           />
         ) : (
-          <pre className="whitespace-pre-wrap text-[12.5px] rounded-md p-2 max-h-[60vh] overflow-y-auto" style={{ fontFamily: 'inherit', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+          <pre className="whitespace-pre-wrap text-ui-12-5 rounded-md p-2 max-h-[60vh] overflow-y-auto" style={{ fontFamily: 'inherit', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
             {detail.script ?? 'No script.md yet.'}
           </pre>
         )}
@@ -666,12 +666,12 @@ export function G0Review({ detail, actions, now }: { detail: EpisodeDetail; acti
           rows={3}
           placeholder="Note (the rewrite instructions; optional for approve or reject)"
           aria-label="G0 note"
-          className="w-full rounded-md px-2 py-1.5 text-[12px] resize-y"
+          className="w-full rounded-md px-2 py-1.5 text-ui-12 resize-y"
           style={field}
         />
         <Problems items={approveProblems} />
         {message && (
-          <p role="alert" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+          <p role="alert" className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
             {message}
           </p>
         )}
@@ -784,7 +784,7 @@ export function ShortsList({ detail, actions }: { detail: EpisodeDetail; actions
                 <Chip tone={SHORT_TONE[s.state] ?? 'neutral'}>{s.state}</Chip>
                 {s.durationSeconds != null && <Chip tone="muted">{fmtDuration(s.durationSeconds)}</Chip>}
                 {s.attempt > 1 && <Chip tone="muted">attempt {s.attempt}</Chip>}
-                <code className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <code className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
                   {shortRunName(m.propertyId, m.episodeId, s.beat)}
                 </code>
                 {s.confirmedAt && (
@@ -796,17 +796,17 @@ export function ShortsList({ detail, actions }: { detail: EpisodeDetail; actions
                 )}
               </span>
               {s.state === 'failed' && (
-                <span className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+                <span className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
                   failed, use Retry on the episode{s.note ? `: ${s.note}` : ''}
                 </span>
               )}
               {s.state === 'failed' && s.postiz?.error && (
-                <span className="text-[11.5px]" style={{ color: 'var(--color-error)' }} data-short-postiz-error>
+                <span className="text-ui-11-5" style={{ color: 'var(--color-error)' }} data-short-postiz-error>
                   Postiz: {s.postiz.error}
                 </span>
               )}
               {s.state !== 'failed' && s.note && (
-                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                   {s.note}
                 </span>
               )}
@@ -871,7 +871,7 @@ function ThumbPicker({
           style={{ border: `2px solid ${value === n ? 'var(--color-accent)' : 'var(--color-border)'}`, background: 'transparent' }}
         >
           {urls[n] ? <img src={urls[n]} alt={n} className="w-full aspect-video object-cover rounded" /> : <span className="w-full aspect-video rounded" style={{ background: 'var(--color-bg-secondary)' }} />}
-          <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
             {n}
           </span>
         </button>
@@ -916,38 +916,38 @@ export function PublishForm({ detail, actions }: { detail: EpisodeDetail; action
     <div className="flex flex-col gap-2">
       {!thumbs.length && <Quiet>The form opens once the cut is assembled and the thumbnails exist.</Quiet>}
       <label className="flex flex-col gap-1">
-        <span className="flex justify-between text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="flex justify-between text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
           Title <span>{body.title.length} / 100</span>
         </span>
-        <input value={title} onChange={(e) => setTitle(e.target.value.slice(0, 120))} disabled={!editable} className="rounded-md px-2 py-1 text-[12.5px]" style={field} />
+        <input value={title} onChange={(e) => setTitle(e.target.value.slice(0, 120))} disabled={!editable} className="rounded-md px-2 py-1 text-ui-12-5" style={field} />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
           Description
         </span>
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} disabled={!editable} rows={5} className="rounded-md px-2 py-1.5 text-[12px] resize-y" style={field} />
-        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} disabled={!editable} rows={5} className="rounded-md px-2 py-1.5 text-ui-12 resize-y" style={field} />
+        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           The studio adds the chapters and the channel’s fixed footer below it.
         </span>
       </label>
       {(detail.chapters ?? []).length > 0 && (
         <details>
-          <summary className="cursor-pointer text-[11.5px]">Chapters ({(detail.chapters ?? []).length})</summary>
-          <pre className="whitespace-pre-wrap text-[11.5px] mt-1" style={{ fontFamily: 'inherit' }}>
+          <summary className="cursor-pointer text-ui-11-5">Chapters ({(detail.chapters ?? []).length})</summary>
+          <pre className="whitespace-pre-wrap text-ui-11-5 mt-1" style={{ fontFamily: 'inherit' }}>
             {(detail.chapters ?? []).join('\n')}
           </pre>
         </details>
       )}
       <label className="flex flex-col gap-1">
-        <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
           Tags, comma-separated
         </span>
-        <input value={tags} onChange={(e) => setTags(e.target.value)} disabled={!editable} className="rounded-md px-2 py-1 text-[12px]" style={field} />
+        <input value={tags} onChange={(e) => setTags(e.target.value)} disabled={!editable} className="rounded-md px-2 py-1 text-ui-12" style={field} />
       </label>
       {thumbs.length > 0 && <ThumbPicker names={thumbs} value={thumbnail} onPick={setThumbnail} loadMedia={actions.loadMedia} disabled={!editable} />}
       <Problems items={problems} />
       {message && (
-        <p role="status" className="text-[11.5px]" style={{ color: message.ok ? 'var(--color-success)' : 'var(--color-error)' }}>
+        <p role="status" className="text-ui-11-5" style={{ color: message.ok ? 'var(--color-success)' : 'var(--color-error)' }}>
           {message.text}
         </p>
       )}
@@ -1006,7 +1006,7 @@ export function EpisodeInfo({ detail, actions, now }: { detail: EpisodeDetail; a
           {m.durationSeconds != null && <Chip tone="muted">{fmtDuration(m.durationSeconds)}</Chip>}
         </div>
         {verdicts.length > 0 && (
-          <ul className="text-[11.5px] pl-4 list-disc">
+          <ul className="text-ui-11-5 pl-4 list-disc">
             {verdicts.map((s, i) => (
               <li key={i} style={{ color: s.ok ? 'var(--color-text-secondary)' : 'var(--color-error)' }}>
                 {stageInfo(s.stage).label}: {s.note}
@@ -1015,7 +1015,7 @@ export function EpisodeInfo({ detail, actions, now }: { detail: EpisodeDetail; a
           </ul>
         )}
         {(cloud?.items ?? []).length > 0 && (
-          <ul className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <ul className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             {(cloud?.items ?? []).map((it, i) => (
               <li key={i}>
                 {it.kind} {fmtUsd(it.usd)}
@@ -1034,7 +1034,7 @@ export function EpisodeInfo({ detail, actions, now }: { detail: EpisodeDetail; a
             {vis.visibility === 'unlisted' ? ` (the first ${vis.first} do).` : '.'}
           </p>
         )}
-        <p className="text-[11.5px] rounded-md p-2" style={{ border: '1px solid var(--color-warning)' }}>
+        <p className="text-ui-11-5 rounded-md p-2" style={{ border: '1px solid var(--color-warning)' }}>
           AI label: the narration and imagery are synthetic. Set YouTube’s “altered or synthetic content” disclosure on the video before it goes public.
         </p>
         <PublishForm detail={detail} actions={actions} />
@@ -1042,7 +1042,7 @@ export function EpisodeInfo({ detail, actions, now }: { detail: EpisodeDetail; a
 
       {(detail.plan?.beats ?? []).length > 0 && (
         <details>
-          <summary className="cursor-pointer text-[11.5px]">Visual plan</summary>
+          <summary className="cursor-pointer text-ui-11-5">Visual plan</summary>
           <div className="mt-2">
             <PlanTable beats={detail.plan?.beats ?? []} />
           </div>
@@ -1050,8 +1050,8 @@ export function EpisodeInfo({ detail, actions, now }: { detail: EpisodeDetail; a
       )}
       {detail.script && (
         <details>
-          <summary className="cursor-pointer text-[11.5px]">Approved script</summary>
-          <pre className="whitespace-pre-wrap text-[12px] mt-1" style={{ fontFamily: 'inherit' }}>
+          <summary className="cursor-pointer text-ui-11-5">Approved script</summary>
+          <pre className="whitespace-pre-wrap text-ui-12 mt-1" style={{ fontFamily: 'inherit' }}>
             {detail.script}
           </pre>
         </details>
@@ -1123,7 +1123,7 @@ export function EpisodeDrawerView({
         </div>
         {m.topic && <span style={{ color: 'var(--color-text-secondary)' }}>{m.topic}</span>}
         {(m.sources ?? []).length > 0 && (
-          <span className="flex flex-wrap gap-x-3 text-[11px]" style={{ color: 'var(--color-accent)' }}>
+          <span className="flex flex-wrap gap-x-3 text-ui-11" style={{ color: 'var(--color-accent)' }}>
             {(m.sources ?? []).map((u, i) => (
               <ExtLink key={i} url={u}>
                 Source {i + 1}
@@ -1132,7 +1132,7 @@ export function EpisodeDrawerView({
           </span>
         )}
         {(m.canonSources ?? []).length > 0 && (
-          <span className="flex flex-wrap gap-x-3 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }} data-canon-sources>
+          <span className="flex flex-wrap gap-x-3 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }} data-canon-sources>
             {(m.canonSources ?? []).map((p) => (
               <span key={p} title="Canon: read from the repo, never fetched">
                 canon: {p}
@@ -1144,15 +1144,15 @@ export function EpisodeDrawerView({
         <PostizLine m={m} />
       </div>
       {error && (
-        <p role="alert" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+        <p role="alert" className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}
       <EpisodeActionsBar key={`${m.episodeId}-${initialAction ?? ''}`} detail={detail} actions={actions} now={now} initialAction={initialAction} run={run} nextRunAt={nextRunAt} />
       {atG0 ? <G0Review key={m.episodeId} detail={detail} actions={actions} now={now} /> : <EpisodeInfo key={m.episodeId} detail={detail} actions={actions} now={now} />}
       <details>
-        <summary className="cursor-pointer text-[11.5px]">Stage history ({(m.stages ?? []).length})</summary>
-        <ul className="text-[11px] mt-1 flex flex-col gap-0.5">
+        <summary className="cursor-pointer text-ui-11-5">Stage history ({(m.stages ?? []).length})</summary>
+        <ul className="text-ui-11 mt-1 flex flex-col gap-0.5">
           {[...(m.stages ?? [])].reverse().map((s, i) => (
             <li key={i} style={{ color: s.ok ? 'var(--color-text-secondary)' : 'var(--color-error)' }}>
               {ago(s.at, now)} · {s.stage}
@@ -1184,33 +1184,18 @@ export function EpisodeDrawer({
   run?: RunControl;
   nextRunAt?: number | null;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
   if (!open) return null;
-  const drawer = (
-    <div className="fixed inset-0 z-[70] flex justify-end" style={{ background: 'rgba(0,0,0,0.35)' }} onClick={onClose}>
-      <aside
-        role="dialog"
-        aria-label="Episode"
-        onClick={(e) => e.stopPropagation()}
-        className="h-full w-full max-w-[52rem] overflow-y-auto flex flex-col gap-4 p-5 text-[12.5px]"
-        style={{ background: 'var(--color-surface)', borderLeft: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-      >
-        <header className="flex items-center justify-between gap-2">
-          <h2 className="text-[15px] font-semibold" style={{ color: 'var(--color-text)' }}>
-            {title}
-          </h2>
-          <button onClick={onClose} aria-label="Close" className="cursor-pointer" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
-            <X size={16} />
-          </button>
-        </header>
-        <EpisodeDrawerView {...view} />
-      </aside>
-    </div>
+  return (
+    <Drawer open onClose={onClose} label="Episode" width="wide">
+      <header className="flex items-center justify-between gap-2">
+        <h2 className="text-ui-15 font-semibold" style={{ color: 'var(--color-text)' }}>
+          {title}
+        </h2>
+        <button onClick={onClose} aria-label="Close" className="cursor-pointer" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
+          <X size={16} />
+        </button>
+      </header>
+      <EpisodeDrawerView {...view} />
+    </Drawer>
   );
-  return typeof document === 'undefined' ? drawer : createPortal(drawer, document.body);
 }

@@ -122,11 +122,11 @@ export function ProductsTable({
                   setShown(PAGE);
                 }}
                 placeholder="Search products"
-                className="bg-transparent outline-none text-[12px] w-48"
+                className="bg-transparent outline-none text-ui-12 w-48"
                 style={{ color: 'var(--color-text)' }}
               />
             </label>
-            <label className="flex items-center gap-1.5 text-[11.5px] cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
+            <label className="flex items-center gap-1.5 text-ui-11-5 cursor-pointer" style={{ color: 'var(--color-text-secondary)' }}>
               <input type="checkbox" checked={eligibleOnly} onChange={(e) => setEligibleOnly(e.target.checked)} />
               Ad-eligible only
             </label>
@@ -139,7 +139,7 @@ export function ProductsTable({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-[12px] tabular-nums">
+            <table className="w-full text-ui-12 tabular-nums">
               <thead>
                 <tr style={{ color: 'var(--color-text-tertiary)' }}>
                   {COLUMNS.map((c) => (
@@ -174,7 +174,7 @@ export function ProductsTable({
                         <ExtLink url={r.url} title="Open in the storefront">{r.title}</ExtLink>
                       </div>
                       {multiStore && (
-                        <div className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>{r.storeName}</div>
+                        <div className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>{r.storeName}</div>
                       )}
                     </td>
                     <td className="py-1.5 px-2 text-right">{money(r.price, currencyBySlug[r.store])}</td>

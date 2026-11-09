@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
+import { Drawer } from '../shared/Drawer';
 import { Check, Copy, Loader2, MessagesSquare, Play, X } from 'lucide-react';
 import type { RunState } from '../../hooks/useStackHealth';
 import {
@@ -23,7 +23,7 @@ import { CompanySitesCard } from './CompanySitesCard';
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-1.5">
-      <h3 className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+      <h3 className="text-ui-10-5 font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
         {title}
       </h3>
       {children}
@@ -66,7 +66,7 @@ function CheckRows({ rows, tone }: { rows: CheckRow[]; tone: 'error' | 'warning'
           style={{ background: 'var(--color-bg-secondary)', borderLeft: `2px solid var(--color-${tone})` }}
         >
           <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-            <span className="font-mono text-[11.5px]" style={{ color: 'var(--color-text)' }}>
+            <span className="font-mono text-ui-11-5" style={{ color: 'var(--color-text)' }}>
               {r.area}/{r.check}
             </span>
             <span className="whitespace-pre-wrap break-words" data-evidence>
@@ -94,7 +94,7 @@ function EventRows({ events }: { events: CloudEvent[] }) {
           }}
           data-cloud-event
         >
-          <span className="flex items-center gap-1.5 text-[11.5px]" style={{ color: 'var(--color-text)' }}>
+          <span className="flex items-center gap-1.5 text-ui-11-5" style={{ color: 'var(--color-text)' }}>
             <Chip tone="muted">{cloudKind(e)}</Chip>
             {[e.alias, e.service, e.type, e.status, e.age_seconds != null ? formatAge(e.age_seconds) : null]
               .filter(Boolean)
@@ -129,103 +129,88 @@ export interface StackHealthDrawerProps {
  * "link to the full error text".
  */
 export function StackHealthDrawer({ health, now, run, onRun, onClose, onAskDesk, sites }: StackHealthDrawerProps) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   const c = health?.counts;
   const running = run.state === 'running';
-  const drawer = (
-    <div className="fixed inset-0 z-[70] flex justify-end" style={{ background: 'rgba(0,0,0,0.35)' }} onClick={onClose}>
-      <aside
-        role="dialog"
-        aria-label="Stack health"
-        onClick={(e) => e.stopPropagation()}
-        className="h-full w-full max-w-[34rem] overflow-y-auto flex flex-col gap-4 p-5 text-[12.5px]"
-        style={{ background: 'var(--color-surface)', borderLeft: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-      >
-        <header className="flex items-start justify-between gap-2">
-          <div className="flex flex-col gap-1.5">
-            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--color-text)' }}>
-              Stack health · {health ? clock(health.ran_at) : 'unavailable'}
-            </h2>
-            {health && c && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Chip tone={c.FAIL ? 'error' : 'muted'}>{c.FAIL} FAIL</Chip>
-              <Chip tone={c.WARN ? 'warning' : 'muted'}>{c.WARN} WARN</Chip>
-              <Chip tone="success">{c.OK} OK</Chip>
-              <Chip tone="muted">{c.SKIP} SKIP</Chip>
-              {health.stale && <Chip tone="warning">stale</Chip>}
-            </div>
-            )}
+  return (
+    <Drawer open onClose={onClose} label="Stack health" width="narrow">
+      <header className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-1.5">
+          <h2 className="text-ui-15 font-semibold" style={{ color: 'var(--color-text)' }}>
+            Stack health · {health ? clock(health.ran_at) : 'unavailable'}
+          </h2>
+          {health && c && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Chip tone={c.FAIL ? 'error' : 'muted'}>{c.FAIL} FAIL</Chip>
+            <Chip tone={c.WARN ? 'warning' : 'muted'}>{c.WARN} WARN</Chip>
+            <Chip tone="success">{c.OK} OK</Chip>
+            <Chip tone="muted">{c.SKIP} SKIP</Chip>
+            {health.stale && <Chip tone="warning">stale</Chip>}
           </div>
-          <div className="flex items-start gap-1 shrink-0">
-            {onAskDesk && health && (
-              <SmallButton onClick={onAskDesk} title="Open an Ops desk thread with this run as context">
-                <MessagesSquare size={11} /> Ask the desk
-              </SmallButton>
-            )}
-            <button onClick={onClose} aria-label="Close" className="cursor-pointer p-1" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
-              <X size={14} />
-            </button>
-          </div>
-        </header>
-
-        {!health && <Quiet>The stack-health file is unavailable.</Quiet>}
-        {health && health.failing.length > 0 && (
-          <Section title="Failures">
-            <CheckRows rows={health.failing} tone="error" />
-          </Section>
-        )}
-        {health && health.warning.length > 0 && (
-          <Section title="Warnings">
-            <CheckRows rows={health.warning} tone="warning" />
-          </Section>
-        )}
-        {health && health.failing.length === 0 && health.warning.length === 0 && <Quiet>Every local check is OK.</Quiet>}
-
-        {health && (health.cloud_events.length > 0 || health.cloud_error) && (
-          <Section title="Cloud events">
-            {health.cloud_error && <Quiet>{health.cloud_error}</Quiet>}
-            <EventRows events={health.cloud_events} />
-          </Section>
-        )}
-
-        {sites && (
-          <Section title="Company sites">
-            <CompanySitesCard sites={sites.sites} error={sites.error} now={now} />
-          </Section>
-        )}
-
-        {health && health.skipped > 0 && (
-          <Quiet>
-            {health.skipped} check{health.skipped === 1 ? '' : 's'} skipped
-          </Quiet>
-        )}
-
-        {health && (
-        <footer className="mt-auto flex flex-col gap-2 pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>
-          <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
-            Last run {clock(health.ran_at)} · {duration(health.duration_ms)} · next {clock(new Date(nextRunAt(now)).toISOString())}
-          </span>
-          <div className="flex items-center gap-2">
-            <SmallButton onClick={onRun} disabled={running} title="Start the stack-health task now">
-              {running ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-              {running ? 'Running…' : 'Run now'}
+          )}
+        </div>
+        <div className="flex items-start gap-1 shrink-0">
+          {onAskDesk && health && (
+            <SmallButton onClick={onAskDesk} title="Open an Ops desk thread with this run as context">
+              <MessagesSquare size={11} /> Ask the desk
             </SmallButton>
-            <SpeakButton feed="stack_health" block={firstBlock(health.speech)} />
-            {run.detail && (
-              <span className="text-[11.5px]" style={{ color: 'var(--color-warning)' }} role="status">
-                {run.detail}
-              </span>
-            )}
-          </div>
-        </footer>
-        )}
-      </aside>
-    </div>
+          )}
+          <button onClick={onClose} aria-label="Close" className="cursor-pointer p-1" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
+            <X size={14} />
+          </button>
+        </div>
+      </header>
+
+      {!health && <Quiet>The stack-health file is unavailable.</Quiet>}
+      {health && health.failing.length > 0 && (
+        <Section title="Failures">
+          <CheckRows rows={health.failing} tone="error" />
+        </Section>
+      )}
+      {health && health.warning.length > 0 && (
+        <Section title="Warnings">
+          <CheckRows rows={health.warning} tone="warning" />
+        </Section>
+      )}
+      {health && health.failing.length === 0 && health.warning.length === 0 && <Quiet>Every local check is OK.</Quiet>}
+
+      {health && (health.cloud_events.length > 0 || health.cloud_error) && (
+        <Section title="Cloud events">
+          {health.cloud_error && <Quiet>{health.cloud_error}</Quiet>}
+          <EventRows events={health.cloud_events} />
+        </Section>
+      )}
+
+      {sites && (
+        <Section title="Company sites">
+          <CompanySitesCard sites={sites.sites} error={sites.error} now={now} />
+        </Section>
+      )}
+
+      {health && health.skipped > 0 && (
+        <Quiet>
+          {health.skipped} check{health.skipped === 1 ? '' : 's'} skipped
+        </Quiet>
+      )}
+
+      {health && (
+      <footer className="mt-auto flex flex-col gap-2 pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+        <span className="text-ui-11-5 tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+          Last run {clock(health.ran_at)} · {duration(health.duration_ms)} · next {clock(new Date(nextRunAt(now)).toISOString())}
+        </span>
+        <div className="flex items-center gap-2">
+          <SmallButton onClick={onRun} disabled={running} title="Start the stack-health task now">
+            {running ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+            {running ? 'Running…' : 'Run now'}
+          </SmallButton>
+          <SpeakButton feed="stack_health" block={firstBlock(health.speech)} />
+          {run.detail && (
+            <span className="text-ui-11-5" style={{ color: 'var(--color-warning)' }} role="status">
+              {run.detail}
+            </span>
+          )}
+        </div>
+      </footer>
+      )}
+    </Drawer>
   );
-  return typeof document === 'undefined' ? drawer : createPortal(drawer, document.body);
 }

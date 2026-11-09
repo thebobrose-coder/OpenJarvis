@@ -57,7 +57,7 @@ function StoreCard({ row, name }: { row: MerchantStore; name: string }) {
       data-merchant-store={row.store}
       data-role-ok={ok ? 'true' : 'false'}
     >
-      <div className="flex items-center gap-2 flex-wrap text-[12px]">
+      <div className="flex items-center gap-2 flex-wrap text-ui-12">
         <span className="font-medium" style={{ color: 'var(--color-text)' }}>{name}</span>
         <span data-role={row.role_confirmed ?? ''}>
           {ok ? (
@@ -71,7 +71,7 @@ function StoreCard({ row, name }: { row: MerchantStore; name: string }) {
             </Chip>
           )}
         </span>
-        <span className="ml-auto text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="ml-auto text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           {row.last_checked ? `checked ${shortDateTime(row.last_checked)}` : 'never checked'}
         </span>
       </div>
@@ -83,7 +83,7 @@ function StoreCard({ row, name }: { row: MerchantStore; name: string }) {
         </Quiet>
       )}
       {row.error && (
-        <div className="text-[11.5px]" style={{ color: 'var(--color-warning)' }} data-merchant-error>
+        <div className="text-ui-11-5" style={{ color: 'var(--color-warning)' }} data-merchant-error>
           Last read failed: {row.error}
         </div>
       )}
@@ -108,10 +108,10 @@ function StoreCard({ row, name }: { row: MerchantStore; name: string }) {
         ) : null}
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
             Video coverage
           </span>
-          <table className="w-full text-[12px] tabular-nums" data-video-coverage>
+          <table className="w-full text-ui-12 tabular-nums" data-video-coverage>
             <tbody>
               {(
                 [
@@ -138,10 +138,10 @@ function StoreCard({ row, name }: { row: MerchantStore; name: string }) {
 
         {(row.top_issues ?? []).length > 0 && (
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
               Top issues
             </span>
-            <table className="w-full text-[12px] tabular-nums">
+            <table className="w-full text-ui-12 tabular-nums">
               <tbody>
                 {(row.top_issues ?? []).map((t, i) => (
                   <tr key={`${t.code}-${i}`} style={{ borderTop: i ? '1px solid var(--color-border)' : undefined }} data-issue={t.code}>
@@ -177,7 +177,7 @@ function HoldItem({
   const productId = flight.targets?.find((t) => t.kind === 'product' && t.target === item.handle)?.product_id;
   const fix = onOpenFix ? fixFor(patches, productId) : null;
   return (
-    <li className="flex items-center gap-2 flex-wrap text-[12px]" data-hold-item={item.handle}>
+    <li className="flex items-center gap-2 flex-wrap text-ui-12" data-hold-item={item.handle}>
       <SeverityChip severity={item.severity === 'block' || item.severity === 'fix' ? item.severity : undefined} />
       {fix ? (
         <button
@@ -218,7 +218,7 @@ function HoldFlight({
   const blockers = merchantBlockers(flight);
   return (
     <li className="flex flex-col gap-1" data-flight={id}>
-      <div className="flex items-center gap-2 flex-wrap text-[12px]">
+      <div className="flex items-center gap-2 flex-wrap text-ui-12">
         <span className="font-medium" style={{ color: 'var(--color-text)' }}>{id}</span>
         <span data-verdict={flight.verdict}>
           <Chip tone={flight.verdict === 'clear' ? 'success' : 'error'}>{flight.verdict}</Chip>
@@ -231,12 +231,12 @@ function HoldFlight({
           </span>
         )}
       </div>
-      <div className="text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }} data-scope>
+      <div className="text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }} data-scope>
         Scope: {flight.scope}
       </div>
       {m &&
         (m.items.length === 0 && blockers.length === 0 ? (
-          <div className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+          <div className="text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
             Merchant Center: no disapproved target.
           </div>
         ) : (
@@ -245,7 +245,7 @@ function HoldFlight({
               <HoldItem key={`${item.handle}-${i}`} item={item} flight={flight} patches={patches} onOpenFix={onOpenFix} />
             ))}
             {blockers.map((b) => (
-              <li key={b} className="text-[11.5px]" style={{ color: 'var(--color-warning)' }} data-merchant-blocker>
+              <li key={b} className="text-ui-11-5" style={{ color: 'var(--color-warning)' }} data-merchant-blocker>
                 {b}
               </li>
             ))}
@@ -306,7 +306,7 @@ export function MerchantPanel({
 
         {flights.length > 0 && (
           <div className="flex flex-col gap-1.5" data-ads-hold>
-            <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
               Ads hold by flight
             </span>
             <ul className="flex flex-col gap-2">

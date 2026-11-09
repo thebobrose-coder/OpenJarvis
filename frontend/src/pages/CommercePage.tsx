@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { PageFrame } from '../components/shared/PageFrame';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { CommerceView } from '../components/Commerce/CommerceView';
 import { ALL_STORES } from '../components/Commerce/format';
@@ -100,7 +101,7 @@ export function CommercePage() {
   }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-10">
+    <PageFrame>
       <CommerceView
         feeds={feeds}
         pending={pending}
@@ -127,6 +128,6 @@ export function CommercePage() {
           onAskDesk: (propertyId, text, result) => ask('compliance', precheckContext(propertyId, text, result)),
         }}
       />
-    </div>
+    </PageFrame>
   );
 }

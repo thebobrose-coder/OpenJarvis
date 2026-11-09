@@ -171,14 +171,14 @@ function ProspectCard({ p, onOpen, onDragging }: { p: PipelineProspect; onOpen: 
       title="Open, or drag to another stage"
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[12.5px] font-medium leading-snug line-clamp-2 min-w-0" style={{ color: 'var(--color-text)' }} title={p.name}>
+        <span className="text-ui-12-5 font-medium leading-snug line-clamp-2 min-w-0" style={{ color: 'var(--color-text)' }} title={p.name}>
           {p.name}
         </span>
         <span className="shrink-0">
           <RankChip p={p} />
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-1 text-[11px]">
+      <div className="flex flex-wrap items-center gap-1 text-ui-11">
         <span>{[p.association, p.division, p.state].filter(Boolean).join(' · ')}</span>
         {p.affiliation && <Chip tone="muted">{p.affiliation}</Chip>}
       </div>
@@ -197,7 +197,7 @@ function ProspectCard({ p, onOpen, onDragging }: { p: PipelineProspect; onOpen: 
             re-checked
           </Chip>
         )}
-        <StageAge p={p} className="text-[10.5px] ml-auto" />
+        <StageAge p={p} className="text-ui-10-5 ml-auto" />
       </div>
     </button>
   );
@@ -252,10 +252,10 @@ function Column({
       }}
     >
       <header className="flex items-center justify-between px-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11 font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
           {STAGE_LABELS[stage]}
         </span>
-        <span className="text-[11px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11 tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
           {items.length}
         </span>
       </header>
@@ -300,7 +300,7 @@ function ProspectList({ items, onOpen }: { items: PipelineProspect[]; onOpen: (p
   const th = 'text-left font-medium px-2 py-1.5 whitespace-nowrap';
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+      <table className="w-full text-ui-12" style={{ color: 'var(--color-text-secondary)' }}>
         <thead style={{ color: 'var(--color-text-tertiary)' }}>
           <tr>
             {['Rank', 'School', 'Affiliation', 'Platform', 'Fit', 'Stage', 'In stage since', 'Contacts'].map((h) => (

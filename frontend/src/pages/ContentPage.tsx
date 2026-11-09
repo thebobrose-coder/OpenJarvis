@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { PageFrame } from '../components/shared/PageFrame';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { ContentView } from '../components/Content/ContentView';
 import { isEpisodeId } from '../components/Content/episodes';
@@ -67,7 +68,7 @@ export function ContentPage() {
   }, [focus, location.key, openEpisode]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-10">
+    <PageFrame>
       <ContentView
         feeds={data.feeds}
         pending={data.pending}
@@ -113,6 +114,6 @@ export function ContentPage() {
           onClose: studio.close,
         }}
       />
-    </div>
+    </PageFrame>
   );
 }

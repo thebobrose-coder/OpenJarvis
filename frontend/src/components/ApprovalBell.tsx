@@ -70,7 +70,7 @@ export function ApprovalBell() {
         <Bell size={17} />
         {count > 0 && (
           <span
-            className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-bold px-1 leading-none"
+            className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full text-ui-10 font-bold px-1 leading-none"
             style={{ background: 'var(--color-error)', color: '#fff' }}
           >
             {count > 99 ? '99+' : count}
@@ -103,7 +103,7 @@ export function ApprovalBell() {
                 setOpen(false);
                 setDecisionsOpen(true);
               }}
-              className="text-[11px] cursor-pointer"
+              className="text-ui-11 cursor-pointer"
               style={{ color: 'var(--color-accent)', background: 'transparent', border: 'none' }}
             >
               Decisions

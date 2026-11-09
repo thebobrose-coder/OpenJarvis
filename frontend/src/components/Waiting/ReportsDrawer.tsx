@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { Drawer } from '../shared/Drawer';
 import { X } from 'lucide-react';
 import { Chip, Quiet } from '../shared/ui';
 import { useWaiting } from '../../lib/WaitingContext';
@@ -16,7 +16,7 @@ const STATUS_TONE: Record<string, 'success' | 'error' | 'warning'> = {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
         {label}
       </span>
       {children}
@@ -48,11 +48,11 @@ export function ReportView({
   return (
     <article className="flex flex-col gap-2" data-report={report.id}>
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-[11.5px]" style={{ color: 'var(--color-text)' }}>
+        <span className="font-mono text-ui-11-5" style={{ color: 'var(--color-text)' }}>
           {report.id}
         </span>
         <Chip tone={STATUS_TONE[report.status] ?? 'muted'}>{report.status}</Chip>
-        <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
           {ago(report.finishedAt, now)}
         </span>
         {report.dismissedAt && (
@@ -64,14 +64,14 @@ export function ReportView({
         )}
       </div>
       {report.dismissNote && (
-        <span className="italic text-[11.5px]">“{report.dismissNote}”</span>
+        <span className="italic text-ui-11-5">“{report.dismissNote}”</span>
       )}
       {dismiss && !report.dismissedAt && dismiss.status?.kind !== 'dismissed' && (
         <DismissControl id={report.id} busy={dismiss.status?.kind === 'busy'} onDismiss={(note) => dismiss.onDismiss(report.id, note)} />
       )}
       {dismiss?.status && dismiss.status.kind !== 'busy' && (
         <span
-          className="text-[11px]"
+          className="text-ui-11"
           data-row-status={dismiss.status.kind}
           style={{ color: dismiss.status.kind === 'error' ? 'var(--color-error)' : 'var(--color-text-secondary)' }}
         >
@@ -149,35 +149,18 @@ export function ReportsDrawer() {
     void dismiss({ kind: 'workorder', id }, note).then((ok) => ok && setReload((n) => n + 1));
   };
 
-  useEffect(() => {
-    if (!reportOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setReportOpen(null);
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [reportOpen, setReportOpen]);
-
   if (!reportOpen) return null;
-  const drawer = (
-    <div className="fixed inset-0 z-[70] flex justify-end" style={{ background: 'rgba(0,0,0,0.35)' }} onClick={() => setReportOpen(null)}>
-      <aside
-        role="dialog"
-        aria-label="Work-order reports"
-        onClick={(e) => e.stopPropagation()}
-        className="h-full w-full max-w-[32rem] overflow-y-auto flex flex-col gap-4 p-5 text-[12.5px]"
-        style={{ background: 'var(--color-surface)', borderLeft: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-      >
-        <header className="flex items-center justify-between gap-2">
-          <h2 className="text-[15px] font-semibold" style={{ color: 'var(--color-text)' }}>
-            {reportOpen === '*' ? 'Work-order reports (7 days)' : 'Work-order report'}
-          </h2>
-          <button onClick={() => setReportOpen(null)} aria-label="Close" className="cursor-pointer" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
-            <X size={16} />
-          </button>
-        </header>
-        {reports ? <ReportsView reports={reports} open={reportOpen} now={Date.now()} status={rowStatus} onDismiss={onDismiss} /> : <Quiet>{error ?? 'Loading…'}</Quiet>}
-      </aside>
-    </div>
+  return (
+    <Drawer open onClose={() => setReportOpen(null)} label="Work-order reports" width="narrow">
+      <header className="flex items-center justify-between gap-2">
+        <h2 className="text-ui-15 font-semibold" style={{ color: 'var(--color-text)' }}>
+          {reportOpen === '*' ? 'Work-order reports (7 days)' : 'Work-order report'}
+        </h2>
+        <button onClick={() => setReportOpen(null)} aria-label="Close" className="cursor-pointer" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
+          <X size={16} />
+        </button>
+      </header>
+      {reports ? <ReportsView reports={reports} open={reportOpen} now={Date.now()} status={rowStatus} onDismiss={onDismiss} /> : <Quiet>{error ?? 'Loading…'}</Quiet>}
+    </Drawer>
   );
-  // Portalled to <body>, like the other drawers.
-  return typeof document === 'undefined' ? drawer : createPortal(drawer, document.body);
 }

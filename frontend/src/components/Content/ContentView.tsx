@@ -141,7 +141,7 @@ export function ContentView(props: ContentViewProps) {
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div>
       <ContentHeader
         properties={properties}
         selectedProperty={selected}
@@ -160,7 +160,7 @@ export function ContentView(props: ContentViewProps) {
 
       {props.notice && (
         <div
-          className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 mb-4 text-[12px]"
+          className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 mb-4 text-ui-12"
           style={{ border: '1px solid var(--color-warning)', color: 'var(--color-text-secondary)' }}
           role="status"
         >

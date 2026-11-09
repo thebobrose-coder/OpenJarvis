@@ -77,7 +77,7 @@ function ago(ms: number, now: number): string {
 
 function Label({ children }: { children: string }) {
   return (
-    <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+    <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
       {children}
     </span>
   );
@@ -98,19 +98,19 @@ function RosterCard({ desk, active, onSelect }: { desk: DeskInfo; active: boolea
     >
       <span className="flex items-center gap-2">
         <Icon size={14} style={{ color: 'var(--color-accent)' }} />
-        <span className="text-[13.5px] font-semibold" style={{ color: 'var(--color-text)' }}>
+        <span className="text-ui-13-5 font-semibold" style={{ color: 'var(--color-text)' }}>
           {desk.name}
         </span>
         <Chip tone={desk.default_route === 'hermes' ? 'accent' : 'neutral'}>
           {desk.hermes === false ? 'local only' : desk.default_route === 'hermes' ? 'Hermes' : 'local'}
         </Chip>
       </span>
-      <span className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+      <span className="text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
         Bound to {desk.pages.join(', ')} · {desk.soul.exists ? `soul ${desk.soul.chars.toLocaleString()} chars` : 'no soul yet'} ·{' '}
         {desk.rulings} ruling{desk.rulings === 1 ? '' : 's'}
       </span>
       {desk.cost_note && (
-        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           {desk.cost_note}
         </span>
       )}
@@ -147,11 +147,11 @@ export function SoulEditor({
         onChange={(e) => onDraft(e.target.value)}
         rows={14}
         placeholder={soul?.exists ? '' : 'No soul.md yet. Write one and save to create it.'}
-        className="w-full rounded-md px-2.5 py-2 text-[12.5px] leading-relaxed resize-y font-mono"
+        className="w-full rounded-md px-2.5 py-2 text-ui-12-5 leading-relaxed resize-y font-mono"
         style={field}
       />
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11.5px]" style={{ color: over ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11-5" style={{ color: over ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>
           {draft.length.toLocaleString()} / {SOUL_MAX.toLocaleString()} characters
         </span>
         <SmallButton tone="accent" disabled={!changed || over || saving || !draft.trim()} onClick={onSave}>
@@ -161,12 +161,12 @@ export function SoulEditor({
           Reload
         </SmallButton>
         {status && (
-          <span className="text-[11.5px]" role="status" style={{ color: 'var(--color-warning)' }}>
+          <span className="text-ui-11-5" role="status" style={{ color: 'var(--color-warning)' }}>
             {status}
           </span>
         )}
       </div>
-      <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <p className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         Hermes reads this file for the desk’s Hermes turns; the local route reads it for local turns. A new desk is
         served by Hermes only after its sync-config.sh has run once with the soul in place.
       </p>
@@ -194,7 +194,7 @@ function RulingRow({
             value={text}
             onChange={(e) => setText(e.target.value.slice(0, RULING_MAX))}
             rows={2}
-            className="w-full rounded-md px-2 py-1 text-[12px] resize-y"
+            className="w-full rounded-md px-2 py-1 text-ui-12 resize-y"
             style={field}
           />
           <div className="flex gap-1.5">
@@ -214,7 +214,7 @@ function RulingRow({
       ) : (
         <span style={{ color: 'var(--color-text)' }}>{ruling.text}</span>
       )}
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <div className="flex flex-wrap items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         <span>{ruling.created_at.slice(0, 10)}</span>
         {ruling.updated_at !== ruling.created_at && <span>· edited</span>}
         {mode === 'idle' && (
@@ -255,7 +255,7 @@ export function RulingsList({
   return (
     <div className="flex flex-col gap-2">
       {error && (
-        <p role="status" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+        <p role="status" className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}
@@ -275,7 +275,7 @@ export function RulingsList({
           onChange={(e) => setText(e.target.value.slice(0, RULING_MAX))}
           rows={2}
           placeholder={`A ruling for this desk (at most ${RULING_MAX} characters)`}
-          className="flex-1 rounded-md px-2 py-1 text-[12px] resize-y"
+          className="flex-1 rounded-md px-2 py-1 text-ui-12 resize-y"
           style={field}
         />
         <SmallButton
@@ -303,7 +303,7 @@ function ToolList({ title, tools, notes }: { title: string; tools: string[]; not
         <ul className="flex flex-col gap-0.5">
           {tools.map((t) => (
             <li key={t}>
-              <code className="text-[11.5px]">{t}</code>
+              <code className="text-ui-11-5">{t}</code>
               {notes?.[t] && <span style={{ color: 'var(--color-text-tertiary)' }}> · {notes[t]}</span>}
             </li>
           ))}
@@ -319,12 +319,12 @@ export function DesksView(props: DesksViewProps) {
   const now = props.now ?? Date.now();
   const desk = props.desks?.find((d) => d.id === props.selected) ?? null;
   return (
-    <div className="max-w-[1400px] mx-auto flex flex-col gap-5">
+    <div className="flex flex-col gap-5">
       <header className="flex flex-col gap-1">
-        <h1 className="text-[20px] font-semibold" style={{ color: 'var(--color-text)' }}>
+        <h1 className="text-ui-20 font-semibold" style={{ color: 'var(--color-text)' }}>
           Desks
         </h1>
-        <p className="text-[12.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="text-ui-12-5" style={{ color: 'var(--color-text-secondary)' }}>
           Each desk is one role you can talk to. It reads, explains, drafts and proposes; you act through the page’s own
           controls. Open one from Chat or from “Ask the desk” on its page.
         </p>
@@ -335,7 +335,7 @@ export function DesksView(props: DesksViewProps) {
       ) : (
         <>
           {!props.dataConfigured && (
-            <p role="status" className="text-[12px]" style={{ color: 'var(--color-warning)' }}>
+            <p role="status" className="text-ui-12" style={{ color: 'var(--color-warning)' }}>
               The workspace data folder isn’t configured, so souls and rulings can’t be read or written.
             </p>
           )}
@@ -360,7 +360,7 @@ export function DesksView(props: DesksViewProps) {
               </DashboardPanel>
 
               <DashboardPanel icon={Wrench} title="Route and tools" size="tall">
-                <div className="flex flex-col gap-3 text-[12px]">
+                <div className="flex flex-col gap-3 text-ui-12">
                   <div className="flex flex-col gap-1">
                     <Label>Default route</Label>
                     <span style={{ color: 'var(--color-text)' }}>
@@ -370,7 +370,7 @@ export function DesksView(props: DesksViewProps) {
                           ? 'Hermes (the desk’s read-only profile). Start with “local,” to answer on this machine.'
                           : 'Local qwen on this machine. Start with “Hermes,” for the desk’s Hermes profile.'}
                     </span>
-                    <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                       Hermes turns count under the daily Hermes cap.
                     </span>
                   </div>
@@ -428,10 +428,10 @@ export function DesksView(props: DesksViewProps) {
                           className="w-full text-left rounded-md px-2 py-1.5 cursor-pointer"
                           style={{ background: 'var(--color-bg-secondary)', border: 'none' }}
                         >
-                          <span className="block text-[12.5px] truncate" style={{ color: 'var(--color-text)' }}>
+                          <span className="block text-ui-12-5 truncate" style={{ color: 'var(--color-text)' }}>
                             {t.title}
                           </span>
-                          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                             {t.turns} turn{t.turns === 1 ? '' : 's'} · {ago(t.updatedAt, now)}
                           </span>
                         </button>
@@ -448,7 +448,7 @@ export function DesksView(props: DesksViewProps) {
                   <ul className="flex flex-col gap-2">
                     {props.trace.map((row) => (
                       <li key={row.key} className="flex flex-col gap-1" data-trace>
-                        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                           {row.route === 'hermes' ? 'Hermes' : 'local'} · {ago(row.at, now)}
                         </span>
                         <ToolCallCard toolCall={row.call} />

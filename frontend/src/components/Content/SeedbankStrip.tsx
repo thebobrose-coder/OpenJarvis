@@ -48,28 +48,28 @@ function LaneCard({ lane }: { lane: Lane }) {
       data-status={lane.status}
     >
       <div className="flex items-center justify-between gap-1.5">
-        <span className="text-[12.5px] font-semibold truncate" style={{ color: 'var(--color-text)' }}>
+        <span className="text-ui-12-5 font-semibold truncate" style={{ color: 'var(--color-text)' }}>
           {laneLabel(lane.lane)}
         </span>
         <Chip tone={status.tone}>{status.label}</Chip>
       </div>
-      <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         {lane.content_type} · {lane.cadence_per_week == null ? '—' : `${num(lane.cadence_per_week, 1)}/week`}
       </span>
       {note ? (
-        <span className="text-[11.5px]">{note}</span>
+        <span className="text-ui-11-5">{note}</span>
       ) : null}
       {lane.proposable === true ? (
         // v1.24: a desk Hermes proposes for. `queued` counts the feed's news items, not seeds.
         // v1.25: a news desk posts the freshest item of the last 72 h, so it has no runway.
-        <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px]" data-proposable>
+        <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-ui-11" data-proposable>
           <span data-hermes-waiting className="tabular-nums" style={{ color: 'var(--color-text)' }}>
             {count(lane.hermes_waiting)} Hermes seeds waiting
           </span>
           <Stat label="Fresh news" value={count(lane.queued)} />
         </div>
       ) : lane.status !== 'feed' ? (
-        <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px]">
+        <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-ui-11">
           <Stat label="Queued" value={count(lane.queued)} />
           <Stat label="In flight" value={count(lane.in_flight)} />
           <Stat label="Pending" value={count(lane.pending)} />
@@ -89,7 +89,7 @@ function PropertyRow({ property, showName }: { property: SeedbankProperty; showN
   return (
     <div className="flex flex-col gap-2">
       {showName && (
-        <div className="flex items-center gap-2 text-[11px]">
+        <div className="flex items-center gap-2 text-ui-11">
           <span className="font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>
             {property.id}
           </span>

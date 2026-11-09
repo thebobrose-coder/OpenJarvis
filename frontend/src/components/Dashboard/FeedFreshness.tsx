@@ -61,7 +61,7 @@ export function FeedFreshnessView({
   const late = staleAfterSeconds != null && ageSeconds > staleAfterSeconds;
   return (
     <div
-      className={`flex items-center gap-2 text-[11px] ${className}`}
+      className={`flex items-center gap-2 text-ui-11 ${className}`}
       style={{ color: stale || late ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }}
       title={late ? 'Older than this feed’s schedule -- a run may have been missed.' : undefined}
     >
@@ -70,7 +70,7 @@ export function FeedFreshnessView({
       </span>
       {stale && (
         <span
-          className="px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide text-[10px]"
+          className="px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide text-ui-10"
           style={{ color: 'var(--color-warning)', border: '1px solid var(--color-warning)' }}
           title={staleTitle}
         >

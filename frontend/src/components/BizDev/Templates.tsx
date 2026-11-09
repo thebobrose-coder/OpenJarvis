@@ -73,7 +73,7 @@ export function TemplateEditor({
 
   return (
     <div className="flex flex-col gap-2 rounded-lg p-3" style={{ background: 'var(--color-bg-secondary)' }} data-template-editor>
-      <span className="text-[11.5px] font-medium" style={{ color: 'var(--color-text)' }}>
+      <span className="text-ui-11-5 font-medium" style={{ color: 'var(--color-text)' }}>
         {title}
       </span>
       <div className="flex flex-wrap items-center gap-2">
@@ -82,10 +82,10 @@ export function TemplateEditor({
           onChange={(e) => set({ name: e.target.value.slice(0, CAPS.name) })}
           placeholder="Name"
           aria-label="Template name"
-          className="rounded-md px-2 py-1 text-[12px] flex-1 min-w-[10rem]"
+          className="rounded-md px-2 py-1 text-ui-12 flex-1 min-w-[10rem]"
           style={field}
         />
-        <label className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <label className="flex items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           For
           <select
             value={String(t.touch)}
@@ -94,7 +94,7 @@ export function TemplateEditor({
               const touch = (e.target.value === 'any' ? 'any' : Number(e.target.value)) as TemplateTouch;
               set({ touch, default_for_touch: touch === 'any' || t.default_for_touch === touch ? t.default_for_touch : undefined });
             }}
-            className="rounded-md px-1.5 py-1 text-[11.5px] cursor-pointer"
+            className="rounded-md px-1.5 py-1 text-ui-11-5 cursor-pointer"
             style={field}
           >
             {TOUCHES.map((x) => (
@@ -104,13 +104,13 @@ export function TemplateEditor({
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <label className="flex items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           Default for
           <select
             value={t.default_for_touch ? String(t.default_for_touch) : ''}
             aria-label="Default for touch"
             onChange={(e) => set({ default_for_touch: e.target.value ? (Number(e.target.value) as 1 | 2 | 3) : undefined })}
-            className="rounded-md px-1.5 py-1 text-[11.5px] cursor-pointer"
+            className="rounded-md px-1.5 py-1 text-ui-11-5 cursor-pointer"
             style={field}
             title="Hermes drafts that touch from the default template, with no model call"
           >
@@ -128,7 +128,7 @@ export function TemplateEditor({
         onChange={(e) => set({ subject: e.target.value })}
         placeholder="Subject"
         aria-label="Template subject"
-        className="rounded-md px-2 py-1.5 text-[12px]"
+        className="rounded-md px-2 py-1.5 text-ui-12"
         style={field}
       />
       <textarea
@@ -136,10 +136,10 @@ export function TemplateEditor({
         onChange={(e) => set({ body: e.target.value })}
         rows={8}
         aria-label="Template body"
-        className="rounded-md px-2 py-1.5 text-[12px] resize-y leading-relaxed"
+        className="rounded-md px-2 py-1.5 text-ui-12 resize-y leading-relaxed"
         style={field}
       />
-      <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
         No footer: it’s added when the mail is sent. Merge fields: {MERGE_FIELDS.map((f) => `{{${f}}}`).join(' ')}
       </span>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -148,7 +148,7 @@ export function TemplateEditor({
         </SmallButton>
         <SmallButton onClick={onCancel}>Cancel</SmallButton>
         {(problem || error) && (
-          <span className="text-[11px]" style={{ color: error ? 'var(--color-error)' : 'var(--color-text-tertiary)' }} role="status">
+          <span className="text-ui-11" style={{ color: error ? 'var(--color-error)' : 'var(--color-text-tertiary)' }} role="status">
             {error ?? problem}
           </span>
         )}
@@ -171,21 +171,21 @@ function TemplateRow({
   return (
     <li className="flex flex-col gap-1 py-2" style={{ borderTop: '1px solid var(--color-border)' }} data-template={t.id}>
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[12.5px] font-medium" style={{ color: 'var(--color-text)' }}>
+        <span className="text-ui-12-5 font-medium" style={{ color: 'var(--color-text)' }}>
           {t.name}
         </span>
         <Chip tone="muted">{touchLabel(t.touch)}</Chip>
         {t.default_for_touch && <Chip tone="accent">default for touch {t.default_for_touch}</Chip>}
-        <span className="text-[11px] tabular-nums ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11 tabular-nums ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
           {num(t.uses ?? 0)} uses · {num(t.replies ?? 0)} replies
         </span>
       </div>
-      <span className="text-[12px]">{t.subject}</span>
-      <span className="text-[11px] line-clamp-2 whitespace-pre-line" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-12">{t.subject}</span>
+      <span className="text-ui-11 line-clamp-2 whitespace-pre-line" style={{ color: 'var(--color-text-tertiary)' }}>
         {t.body}
       </span>
       {confirm ? (
-        <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]" role="alertdialog" aria-label={`Archive ${t.name}`}>
+        <div className="flex flex-wrap items-center gap-1.5 text-ui-11-5" role="alertdialog" aria-label={`Archive ${t.name}`}>
           <span>Archive “{t.name}”? It stays listed as archived, loses its default and can’t be edited again.</span>
           <SmallButton
             tone="warning"
@@ -207,12 +207,12 @@ function TemplateRow({
             <Archive size={11} /> Archive
           </SmallButton>
           {t.updated_at && (
-            <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
               updated {shortDateTime(t.updated_at)}
             </span>
           )}
           {error && (
-            <span className="text-[11px]" style={{ color: 'var(--color-error)' }} role="status">
+            <span className="text-ui-11" style={{ color: 'var(--color-error)' }} role="status">
               {error}
             </span>
           )}
@@ -244,8 +244,8 @@ export function TemplatesPanel({
 
   return (
     <DashboardPanel icon={FileText} title="Templates" tag={`${current.length}`} size="full">
-      <div className="flex flex-col gap-2 text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
-        <span className="text-[11.5px]">
+      <div className="flex flex-col gap-2 text-ui-12" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="text-ui-11-5">
           Saved changes reach Hermes within about 2 minutes. A template that is the default for a touch replaces the
           model’s draft for that touch.
         </span>
@@ -293,7 +293,7 @@ export function TemplatesPanel({
         )}
         {archived.length > 0 && (
           <details>
-            <summary className="cursor-pointer text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            <summary className="cursor-pointer text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
               Archived ({archived.length})
             </summary>
             <ul className="mt-1 flex flex-col gap-0.5 pl-3">

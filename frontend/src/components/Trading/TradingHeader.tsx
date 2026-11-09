@@ -33,7 +33,7 @@ export function HaltPill({ state, children }: { state: HaltState | null | undefi
   const Icon = state === 'KILL' ? OctagonX : state === 'DEGRADED' ? AlertTriangle : state === 'NORMAL' ? CheckCircle2 : HeartPulse;
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-ui-11 font-semibold"
       data-halt={state ?? 'unknown'}
       style={{
         color: `var(--color-${tone === 'neutral' ? 'text-secondary' : tone})`,
@@ -79,7 +79,7 @@ export function TradingHeader({ status, now }: { status: TradingStatus | null; n
       </div>
 
       {status && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
           {sleeveNames(status).map((name) => {
             const s = status.sleeves?.[name];
             const when = s?.halt_state === 'KILL' ? killWhen(status, name) : null;
@@ -114,7 +114,7 @@ export function TradingHeader({ status, now }: { status: TradingStatus | null; n
 
       {stale.stale && (
         <div
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px]"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-ui-12"
           role="alert"
           data-stale-banner
           style={{ border: '1px solid var(--color-warning)', color: 'var(--color-text)', background: 'color-mix(in srgb, var(--color-warning) 10%, transparent)' }}

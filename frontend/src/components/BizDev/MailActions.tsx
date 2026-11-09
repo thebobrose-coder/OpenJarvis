@@ -165,12 +165,12 @@ export function MailActions({
   };
 
   const toPicker = withEmail.length > (sendOn ? 0 : 1) && (
-    <label className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+    <label className="flex items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
       To
       <select
         value={to}
         onChange={(e) => setTo(e.target.value)}
-        className="rounded-md px-1.5 py-1 text-[11.5px] cursor-pointer"
+        className="rounded-md px-1.5 py-1 text-ui-11-5 cursor-pointer"
         style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
       >
         {withEmail.map((c) => (
@@ -211,7 +211,7 @@ export function MailActions({
   );
 
   const statusLine = status && (
-    <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }} role="status">
+    <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }} role="status">
       {status}
     </span>
   );
@@ -222,13 +222,13 @@ export function MailActions({
     return (
       <div className="flex flex-col gap-2" data-send-mode="forwardemail">
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <label className="flex items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             From
             <input
               value={fromName}
               onChange={(e) => setFromName(e.target.value.slice(0, 100))}
               aria-label="From name"
-              className="rounded-md px-1.5 py-1 text-[11.5px] w-36"
+              className="rounded-md px-1.5 py-1 text-ui-11-5 w-36"
               style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
             />
           </label>
@@ -244,7 +244,7 @@ export function MailActions({
           </SmallButton>
           {unconfirmed ? (
             <>
-              <span className="text-[11px]" style={{ color: 'var(--color-warning)' }} role="status" data-send-check="unconfirmed">
+              <span className="text-ui-11" style={{ color: 'var(--color-warning)' }} role="status" data-send-check="unconfirmed">
                 {UNCONFIRMED_NOTE}
               </span>
               {send!.onCheck && (
@@ -257,18 +257,18 @@ export function MailActions({
             sendBlocked &&
             sendBlocked !== 'Sent' &&
             !result && (
-              <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+              <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                 {sendBlocked}
               </span>
             )
           )}
           {local === 'not_sent' && !result && (
-            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }} role="status" data-send-check="not_sent">
+            <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }} role="status" data-send-check="not_sent">
               {notSentNote(send!.touch ?? 1)}
             </span>
           )}
           {result && !unconfirmed && (
-            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }} role="status">
+            <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }} role="status">
               {result.recorded ? 'Sent; Hermes records it within a few minutes.' : 'Sent; the record is queued and retries on its own.'}
             </span>
           )}
@@ -286,7 +286,7 @@ export function MailActions({
       <div className="flex flex-wrap items-center gap-1.5">
         {mailButtons}
         {!mailto.ok && (
-          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             {mailto.reason === 'no_address'
               ? 'No contact email on file -- copy and paste instead.'
               : 'Too long for a mail link -- copy and paste instead.'}
@@ -297,7 +297,7 @@ export function MailActions({
 
       {(askSent || !mailto.ok) && (
         <div
-          className="flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5 text-[12px]"
+          className="flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5 text-ui-12"
           style={{ background: 'var(--color-bg-secondary)' }}
         >
           <span>{askSent ? sentLabel : 'Sent it from your mail?'}</span>

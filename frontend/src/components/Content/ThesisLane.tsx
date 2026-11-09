@@ -68,12 +68,12 @@ function QueueRow({ item, repeat }: { item: ThesisQueueItem; repeat: boolean }) 
   const est = weeksOut(item.est_weeks_out);
   return (
     <li className="flex gap-2 rounded-lg px-2.5 py-2" style={rowStyle(repeat)} data-thesis-queue={item.signal_id ?? ''} data-repeat={repeat || undefined}>
-      <span className="tabular-nums text-[11px] w-5 shrink-0 pt-px" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="tabular-nums text-ui-11 w-5 shrink-0 pt-px" style={{ color: 'var(--color-text-tertiary)' }}>
         {item.lane_position ?? '·'}
       </span>
       <div className="flex flex-col gap-1 min-w-0">
         <span style={{ color: 'var(--color-text)' }}>{item.title || item.summary || 'Untitled'}</span>
-        <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <div className="flex flex-wrap items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           {item.pillar_hint && <Chip>{humanize(item.pillar_hint)}</Chip>}
           {item.product_handle && <span>{item.product_handle}</span>}
           {est && <span title="Estimate from lane position and cadence; firing now skips the schedule">{est}</span>}
@@ -90,7 +90,7 @@ function PostRow({ post, repeat }: { post: ThesisPost; repeat: boolean }) {
       <span className={post.title ? '' : 'line-clamp-2'} style={{ color: post.title ? 'var(--color-text)' : 'var(--color-text-secondary)' }}>
         {post.title || post.excerpt || 'Untitled'}
       </span>
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <div className="flex flex-wrap items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         {post.pillar && <Chip>{humanize(post.pillar)}</Chip>}
         <span>{day(post.distributed_at)}</span>
         {repeat && <Chip tone="warning">possible repeat</Chip>}
@@ -101,7 +101,7 @@ function PostRow({ post, repeat }: { post: ThesisPost; repeat: boolean }) {
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>
+    <span className="text-ui-11 font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>
       {children}
     </span>
   );
@@ -120,10 +120,10 @@ function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lan
   return (
     <DashboardPanel icon={ListOrdered} title="Thesis lane" tag={showProperty ? propertyId : undefined} size="full">
       <div className="flex flex-col gap-3" data-thesis-lane={propertyId}>
-        <p className="text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <p className="text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
           Read-only: you queue theses; G1 approves them on Telegram.
         </p>
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[12px]">
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-ui-12">
           <Stat label="Runway" value={runwayText(lane)} />
           <Stat label="Queued" value={count(lane.queued)} />
           <Stat label="In flight" value={count(lane.in_flight)} />
@@ -132,14 +132,14 @@ function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lan
         {flags.length > 0 && (
           <ul className="flex flex-col gap-1">
             {flags.map((f, i) => (
-              <li key={i} className="flex items-center gap-1.5 text-[11.5px]" data-flag={f.kind}>
+              <li key={i} className="flex items-center gap-1.5 text-ui-11-5" data-flag={f.kind}>
                 <Chip tone={FLAG_TONE[f.severity] ?? 'neutral'}>{humanize(f.kind)}</Chip>
                 <span>{f.message}</span>
               </li>
             ))}
           </ul>
         )}
-        <div className="text-[12px]">
+        <div className="text-ui-12">
           <span style={{ color: 'var(--color-text-tertiary)' }}>Next up: </span>
           <span style={{ color: 'var(--color-text)' }}>{next ? next.title || next.summary || 'Untitled' : 'nothing queued'}</span>
         </div>
@@ -153,7 +153,7 @@ function LanePanel({ propertyId, lane, showProperty }: { propertyId: string; lan
               groups.map((g, gi) => (
                 <div key={g.template ?? `none-${gi}`} className="flex flex-col gap-1.5" data-template={g.template ?? ''}>
                   {grouped && (
-                    <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                       {g.template ?? 'No template'}
                     </span>
                   )}

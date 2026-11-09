@@ -69,7 +69,7 @@ export function ConversationList({ searchQuery }: Props) {
         <div key={group.key} className="flex flex-col gap-0.5" data-group={group.key}>
           {group.label && (
             <div
-              className="px-3 pt-2 pb-0.5 text-[10.5px] uppercase tracking-wide"
+              className="px-3 pt-2 pb-0.5 text-ui-10-5 uppercase tracking-wide"
               style={{ color: 'var(--color-text-tertiary)' }}
             >
               {group.label}
@@ -108,7 +108,7 @@ export function ConversationList({ searchQuery }: Props) {
                   >
                     {conv.title}
                   </div>
-                  <div className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <div className="text-ui-11 mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
                     {formatRelativeTime(conv.updatedAt)}
                   </div>
                 </button>

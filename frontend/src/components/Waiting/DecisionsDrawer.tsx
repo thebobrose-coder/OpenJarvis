@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { Drawer } from '../shared/Drawer';
 import { X } from 'lucide-react';
 import { Chip, Quiet, SmallButton } from '../shared/ui';
 import { useWaiting } from '../../lib/WaitingContext';
@@ -44,7 +44,7 @@ export function decidedLabel(b: Pick<DecisionBox, 'status' | 'decided_note'>): s
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+      <h3 className="text-ui-11 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
         {title}
       </h3>
       {children}
@@ -83,18 +83,18 @@ function OpenBox({
       data-box={boxKey(box)}
     >
       {fromDesk && (
-        <span role="note" className="text-[11px]" style={{ color: 'var(--color-accent)' }}>
+        <span role="note" className="text-ui-11" style={{ color: 'var(--color-accent)' }}>
           A desk proposed this tick. Tick, then Confirm, to write it; or keep the default.
         </span>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
         <Chip tone="accent">{box.folder}</Chip>
-        <span className="text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
           {box.title}
         </span>
         {box.deferred_until && <Chip tone="muted">deferred until {box.deferred_until}, due</Chip>}
       </div>
-      <span className="font-medium text-[13px]" style={{ color: 'var(--color-text)' }}>
+      <span className="font-medium text-ui-13" style={{ color: 'var(--color-text)' }}>
         D{box.number}. {box.decision}
       </span>
       {box.default && (
@@ -107,13 +107,13 @@ function OpenBox({
           <b>Alternative:</b> {box.alternative}
         </span>
       )}
-      <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         {DEFAULT_HINT}
       </span>
       {box.paragraph && box.paragraph !== box.text && (
         <details>
-          <summary className="cursor-pointer text-[11.5px]">Context</summary>
-          <pre className="whitespace-pre-wrap text-[11.5px] mt-1" style={{ fontFamily: 'inherit' }}>
+          <summary className="cursor-pointer text-ui-11-5">Context</summary>
+          <pre className="whitespace-pre-wrap text-ui-11-5 mt-1" style={{ fontFamily: 'inherit' }}>
             {box.paragraph}
           </pre>
         </details>
@@ -129,7 +129,7 @@ function OpenBox({
             onChange={(e) => onNote(e.target.value.replace(/[\r\n]+/g, ' '))}
             placeholder="Note (optional, one line)"
             aria-label={`Note for D${box.number}`}
-            className="flex-1 min-w-[12rem] rounded-md px-2 py-1 text-[12px]"
+            className="flex-1 min-w-[12rem] rounded-md px-2 py-1 text-ui-12"
             style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
           {state === 'idle' ? (
@@ -152,7 +152,7 @@ function OpenBox({
                   onChange={(e) => onDays(Number(e.target.value))}
                   aria-label={`Defer D${box.number} for`}
                   disabled={state === 'posting'}
-                  className="rounded-md px-1.5 py-1 text-[12px]"
+                  className="rounded-md px-1.5 py-1 text-ui-12"
                   style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                 >
                   {DEFER_DAYS.map((d) => (
@@ -224,7 +224,7 @@ export function DecisionsView({
   return (
     <div className="flex flex-col gap-5">
       {message && (
-        <p className="text-[12px]" role="status" style={{ color: 'var(--color-warning)' }}>
+        <p className="text-ui-12" role="status" style={{ color: 'var(--color-warning)' }}>
           {message}
         </p>
       )}
@@ -258,7 +258,7 @@ export function DecisionsView({
                 <span style={{ color: 'var(--color-text)' }}>
                   D{b.number}. {b.decision}
                 </span>
-                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                   {b.folder} · {b.title} · back on {b.deferred_until}
                 </span>
               </li>
@@ -275,7 +275,7 @@ export function DecisionsView({
               <li key={w.file} className="flex flex-wrap items-center gap-1.5">
                 <Chip tone="muted">{w.folder}</Chip>
                 <span style={{ color: 'var(--color-text)' }}>{w.title}</span>
-                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                   {ago(w.modified_at, now)}
                 </span>
               </li>
@@ -293,7 +293,7 @@ export function DecisionsView({
                 <span style={{ color: 'var(--color-text)' }}>
                   D{b.number}. {b.decision}
                 </span>
-                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                   {b.folder} · {b.title}
                   {b.archived ? ' · archived' : ''}
                   {b.decided_note || b.status === 'declined' ? ` · ${decidedLabel(b)}` : ''}
@@ -368,13 +368,6 @@ export function DecisionsDrawer() {
     if (!decisionsOpen && card) setDeskHandoff(null);
   }, [decisionsOpen, card, setDeskHandoff]);
 
-  useEffect(() => {
-    if (!decisionsOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDecisionsOpen(false);
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [decisionsOpen, setDecisionsOpen]);
-
   if (!decisionsOpen) return null;
 
   const decide = async (box: DecisionBox, choice: DecisionChoice) => {
@@ -398,42 +391,31 @@ export function DecisionsDrawer() {
     }
   };
 
-  const drawer = (
-    <div className="fixed inset-0 z-[70] flex justify-end" style={{ background: 'rgba(0,0,0,0.35)' }} onClick={() => setDecisionsOpen(false)}>
-      <aside
-        role="dialog"
-        aria-label="Decisions"
-        onClick={(e) => e.stopPropagation()}
-        className="h-full w-full max-w-[36rem] overflow-y-auto flex flex-col gap-4 p-5 text-[12.5px]"
-        style={{ background: 'var(--color-surface)', borderLeft: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-      >
-        <header className="flex items-center justify-between gap-2">
-          <h2 className="text-[15px] font-semibold" style={{ color: 'var(--color-text)' }}>
-            Decisions
-          </h2>
-          <button onClick={() => setDecisionsOpen(false)} aria-label="Close" className="cursor-pointer" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
-            <X size={16} />
-          </button>
-        </header>
-        <DecisionsView
-          decisions={decisions}
-          loading={loading}
-          error={error}
-          states={states}
-          notes={notes}
-          days={days}
-          message={message}
-          now={Date.now()}
-          onNote={(k, n) => setNotes((s) => ({ ...s, [k]: n }))}
-          onDays={(k, d) => setDays((s) => ({ ...s, [k]: d }))}
-          onArm={(k, c) => setStates((s) => ({ ...s, [k]: c ? `armed:${c}` : 'idle' }))}
-          onDecide={(b, c) => void decide(b, c)}
-          highlight={cardBox ? boxKey(cardBox) : null}
-        />
-      </aside>
-    </div>
+  return (
+    <Drawer open onClose={() => setDecisionsOpen(false)} label="Decisions" width="narrow">
+      <header className="flex items-center justify-between gap-2">
+        <h2 className="text-ui-15 font-semibold" style={{ color: 'var(--color-text)' }}>
+          Decisions
+        </h2>
+        <button onClick={() => setDecisionsOpen(false)} aria-label="Close" className="cursor-pointer" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
+          <X size={16} />
+        </button>
+      </header>
+      <DecisionsView
+        decisions={decisions}
+        loading={loading}
+        error={error}
+        states={states}
+        notes={notes}
+        days={days}
+        message={message}
+        now={Date.now()}
+        onNote={(k, n) => setNotes((s) => ({ ...s, [k]: n }))}
+        onDays={(k, d) => setDays((s) => ({ ...s, [k]: d }))}
+        onArm={(k, c) => setStates((s) => ({ ...s, [k]: c ? `armed:${c}` : 'idle' }))}
+        onDecide={(b, c) => void decide(b, c)}
+        highlight={cardBox ? boxKey(cardBox) : null}
+      />
+    </Drawer>
   );
-  // Portalled to <body>, like the other drawers: Layout's stacking context
-  // would otherwise keep it under the header bell.
-  return typeof document === 'undefined' ? drawer : createPortal(drawer, document.body);
 }

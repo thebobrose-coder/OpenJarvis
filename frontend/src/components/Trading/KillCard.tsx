@@ -16,19 +16,19 @@ function Indicator({ label, on, rule, sub, testId }: { label: string; on: boolea
     <div className="flex flex-col gap-1 rounded-lg px-3 py-2" data-kill-indicator={testId} data-kill-state={state} style={{ background: 'var(--color-bg-secondary)' }}>
       <div className="flex items-center gap-2">
         <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: color }} aria-hidden />
-        <span className="text-[12px] font-medium" style={{ color: 'var(--color-text)' }}>
+        <span className="text-ui-12 font-medium" style={{ color: 'var(--color-text)' }}>
           {label}
         </span>
-        <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color }}>
+        <span className="text-ui-11 font-semibold uppercase tracking-wide" style={{ color }}>
           {state === 'set' ? 'KILL set' : state === 'clear' ? 'clear' : 'unknown'}
         </span>
       </div>
       {sub && (
-        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           {sub}
         </span>
       )}
-      <span className="text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
+      <span className="text-ui-11" style={{ color: 'var(--color-text-secondary)' }}>
         {rule}
       </span>
     </div>
@@ -53,7 +53,7 @@ export function KillCard({ status, config, loading, error }: { status: TradingSt
         />
         <Indicator testId="local-file" label="Local file" on={kill ? kill.local_file : null} rule={LOCAL_FILE_RULE} />
         {kill?.last_cause && (
-          <p className="text-[11.5px]" data-kill-cause style={{ color: 'var(--color-text-secondary)' }}>
+          <p className="text-ui-11-5" data-kill-cause style={{ color: 'var(--color-text-secondary)' }}>
             Last cause: {localizeStamps(kill.last_cause)}
             {kill.cleared_at ? ` · cleared ${shortDateTime(kill.cleared_at)}` : ''}
           </p>
@@ -69,7 +69,7 @@ export function KillCard({ status, config, loading, error }: { status: TradingSt
             </SmallButton>
           </span>
           {!url && (
-            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
               {NO_URL_HINT}
             </span>
           )}

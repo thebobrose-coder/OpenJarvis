@@ -88,7 +88,7 @@ export function VoiceIndicatorView({
         <button
           type="button"
           onClick={onOpen}
-          className="text-[11px] px-1.5 py-0.5 rounded-md cursor-pointer"
+          className="text-ui-11 px-1.5 py-0.5 rounded-md cursor-pointer"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
         >
           {LABELS[s]}
@@ -120,18 +120,18 @@ export function VoiceDrawerView({
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
     >
       <header className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
-        <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text)' }}>
+        <span className="text-ui-13 font-semibold" style={{ color: 'var(--color-text)' }}>
           {active ? LABELS[state.state] : 'Last voice conversation'}
         </span>
         <button type="button" onClick={onClose} aria-label="Close" className="cursor-pointer" style={{ background: 'transparent', border: 'none', color: 'var(--color-text-tertiary)' }}>
           <X size={14} />
         </button>
       </header>
-      <ol className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2 text-[12.5px]">
+      <ol className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2 text-ui-12-5">
         {state.turns.length === 0 && <li style={{ color: 'var(--color-text-tertiary)' }}>Say something…</li>}
         {state.turns.map((t, i) => (
           <li key={i} className={t.role === 'user' ? 'self-end text-right' : ''} style={{ color: t.role === 'user' ? 'var(--color-text)' : 'var(--color-text-secondary)' }}>
-            <span className="block text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+            <span className="block text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
               {t.role === 'user' ? 'You' : 'Assistant'}
             </span>
             {t.text}
@@ -140,12 +140,12 @@ export function VoiceDrawerView({
       </ol>
       <footer className="flex justify-end gap-2 px-3 py-2" style={{ borderTop: '1px solid var(--color-border)' }}>
         {active ? (
-          <button type="button" onClick={onEnd} className="text-[12px] px-2.5 py-1 rounded-md cursor-pointer" style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+          <button type="button" onClick={onEnd} className="text-ui-12 px-2.5 py-1 rounded-md cursor-pointer" style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
             That's all
           </button>
         ) : (
           state.turns.length > 0 && (
-            <button type="button" onClick={() => onOpenInChat(state.turns)} className="text-[12px] px-2.5 py-1 rounded-md cursor-pointer" style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+            <button type="button" onClick={() => onOpenInChat(state.turns)} className="text-ui-12 px-2.5 py-1 rounded-md cursor-pointer" style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
               Open in chat
             </button>
           )

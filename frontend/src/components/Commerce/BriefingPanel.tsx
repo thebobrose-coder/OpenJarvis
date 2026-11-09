@@ -59,7 +59,7 @@ export function BriefingPanel({
             <Segmented ariaLabel="Briefing section" value={tab} onChange={setTab} options={TABS} />
             <div className="flex items-center gap-2">
               {section?.run_at && (
-                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                   ran {shortDateTime(section.run_at)}
                 </span>
               )}
@@ -82,7 +82,7 @@ export function BriefingPanel({
             <Quiet>This section hasn’t run yet.</Quiet>
           ) : section.model_error ? (
             <div
-              className="rounded-lg px-3 py-2 text-[12px]"
+              className="rounded-lg px-3 py-2 text-ui-12"
               style={{ border: '1px solid var(--color-warning)', color: 'var(--color-text-secondary)' }}
             >
               <span style={{ color: 'var(--color-warning)' }}>This section’s model step failed:</span>{' '}
@@ -91,7 +91,7 @@ export function BriefingPanel({
           ) : (
             <>
               {section.headline && (
-                <p className="text-[14px] leading-snug" style={{ color: 'var(--color-text)' }}>
+                <p className="text-ui-14 leading-snug" style={{ color: 'var(--color-text)' }}>
                   {section.headline}
                 </p>
               )}
@@ -100,13 +100,13 @@ export function BriefingPanel({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {summaries.map((s) => (
                     <div key={s.slug} className="flex flex-col gap-1.5 rounded-lg p-3" style={{ background: 'var(--color-bg-secondary)' }}>
-                      <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+                      <span className="text-ui-11 font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
                         {storeNames[s.slug] ?? s.slug}
                       </span>
                       <p className="whitespace-pre-wrap">{s.summary}</p>
                       {tab === 'products' && (s.top_targets?.length ?? 0) > 0 && (
                         <div className="flex flex-col gap-1.5 mt-1">
-                          <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+                          <span className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
                             Top targets
                           </span>
                           {s.top_targets!.map((t) => (
@@ -128,7 +128,7 @@ export function BriefingPanel({
               )}
 
               {(section.data_gaps?.length ?? 0) > 0 && (
-                <details className="text-[11.5px]">
+                <details className="text-ui-11-5">
                   <summary className="cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}>
                     Data gaps ({section.data_gaps!.length})
                   </summary>

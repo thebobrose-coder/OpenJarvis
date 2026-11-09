@@ -1,4 +1,5 @@
 import { EnergyDashboard } from '../components/Dashboard/EnergyDashboard';
+import { PageFrame } from '../components/shared/PageFrame';
 import { CostComparison } from '../components/Dashboard/CostComparison';
 import { TraceDebugger } from '../components/Dashboard/TraceDebugger';
 import { DayAheadPanel } from '../components/Dashboard/DayAheadPanel';
@@ -15,8 +16,7 @@ export function DashboardPage() {
   const stamp = now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-10">
-      <div className="max-w-6xl mx-auto">
+    <PageFrame>
         <header className="mb-6">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
@@ -52,7 +52,7 @@ export function DashboardPage() {
         </div>
 
         <div
-          className="text-[11px] uppercase tracking-wide mb-3 pt-2"
+          className="text-ui-11 uppercase tracking-wide mb-3 pt-2"
           style={{ color: 'var(--color-text-tertiary)', borderTop: '1px solid var(--color-border)' }}
         >
           System telemetry
@@ -64,7 +64,6 @@ export function DashboardPage() {
         <div className="opacity-90">
           <TraceDebugger />
         </div>
-      </div>
-    </div>
+    </PageFrame>
   );
 }

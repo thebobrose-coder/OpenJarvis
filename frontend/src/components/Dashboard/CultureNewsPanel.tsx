@@ -91,7 +91,7 @@ export function CultureNewsPanel() {
                     >
                       {article.title}
                     </button>
-                    <div className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <div className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                       {article.source}
                       {article.published_at ? ` · ${formatRelativeTime(article.published_at)}` : ''}
                     </div>

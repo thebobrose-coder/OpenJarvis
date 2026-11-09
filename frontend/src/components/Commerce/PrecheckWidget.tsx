@@ -38,7 +38,7 @@ export function PrecheckResultView({ result }: { result: PrecheckResult }) {
   const hitList = result.hits ?? [];
   if (result.unavailable || (result.error && !hitList.length)) {
     return (
-      <p data-precheck-error className="text-[12px]" style={{ color: 'var(--color-error)' }}>
+      <p data-precheck-error className="text-ui-12" style={{ color: 'var(--color-error)' }}>
         {result.error ?? 'pre-check unavailable'}
         {result.unavailable && ' Not a pass: nothing was checked.'}
       </p>
@@ -46,7 +46,7 @@ export function PrecheckResultView({ result }: { result: PrecheckResult }) {
   }
   if (result.ok) {
     return (
-      <p data-precheck-ok className="text-[12px]" style={{ color: 'var(--color-success)' }}>
+      <p data-precheck-ok className="text-ui-12" style={{ color: 'var(--color-success)' }}>
         {result.judged
           ? 'No hits, judge included.'
           : 'No hits on the word and phrase checks. Claims and promises (durability, "best", comparisons) are judged only by Check with judge.'}
@@ -57,7 +57,7 @@ export function PrecheckResultView({ result }: { result: PrecheckResult }) {
   for (const h of hitList) groups.set(h.kind, [...(groups.get(h.kind) ?? []), h]);
   return (
     <div className="flex flex-col gap-2" data-precheck-hits>
-      <span className="text-[12px]" style={{ color: 'var(--color-text)' }}>
+      <span className="text-ui-12" style={{ color: 'var(--color-text)' }}>
         {hitList.length} hit{hitList.length === 1 ? '' : 's'}
         {result.judged ? ', judge included' : ''}
       </span>
@@ -70,11 +70,11 @@ export function PrecheckResultView({ result }: { result: PrecheckResult }) {
           </div>
           <ul className="flex flex-col gap-1.5 pl-1">
             {hits.map((h, i) => (
-              <li key={i} className="flex flex-col gap-0.5 text-[12px]">
+              <li key={i} className="flex flex-col gap-0.5 text-ui-12">
                 <span style={{ color: 'var(--color-text)' }}>
                   “<Highlighted sentence={h.sentence} match={h.match} />”
                 </span>
-                <span className="text-[11.5px]" data-rule style={{ color: 'var(--color-text-tertiary)' }}>
+                <span className="text-ui-11-5" data-rule style={{ color: 'var(--color-text-tertiary)' }}>
                   {h.rule}
                 </span>
               </li>
@@ -134,7 +134,7 @@ export function PrecheckWidget({ properties, onCheck, onAskDesk }: PrecheckProps
       style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle, var(--color-border))' }}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="flex items-center gap-1.5 text-[12.5px] font-medium" style={{ color: 'var(--color-text)' }}>
+        <span className="flex items-center gap-1.5 text-ui-12-5 font-medium" style={{ color: 'var(--color-text)' }}>
           <ScanSearch size={13} /> Paste and check
         </span>
         {properties.length > 0 && (
@@ -155,7 +155,7 @@ export function PrecheckWidget({ properties, onCheck, onAskDesk }: PrecheckProps
             onChange={(e) => setText(e.target.value)}
             placeholder="Paste copy to check against this property’s rules…"
             rows={4}
-            className="w-full rounded-md p-2 text-[12.5px] resize-y"
+            className="w-full rounded-md p-2 text-ui-12-5 resize-y"
             style={{ background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
           />
           <div className="flex flex-wrap items-center gap-2">
@@ -174,7 +174,7 @@ export function PrecheckWidget({ properties, onCheck, onAskDesk }: PrecheckProps
                 <MessagesSquare size={11} /> Ask the desk
               </SmallButton>
             )}
-            <span className="text-[11px]" style={{ color: tooLong ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-11" style={{ color: tooLong ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>
               {text.length.toLocaleString()} / {PRECHECK_MAX.toLocaleString()}
             </span>
           </div>

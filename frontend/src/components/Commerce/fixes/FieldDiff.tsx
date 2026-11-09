@@ -93,7 +93,7 @@ function Folded({ text }: { text: string }) {
       {head}
       <button
         onClick={() => setOpen(true)}
-        className="mx-1 px-1.5 rounded text-[10.5px] cursor-pointer"
+        className="mx-1 px-1.5 rounded text-ui-10-5 cursor-pointer"
         style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}
       >
         … {count - KEEP_WORDS * 2} unchanged words …
@@ -124,7 +124,7 @@ export function DiffBody({
   const changed = ops.some((o) => o.type !== 'eq');
   return (
     <div
-      className={`text-[12.5px] leading-relaxed whitespace-pre-wrap break-words rounded-md p-2 ${mode === 'html' ? 'font-mono text-[11.5px]' : ''}`}
+      className={`text-ui-12-5 leading-relaxed whitespace-pre-wrap break-words rounded-md p-2 ${mode === 'html' ? 'font-mono text-ui-11-5' : ''}`}
       style={{ background: 'var(--color-bg-secondary)', maxHeight: '28rem', overflowY: 'auto' }}
       data-diff={mode}
     >
@@ -179,7 +179,7 @@ export function FieldDiff({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
           {field}
         </span>
         <DroppedFigures before={before} after={after} />
@@ -198,7 +198,7 @@ export function FieldDiff({
         )}
       </div>
       {rationale && (
-        <p className="text-[11.5px] italic" style={{ color: 'var(--color-text-tertiary)' }}>
+        <p className="text-ui-11-5 italic" style={{ color: 'var(--color-text-tertiary)' }}>
           {rationale}
         </p>
       )}
@@ -228,17 +228,17 @@ export function SeoFieldDiff({
   return (
     <div className="flex flex-col gap-1.5" data-seo-field={field}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
           {field}
         </span>
         {range && (
-          <span className="text-[10.5px]" data-seo-range style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-10-5" data-seo-range style={{ color: 'var(--color-text-tertiary)' }}>
             {range.min} to {range.max} characters
           </span>
         )}
       </div>
       {rationale && (
-        <p className="text-[11.5px] italic" style={{ color: 'var(--color-text-tertiary)' }}>
+        <p className="text-ui-11-5 italic" style={{ color: 'var(--color-text-tertiary)' }}>
           {rationale}
         </p>
       )}
@@ -269,13 +269,13 @@ export function CharCount({ text, range }: { text: string; range?: { min: number
 function SeoText({ label, text, range }: { label: string; text: string; range?: { min: number; max: number } }) {
   return (
     <div className="flex flex-col gap-0.5" data-seo-text={label.toLowerCase()}>
-      <div className="flex items-center gap-2 text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <div className="flex items-center gap-2 text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
         <span>{label}</span>
         {text ? <CharCount text={text} range={range} /> : <span data-chars={0}>{EMPTY_BEFORE}</span>}
       </div>
       {text && (
         <div
-          className="text-[12.5px] leading-relaxed whitespace-pre-wrap break-words rounded-md p-2"
+          className="text-ui-12-5 leading-relaxed whitespace-pre-wrap break-words rounded-md p-2"
           style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
         >
           {text}
@@ -302,8 +302,8 @@ export function AltThumb({ url }: { url: string }) {
 /** One alt text as text, never HTML; an empty one shows "— none —". */
 function AltText({ label, text }: { label: string; text: string }) {
   return (
-    <div className="flex items-baseline gap-2 text-[12px]" data-alt-text={label.toLowerCase()}>
-      <span className="text-[10.5px] shrink-0 w-10" style={{ color: 'var(--color-text-tertiary)' }}>
+    <div className="flex items-baseline gap-2 text-ui-12" data-alt-text={label.toLowerCase()}>
+      <span className="text-ui-10-5 shrink-0 w-10" style={{ color: 'var(--color-text-tertiary)' }}>
         {label}
       </span>
       {text ? (
@@ -323,15 +323,15 @@ export function AltImagesDiff({ images, rationale }: { images: AltImage[]; ratio
   return (
     <div className="flex flex-col gap-1.5" data-alt-images={images.length}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
           image alt
         </span>
-        <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
           {images.length} {images.length === 1 ? 'image' : 'images'} · up to {ALT_MAX} characters
         </span>
       </div>
       {rationale && (
-        <p className="text-[11.5px] italic" style={{ color: 'var(--color-text-tertiary)' }}>
+        <p className="text-ui-11-5 italic" style={{ color: 'var(--color-text-tertiary)' }}>
           {rationale}
         </p>
       )}
@@ -356,7 +356,7 @@ export function AltCount({ text }: { text: string }) {
   const off = n === 0 ? 'empty' : n > ALT_MAX ? 'long' : null;
   return (
     <span
-      className="tabular-nums text-[10.5px]"
+      className="tabular-nums text-ui-10-5"
       data-chars={n}
       data-chars-off={off ?? undefined}
       style={{ color: off ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }}

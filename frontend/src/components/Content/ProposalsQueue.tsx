@@ -171,7 +171,7 @@ export function approvalEdits(
 
 function Label({ children }: { children: string }) {
   return (
-    <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+    <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
       {children}
     </span>
   );
@@ -191,7 +191,7 @@ export function QueryChips({ queries, onChange }: { queries: string[]; onChange:
       {queries.map((q) => (
         <span
           key={q}
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11.5px]"
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-ui-11-5"
           style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }}
         >
           {q}
@@ -207,7 +207,7 @@ export function QueryChips({ queries, onChange }: { queries: string[]; onChange:
         </span>
       ))}
       {full ? (
-        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           3 at most
         </span>
       ) : (
@@ -223,7 +223,7 @@ export function QueryChips({ queries, onChange }: { queries: string[]; onChange:
             }}
             placeholder={queries.length ? 'Add a query' : 'Search query (optional)'}
             aria-label="Add a target query"
-            className="rounded-md px-2 py-0.5 text-[12px] w-44"
+            className="rounded-md px-2 py-0.5 text-ui-12 w-44"
             style={field}
           />
           <SmallButton onClick={add} disabled={draft.trim().length < 2} title="Add this query">
@@ -320,7 +320,7 @@ export function ApproveEditor({
           value={topic}
           onChange={(e) => setTopic(e.target.value.slice(0, LIMITS.topic))}
           rows={3}
-          className="w-full rounded-md px-2 py-1.5 text-[12.5px] resize-y"
+          className="w-full rounded-md px-2 py-1.5 text-ui-12-5 resize-y"
           style={field}
         />
       </label>
@@ -330,7 +330,7 @@ export function ApproveEditor({
           <select
             value={pillarChoice}
             onChange={(e) => setPillarChoice(e.target.value)}
-            className="rounded-md px-1.5 py-1 text-[12px] cursor-pointer"
+            className="rounded-md px-1.5 py-1 text-ui-12 cursor-pointer"
             style={field}
           >
             {options.map((p) => (
@@ -345,7 +345,7 @@ export function ApproveEditor({
               value={pillarText}
               onChange={(e) => setPillarText(e.target.value.slice(0, LIMITS.pillar_hint))}
               placeholder="Pillar"
-              className="rounded-md px-2 py-1 text-[12px]"
+              className="rounded-md px-2 py-1 text-ui-12"
               style={field}
             />
           )}
@@ -356,7 +356,7 @@ export function ApproveEditor({
             value={product}
             onChange={(e) => setProduct(e.target.value.slice(0, LIMITS.product_handle))}
             placeholder="Product handle (optional)"
-            className="rounded-md px-2 py-1 text-[12px]"
+            className="rounded-md px-2 py-1 text-ui-12"
             style={field}
           />
         </label>
@@ -367,7 +367,7 @@ export function ApproveEditor({
           {onDesk ? (
             <Segmented ariaLabel="Desk" value={desk} onChange={setDesk} options={desks.map((d) => ({ value: d, label: deskLabel(d) }))} />
           ) : (
-            <p role="note" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+            <p role="note" className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
               This thesis is on no desk ({laneLabel(proposal.lane)}), and Hermes never proposes one there. It can’t be approved from here.
             </p>
           )}
@@ -415,7 +415,7 @@ export function ApproveEditor({
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2" role="group" aria-label="Episode">
           <label className="flex flex-col gap-1">
             <Label>Episode class</Label>
-            <select value={cls} onChange={(e) => setCls(e.target.value)} className="rounded-md px-1.5 py-1 text-[12px] cursor-pointer" style={field} aria-label="Episode class">
+            <select value={cls} onChange={(e) => setCls(e.target.value)} className="rounded-md px-1.5 py-1 text-ui-12 cursor-pointer" style={field} aria-label="Episode class">
               {!classes.some((c) => c.id === cls) && <option value={cls}>{cls || 'Pick a class'}</option>}
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -428,7 +428,7 @@ export function ApproveEditor({
           <label className="flex flex-col gap-1 sm:col-span-2">
             <span className="flex items-center justify-between gap-2">
               <Label>Sources, one https link per line</Label>
-              <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+              <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
                 {episodeForm.sources.length} / {EPISODE_LIMITS.sources}
               </span>
             </span>
@@ -437,12 +437,12 @@ export function ApproveEditor({
               onChange={(e) => setSourcesText(e.target.value)}
               rows={Math.min(6, Math.max(2, episodeForm.sources.length + 1))}
               aria-label="Sources"
-              className="w-full rounded-md px-2 py-1.5 text-[12px] resize-y"
+              className="w-full rounded-md px-2 py-1.5 text-ui-12 resize-y"
               style={{ ...field, fontFamily: 'inherit' }}
             />
           </label>
           {episodeForm.sources.length > 0 && (
-            <div className="sm:col-span-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]" style={{ color: 'var(--color-accent)' }}>
+            <div className="sm:col-span-2 flex flex-wrap gap-x-3 gap-y-0.5 text-ui-11" style={{ color: 'var(--color-accent)' }}>
               {episodeForm.sources.map((url, i) => (
                 <ExtLink key={i} url={url}>
                   Source {i + 1}
@@ -456,7 +456,7 @@ export function ApproveEditor({
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2" role="group" aria-label="Companion episode">
           <label className="flex flex-col gap-1">
             <Label>Companion episode</Label>
-            <select value={tagCls} onChange={(e) => setTagCls(e.target.value)} className="rounded-md px-1.5 py-1 text-[12px] cursor-pointer" style={field} aria-label="Companion episode class">
+            <select value={tagCls} onChange={(e) => setTagCls(e.target.value)} className="rounded-md px-1.5 py-1 text-ui-12 cursor-pointer" style={field} aria-label="Companion episode class">
               <option value="">None</option>
               {!classes.some((c) => c.id === tagCls) && tagCls && <option value={tagCls}>{tagCls}</option>}
               {classes.map((c) => (
@@ -467,7 +467,7 @@ export function ApproveEditor({
             </select>
           </label>
           {tagCls ? <MinutesField label="Episode minutes" value={tagMinutesText} onChange={setTagMinutesText} /> : <span />}
-          <p className="sm:col-span-2 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <p className="sm:col-span-2 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             The piece and its episode are queued together: the episode tells the story behind the published piece, with the piece as its first source.
           </p>
         </div>
@@ -479,23 +479,23 @@ export function ApproveEditor({
           onChange={(e) => setNote(e.target.value.slice(0, LIMITS.note))}
           rows={2}
           placeholder="Optional note (kept with the decision)"
-          className="w-full rounded-md px-2 py-1.5 text-[12px] resize-y"
+          className="w-full rounded-md px-2 py-1.5 text-ui-12 resize-y"
           style={field}
         />
       </label>
       {episodeProblems.length > 0 && (
-        <ul className="text-[11.5px] pl-4 list-disc" style={{ color: 'var(--color-warning)' }}>
+        <ul className="text-ui-11-5 pl-4 list-disc" style={{ color: 'var(--color-warning)' }}>
           {episodeProblems.map((p) => (
             <li key={p}>{p}</li>
           ))}
         </ul>
       )}
       {initial && (
-        <p role="note" className="text-[11px]" style={{ color: 'var(--color-accent)' }}>
+        <p role="note" className="text-ui-11" style={{ color: 'var(--color-accent)' }}>
           Filled in from the Content desk’s card. Check it, then approve or cancel.
         </p>
       )}
-      <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <p className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         Your edits are yours, not Hermes copy. Hermes checks edited queries with Foundry’s intake rules; Foundry’s
         compliance scan and G1 approval still apply.
       </p>
@@ -542,7 +542,7 @@ function MinutesField({ label, value, onChange }: { label: string; value: string
         onChange={(e) => onChange(e.target.value)}
         placeholder={`${EPISODE_LIMITS.defaultMinutes} (default)`}
         aria-label={label}
-        className="w-24 rounded-md px-2 py-1 text-[12px]"
+        className="w-24 rounded-md px-2 py-1 text-ui-12"
         style={field}
       />
     </label>
@@ -575,7 +575,7 @@ export function RejectConfirm({
         onChange={(e) => setNote(e.target.value.slice(0, LIMITS.note))}
         rows={2}
         placeholder="Optional note: why not? (helps the next round)"
-        className="w-full rounded-md px-2 py-1.5 text-[12px] resize-y"
+        className="w-full rounded-md px-2 py-1.5 text-ui-12 resize-y"
         style={field}
       />
       <div className="flex gap-1.5">
@@ -593,7 +593,7 @@ function Evidence({ proposal }: { proposal: Proposal }) {
   if (!candidates.length) return null;
   return (
     <details>
-      <summary className="cursor-pointer text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <summary className="cursor-pointer text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
         Evidence ({candidates.length})
       </summary>
       <ul className="mt-1.5 flex flex-col gap-1.5 pl-3">
@@ -627,7 +627,7 @@ function PriorityChip({ priority }: { priority?: number | null }) {
 export function TargetQueries({ queries }: { queries?: string[] | null }) {
   if (!queries?.length) return null;
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]">
+    <div className="flex flex-wrap items-center gap-1.5 text-ui-11-5">
       <span style={{ color: 'var(--color-text-tertiary)' }}>Target queries</span>
       {queries.map((q) => (
         <Chip key={q}>{q}</Chip>
@@ -682,7 +682,7 @@ function ProposalMeta({ proposal, showProperty, classes }: { proposal: Proposal;
       )}
       {'priority' in proposal && <PriorityChip priority={proposal.priority} />}
       <VideoChip motion={proposal.motion} brief={proposal.motion_brief} />
-      <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         {shortDateTime(proposal.created_at)}
       </span>
     </div>
@@ -731,18 +731,18 @@ export function ProposalCard({
       style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle, var(--color-border))' }}
     >
       <ProposalMeta proposal={proposal} showProperty={showProperty} classes={episodeClasses} />
-      <h3 className="text-[13.5px] font-semibold leading-snug" style={{ color: 'var(--color-text)' }}>
+      <h3 className="text-ui-13-5 font-semibold leading-snug" style={{ color: 'var(--color-text)' }}>
         {proposal.topic}
       </h3>
       {proposal.rationale && <p>{proposal.rationale}</p>}
       <TargetQueries queries={proposal.target_queries} />
       {isRefusal(proposal.note) && (
-        <p role="note" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+        <p role="note" className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
           {proposal.note}
         </p>
       )}
       {links.length > 0 && (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]" style={{ color: 'var(--color-accent)' }}>
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-ui-11" style={{ color: 'var(--color-accent)' }}>
           {links.map((url, i) => (
             <ExtLink key={i} url={url}>
               Source {links.length > 1 ? i + 1 : ''}
@@ -838,19 +838,19 @@ export function DecidedItem({
             companion episode queued
           </Chip>
         )}
-        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           {shortDateTime(proposal.decided_at ?? proposal.created_at)}
         </span>
       </div>
       <span style={{ color: 'var(--color-text)' }}>{proposal.topic}</span>
       <TargetQueries queries={proposal.target_queries} />
       {reasons.length > 0 && (
-        <span className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+        <span className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
           Intake reasons: {reasons.map(humanize).join(', ')}
         </span>
       )}
       {refused ? (
-        <span role="note" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+        <span role="note" className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
           {proposal.note}
         </span>
       ) : (

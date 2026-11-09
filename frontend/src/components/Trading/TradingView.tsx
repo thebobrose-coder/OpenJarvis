@@ -31,7 +31,7 @@ export function TradingView({ status, day, config, now }: TradingViewProps) {
   const loading = status.loading;
   const error = status.error;
   return (
-    <div className="max-w-[1800px] mx-auto">
+    <div>
       <TradingHeader status={s} now={now} />
 
       {!loading && !error && !s && <Quiet>{NO_STATUS_YET}</Quiet>}

@@ -37,7 +37,7 @@ export function lonePoint(rows: CurveRow[], key: string): boolean {
 function CurveTable({ rows, sleeves, unit }: { rows: CurveRow[]; sleeves: string[]; unit: CurveUnit }) {
   return (
     <div className="overflow-x-auto" style={{ maxHeight: '16rem' }}>
-      <table className="w-full text-[11.5px] tabular-nums" data-curve-table>
+      <table className="w-full text-ui-11-5 tabular-nums" data-curve-table>
         <thead>
           <tr className="text-left" style={{ color: 'var(--color-text-tertiary)' }}>
             <th className="font-normal pr-3 pb-1">Day</th>
@@ -127,7 +127,7 @@ export function EquityCurve({ day, loading, error }: { day: TradingDay | null; l
         <Quiet>No nightly report yet. The curve starts with the first one.</Quiet>
       ) : (
         <div className="flex flex-col gap-2" data-equity-curve={rows.length} data-curve-unit={unit}>
-          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" data-curve-legend style={{ color: 'var(--color-text-secondary)' }}>
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-ui-11" data-curve-legend style={{ color: 'var(--color-text-secondary)' }}>
             {sleeves.map((s) => (
               <li key={s} className="inline-flex items-center gap-1.5">
                 <span className="inline-block w-4 border-t-2" style={{ borderColor: sleeveColor(s) }} aria-hidden />

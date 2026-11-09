@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { PageFrame } from '../components/shared/PageFrame';
 import { useNavigate } from 'react-router';
 import { DesksView, type DeskThread, type TraceRow } from '../components/Desks/DesksView';
 import { useAppStore } from '../lib/store';
@@ -153,7 +154,7 @@ export function DesksPage() {
   const trace = deskTrace(conversations, selected, live);
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-10">
+    <PageFrame>
       <DesksView
         desks={desks}
         loading={loading}
@@ -201,6 +202,6 @@ export function DesksPage() {
         trace={trace}
         live={!!live && trace.some((r) => r.key.startsWith('live:'))}
       />
-    </div>
+    </PageFrame>
   );
 }

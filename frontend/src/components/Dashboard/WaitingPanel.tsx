@@ -59,7 +59,7 @@ export function WaitingPanelView({
         />
       </div>
       {waiting && (
-        <p className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }} data-ages>
+        <p className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }} data-ages>
           {sourceAges(waiting, now)
             .map((s) => `${s.label} ${fmtAge(s.age)}`)
             .join(' · ')}

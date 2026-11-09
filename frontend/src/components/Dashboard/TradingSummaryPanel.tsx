@@ -65,7 +65,7 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
   return (
     <div className="flex flex-col gap-3" data-trading-summary>
       {(stale.stale || hbBad || killed.length > 0) && (
-        <ul className="flex flex-col gap-1 text-[12px]" data-trading-warnings>
+        <ul className="flex flex-col gap-1 text-ui-12" data-trading-warnings>
           {killed.map((n) => (
             <li key={n} style={{ color: 'var(--color-error)' }}>
               {sleeveLabel(n)} is in KILL{killCause(status) ? `: ${killCause(status)}` : ''}
@@ -92,13 +92,13 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
             detail={`${fmtUsdc(status.x402.total_usdc)} of ${fmtUsdc(status.x402.daily_cap_usdc)} USDC`}
           />
           {status.x402.under_cap === false && (
-            <p className="text-[11px]" role="status" style={{ color: 'var(--color-error)' }}>
+            <p className="text-ui-11" role="status" style={{ color: 'var(--color-error)' }}>
               {OVER_CAP}
             </p>
           )}
         </div>
       ) : (
-        <p className="text-[11px]" data-summary-spend style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="text-ui-11" data-summary-spend style={{ color: 'var(--color-text-secondary)' }}>
           x402 spend not reported
         </p>
       )}
@@ -110,7 +110,7 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
           {sleeves.map((name) => {
             const s = status.sleeves![name];
             return (
-              <li key={name} className="flex flex-wrap items-center gap-2 text-[12px]">
+              <li key={name} className="flex flex-wrap items-center gap-2 text-ui-12">
                 <span className="font-medium" style={{ color: 'var(--color-text)', minWidth: '4.5rem' }}>
                   {sleeveLabel(name)}
                 </span>
@@ -118,7 +118,7 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
                 <span className="tabular-nums" style={{ color: 'var(--color-text)' }}>
                   {fmtMoney(s.equity)}
                 </span>
-                <span className="tabular-nums text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <span className="tabular-nums text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                   drawdown {s.drawdown_pct ?? '—'}% · {(s.positions ?? []).length} open
                 </span>
               </li>
@@ -128,13 +128,13 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
       )}
 
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
           Open positions ({positions.length})
         </span>
         {positions.length === 0 ? (
           <Quiet>No open positions.</Quiet>
         ) : (
-          <ul className="flex flex-col gap-0.5 text-[12px] tabular-nums" data-summary-positions style={{ color: 'var(--color-text)' }}>
+          <ul className="flex flex-col gap-0.5 text-ui-12 tabular-nums" data-summary-positions style={{ color: 'var(--color-text)' }}>
             {positions.slice(0, 6).map((p, i) => (
               <li key={`${p.sleeve}-${p.product}-${i}`}>
                 {p.side} {String(p.size)} {p.product} @ {fmtMoney(p.entry)}
@@ -150,11 +150,11 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
       </div>
 
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
           Latest order activity
         </span>
         {latest ? (
-          <p className="flex flex-wrap items-baseline gap-2 text-[12px]" data-latest-order>
+          <p className="flex flex-wrap items-baseline gap-2 text-ui-12" data-latest-order>
             <span className="tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
               {shortDateTime(latest.ts)}
             </span>

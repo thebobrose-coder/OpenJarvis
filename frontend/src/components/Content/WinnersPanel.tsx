@@ -15,7 +15,7 @@ export function targetsLine(t: TargetsRollup): string {
 function Queries({ queries }: { queries?: PageQuery[] }) {
   if (!queries?.length) return null;
   return (
-    <ul className="flex flex-col gap-0.5 pl-2 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
+    <ul className="flex flex-col gap-0.5 pl-2 text-ui-11" style={{ color: 'var(--color-text-secondary)' }}>
       {queries.map((q) => (
         <li key={q.query} className="flex items-baseline gap-2 tabular-nums">
           <span className="truncate" style={{ color: 'var(--color-text)' }}>
@@ -41,12 +41,12 @@ function Entry({ post, queries }: { post: WinnerPost; queries?: PageQuery[] }) {
           {num(post.score, 1)}
         </Chip>
       </div>
-      <span className="text-[10.5px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-10-5 tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
         {post.url ? <ExtLink url={post.url}>{post.site_path}</ExtLink> : post.site_path}
         {post.pillar ? ` · ${post.pillar}` : ''}
         {post.distributed_at ? ` · ${shortDateTime(post.distributed_at)}` : ''}
       </span>
-      <span className="flex flex-wrap items-center gap-x-2 text-[11px] tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
+      <span className="flex flex-wrap items-center gap-x-2 text-ui-11 tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
         <span>{num(post.site?.impressions)} impr.</span>
         <span>pos {num(post.site?.position, 1)}</span>
         <span>{num(post.site?.clicks)} clicks</span>
@@ -100,11 +100,11 @@ export function ReelsList({ video, property }: { video: VideoWinners; property: 
   return (
     <div className="flex flex-col gap-1.5" aria-label="Reels">
       <SectionLabel>Reels</SectionLabel>
-      <span className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+      <span className="text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
         {reelsLine(video)}
       </span>
       {pillars.length > 0 && (
-        <ul className="flex flex-col gap-0.5 pl-2 text-[11.5px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+        <ul className="flex flex-col gap-0.5 pl-2 text-ui-11-5 tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
           {pillars.map((r, i) => (
             <li key={i}>
               {String(r.pillar ?? '—')}: {num(r.posts)} Reel{r.posts === 1 ? '' : 's'} · avg eng. {num(r.avg_engagement, 1)}
@@ -129,7 +129,7 @@ function PropertyWinners({ property, showProperty }: { property: WinnersProperty
   const lanePages = (property.lane_pages ?? []).filter((p) => property.page_queries?.[p.site_path]?.length);
   return (
     <section className="flex flex-col gap-3" aria-label={`Winners for ${property.id}`}>
-      <div className="flex flex-wrap items-center gap-2 text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <div className="flex flex-wrap items-center gap-2 text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
         {showProperty && <Chip tone="accent">{property.id}</Chip>}
         <span>
           {num(property.long_form)} long-form post{property.long_form === 1 ? '' : 's'}
@@ -147,7 +147,7 @@ function PropertyWinners({ property, showProperty }: { property: WinnersProperty
           <SectionLabel>Feed pages: top queries</SectionLabel>
           {lanePages.map((p) => (
             <div key={p.site_path} className="flex flex-col gap-0.5">
-              <span className="text-[11.5px]" style={{ color: 'var(--color-text)' }}>
+              <span className="text-ui-11-5" style={{ color: 'var(--color-text)' }}>
                 {p.site_path}
               </span>
               <Queries queries={property.page_queries?.[p.site_path]} />
@@ -156,7 +156,7 @@ function PropertyWinners({ property, showProperty }: { property: WinnersProperty
         </div>
       )}
       {targets?.all && (
-        <div className="flex flex-col gap-0.5 text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+        <div className="flex flex-col gap-0.5 text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
           <SectionLabel>Did it rank?</SectionLabel>
           <span>{targetsLine(targets.all)}</span>
           {(targets.by_pillar ?? []).map((t) => (

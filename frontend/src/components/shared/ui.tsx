@@ -22,7 +22,7 @@ export function Chip({ tone = 'neutral', title, children }: { tone?: Tone; title
   const t = TONE[tone];
   return (
     <span
-      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap"
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-ui-10 font-medium whitespace-nowrap"
       style={{ color: t.color, background: t.background, border: `1px solid ${t.border}` }}
       title={title}
     >
@@ -38,14 +38,14 @@ export function Tile({ label, value, sub, subTone }: { label: string; value: Rea
       className="flex flex-col gap-0.5 rounded-lg px-3 py-2 min-w-0"
       style={{ background: 'var(--color-bg-secondary)' }}
     >
-      <span className="text-[10px] uppercase tracking-wide truncate" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-10 uppercase tracking-wide truncate" style={{ color: 'var(--color-text-tertiary)' }}>
         {label}
       </span>
-      <span className="text-[15px] font-semibold tabular-nums truncate" style={{ color: 'var(--color-text)' }}>
+      <span className="text-ui-15 font-semibold tabular-nums truncate" style={{ color: 'var(--color-text)' }}>
         {value}
       </span>
       {sub != null && (
-        <span className="text-[11px] tabular-nums truncate" style={{ color: TONE[subTone ?? 'muted'].color }}>
+        <span className="text-ui-11 tabular-nums truncate" style={{ color: TONE[subTone ?? 'muted'].color }}>
           {sub}
         </span>
       )}
@@ -55,7 +55,7 @@ export function Tile({ label, value, sub, subTone }: { label: string; value: Rea
 
 /** One muted line: "no data yet", "not connected", and similar. */
 export function Quiet({ children }: { children: ReactNode }) {
-  return <p className="text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>{children}</p>;
+  return <p className="text-ui-12" style={{ color: 'var(--color-text-tertiary)' }}>{children}</p>;
 }
 
 export function ExtLink({ url, title, children }: { url?: string | null; title?: string; children: ReactNode }) {
@@ -99,12 +99,12 @@ export function Select<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <label className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+    <label className="flex items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
       {label}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className="rounded-md px-1.5 py-1 text-[11.5px] cursor-pointer"
+        className="rounded-md px-1.5 py-1 text-ui-11-5 cursor-pointer"
         style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
       >
         {options.map((o) => (
@@ -145,7 +145,7 @@ export function Segmented<T extends string>({
             aria-selected={active}
             title={o.title}
             onClick={() => onChange(o.value)}
-            className="px-2.5 py-1 rounded-md text-[12px] cursor-pointer transition-colors"
+            className="px-2.5 py-1 rounded-md text-ui-12 cursor-pointer transition-colors"
             style={{
               background: active ? 'var(--color-surface)' : 'transparent',
               color: active ? 'var(--color-text)' : 'var(--color-text-secondary)',
@@ -179,7 +179,7 @@ export function SmallButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11.5px] cursor-pointer disabled:opacity-50 disabled:cursor-default"
+      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-ui-11-5 cursor-pointer disabled:opacity-50 disabled:cursor-default"
       style={{ color: t.color, background: t.background, border: `1px solid ${t.border}` }}
     >
       {children}

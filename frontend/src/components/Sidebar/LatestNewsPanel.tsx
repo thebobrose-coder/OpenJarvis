@@ -67,7 +67,7 @@ export function LatestNewsPanel() {
       className="mx-3 mb-2 flex flex-col gap-2 px-3 py-2 rounded-lg min-h-0 overflow-y-auto"
       style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
     >
-      <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+      <div className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
         Latest News
       </div>
 

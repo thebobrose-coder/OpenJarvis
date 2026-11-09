@@ -48,7 +48,7 @@ function EpisodeRow({ ep, now, onOpen }: { ep: EpisodeSummary; now: number; onOp
           {ACTION_LABEL[ep.actionPending.action].toLowerCase()} sent
         </Chip>
       )}
-      <span className="text-[11px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-11 tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
         {ago(ep.since, now)}
       </span>
       {quick.map((a) => {
@@ -63,12 +63,12 @@ function EpisodeRow({ ep, now, onOpen }: { ep: EpisodeSummary; now: number; onOp
         {atG0 && !ep.g0Pending ? 'Review G0' : 'Open'}
       </SmallButton>
       {ep.stoppedReason ? (
-        <span className="basis-full text-[11px]" style={{ color: 'var(--color-error)' }}>
+        <span className="basis-full text-ui-11" style={{ color: 'var(--color-error)' }}>
           {ep.stoppedReason}
         </span>
       ) : (
         ep.stageNote && (
-          <span className="basis-full text-[11px]" style={{ color: /refused|fail|waiting|waits/i.test(ep.stageNote) ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }}>
+          <span className="basis-full text-ui-11" style={{ color: /refused|fail|waiting|waits/i.test(ep.stageNote) ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }}>
             {ep.stageNote}
           </span>
         )
@@ -82,7 +82,7 @@ function LaneQueue({ queue, now }: { queue: QueuedSeed[]; now: number }) {
   const list = (
     <ul className="flex flex-col gap-1" aria-label="Lane queue">
       {queue.map((s, i) => (
-        <li key={s.signalId} className="flex flex-wrap items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px]" style={{ background: 'var(--color-surface)' }}>
+        <li key={s.signalId} className="flex flex-wrap items-center gap-1.5 rounded-md px-2 py-1 text-ui-11-5" style={{ background: 'var(--color-surface)' }}>
           <span className="tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
             {i + 1}.
           </span>
@@ -96,7 +96,7 @@ function LaneQueue({ queue, now }: { queue: QueuedSeed[]; now: number }) {
               waiting for its post
             </Chip>
           )}
-          <span className="text-[11px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-11 tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
             {ago(s.createdAt, now)}
           </span>
         </li>
@@ -106,7 +106,7 @@ function LaneQueue({ queue, now }: { queue: QueuedSeed[]; now: number }) {
   if (queue.length <= 4) {
     return (
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
           Queue ({queue.length})
         </span>
         {list}
@@ -115,7 +115,7 @@ function LaneQueue({ queue, now }: { queue: QueuedSeed[]; now: number }) {
   }
   return (
     <details>
-      <summary className="cursor-pointer text-[11px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+      <summary className="cursor-pointer text-ui-11 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
         Queue ({queue.length})
       </summary>
       <div className="mt-1">{list}</div>
@@ -127,12 +127,12 @@ function LaneQueue({ queue, now }: { queue: QueuedSeed[]; now: number }) {
 function HeldSeeds({ seeds, onOpen }: { seeds: HeldSeed[]; onOpen: OpenEpisode }) {
   return (
     <div className="flex flex-col gap-1" data-held-seeds>
-      <span className="text-[11.5px]" style={{ color: 'var(--color-warning)' }}>
+      <span className="text-ui-11-5" style={{ color: 'var(--color-warning)' }}>
         Seeds held by ended episodes: {seeds.length}
       </span>
       <ul className="flex flex-col gap-1">
         {seeds.map((s) => (
-          <li key={s.episodeId} className="flex flex-wrap items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px]" style={{ background: 'var(--color-surface)' }}>
+          <li key={s.episodeId} className="flex flex-wrap items-center gap-1.5 rounded-md px-2 py-1 text-ui-11-5" style={{ background: 'var(--color-surface)' }}>
             <Chip tone={stageInfo(s.stage).tone}>{stageInfo(s.stage).label}</Chip>
             <span className="flex-1 min-w-[8rem] truncate" style={{ color: 'var(--color-text)' }}>
               {s.title || s.signalId}
@@ -217,12 +217,12 @@ export function EpisodesPanel({
       {status && (
         <div className="flex flex-col gap-3">
           {runError && runStatus === 'error' && (
-            <p className="text-[11.5px]" role="alert" style={{ color: 'var(--color-error)' }}>
+            <p className="text-ui-11-5" role="alert" style={{ color: 'var(--color-error)' }}>
               Run studio now failed: {runError}
             </p>
           )}
           {(status.stale || last?.ok === false) && (
-            <p className="text-[11.5px]" role="status" style={{ color: 'var(--color-warning)' }}>
+            <p className="text-ui-11-5" role="status" style={{ color: 'var(--color-warning)' }}>
               {last?.ok === false ? `The studio's last run failed${last.note ? `: ${last.note}` : ''}.` : 'The studio hasn’t written its status for over 30 minutes.'}
             </p>
           )}
@@ -242,13 +242,13 @@ export function EpisodesPanel({
                   data-property={lane.propertyId}
                 >
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text)' }}>
+                    <span className="text-ui-13 font-semibold" style={{ color: 'var(--color-text)' }}>
                       {channel?.channelName ?? lane.propertyId}
                     </span>
                     {(showProperty || channel?.channelName) && <Chip tone="accent">{lane.propertyId}</Chip>}
                     {paused && <Chip tone="warning">paused</Chip>}
                     {paused && status.pauseReasons?.[lane.propertyId] && (
-                      <span className="text-[11px] truncate min-w-0" style={{ color: 'var(--color-warning)' }} title="The pause flag's first line" data-pause-reason>
+                      <span className="text-ui-11 truncate min-w-0" style={{ color: 'var(--color-warning)' }} title="The pause flag's first line" data-pause-reason>
                         {status.pauseReasons[lane.propertyId]}
                       </span>
                     )}
@@ -261,14 +261,14 @@ export function EpisodesPanel({
                       {paused ? <Play size={11} /> : <Pause size={11} />} {paused ? 'Resume' : 'Pause'}
                     </SmallButton>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px]">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-ui-11-5">
                     <Stat label="queued" value={String(lane.queued)} />
                     <Stat label="in production" value={String(lane.inProduction)} />
                     <Stat label="published 30 d" value={String(lane.published30d)} />
                     <Stat label="runway" value={`${lane.runwayDays} d`} warn={lane.runwayDays <= 0} />
                   </div>
                   {spend && (
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px]">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-ui-11-5">
                       <Stat label={`spend ${status.spend.month}`} value={`${fmtUsd(spend.usd)} / ${fmtUsd(spend.capUsd)}`} warn={spend.usd >= spend.capUsd} />
                       <Stat
                         label="GPU"
@@ -294,7 +294,7 @@ export function EpisodesPanel({
             })}
           </div>
           {last && (
-            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
               Last run {ago(last.at, now)}, advanced {last.advanced}
               {last.note && last.ok ? ` · ${last.note}` : ''}
             </span>

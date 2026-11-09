@@ -13,7 +13,7 @@ export const SHORT_WINDOW_HIDDEN = '[@media(max-height:900px)]:hidden';
 function AlertMeta({ alert, now }: { alert: BreakingNewsAlert; now: number }) {
   const tone = levelTone(alert.level);
   return (
-    <div className="flex items-center gap-1 text-[9px] min-w-0" style={{ color: 'var(--color-text-tertiary)' }}>
+    <div className="flex items-center gap-1 text-ui-9 min-w-0" style={{ color: 'var(--color-text-tertiary)' }}>
       <span
         className="px-1 rounded font-semibold uppercase tracking-wide shrink-0"
         style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
@@ -97,7 +97,7 @@ export function BreakingListView({
         {showPlay && <PlayButton playing={playing} onToggle={onToggle} />}
         <div className="min-w-0 flex-1">
           <div
-            className="text-[9px] font-semibold uppercase tracking-wide mb-0.5"
+            className="text-ui-9 font-semibold uppercase tracking-wide mb-0.5"
             style={{ color: lead ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }}
           >
             Breaking
@@ -117,7 +117,7 @@ export function BreakingListView({
               {lead.tickers.map((t) => (
                 <span
                   key={t}
-                  className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                  className="text-ui-9 px-1.5 py-0.5 rounded font-semibold"
                   style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}
                 >
                   {t}

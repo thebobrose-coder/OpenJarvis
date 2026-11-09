@@ -51,7 +51,7 @@ export function StatusStrip({
   return (
     <div className="mb-4 flex flex-col gap-3">
       <div
-        className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5 text-[12px]"
+        className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5 text-ui-12"
         data-status-row="folded"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
       >

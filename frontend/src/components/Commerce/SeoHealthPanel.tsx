@@ -46,7 +46,7 @@ function CrawlLine({ label, crawl, children }: { label: string; crawl: SeoCrawl 
   const complete = crawlComplete(crawl);
   const gaveUp = crawl.gave_up ?? [];
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]" data-crawl={label} data-complete={complete}>
+    <div className="flex flex-wrap items-center gap-1.5 text-ui-11-5" data-crawl={label} data-complete={complete}>
       <span>
         {label}: {num(crawl.read)}/{num(crawl.total)} read
       </span>
@@ -87,7 +87,7 @@ function StoreHealth({ store, showName }: { store: SeoStore; showName: boolean }
   return (
     <div className="flex flex-col gap-2 rounded-lg p-3" style={{ background: 'var(--color-bg-secondary)' }}>
       {showName && (
-        <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11 font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
           {store.display_name}
         </span>
       )}
@@ -98,7 +98,7 @@ function StoreHealth({ store, showName }: { store: SeoStore; showName: boolean }
           </Chip>
         ))}
       </div>
-      <div className="text-[11.5px]">
+      <div className="text-ui-11-5">
         {num(store.pages_checked)} pages checked · index:{' '}
         {Object.entries(store.index_summary)
           .map(([verdict, n]) => `${num(n)} ${verdict.toLowerCase()}`)
@@ -114,7 +114,7 @@ function StoreHealth({ store, showName }: { store: SeoStore; showName: boolean }
         ))}
       </div>
       {worstPages.length > 0 && (
-        <details className="text-[11.5px]">
+        <details className="text-ui-11-5">
           <summary className="cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}>
             Worst pages ({worstPages.length} of {store.pages.length} with issues)
           </summary>

@@ -25,7 +25,7 @@ export function SpendCard({ status, loading, error }: { status: TradingStatus | 
             detail={`${fmtUsdc(x.total_usdc)} of ${fmtUsdc(x.daily_cap_usdc)} USDC`}
           />
           {x.under_cap === false && (
-            <p className="text-[11.5px]" role="status" style={{ color: 'var(--color-error)' }}>
+            <p className="text-ui-11-5" role="status" style={{ color: 'var(--color-error)' }}>
               {OVER_CAP}
             </p>
           )}
@@ -48,7 +48,7 @@ export function NightlyCard({ status, loading, error }: { status: TradingStatus 
       {!n ? (
         <Quiet>No nightly report yet.</Quiet>
       ) : (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]" data-nightly>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-ui-12" data-nightly>
           <dt style={{ color: 'var(--color-text-tertiary)' }}>Last report</dt>
           <dd className="tabular-nums" style={{ color: 'var(--color-text)' }}>
             {n.last_report ?? '—'}

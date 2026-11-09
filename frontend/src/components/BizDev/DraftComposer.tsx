@@ -199,7 +199,7 @@ export function DraftComposer({
       />
       {footer && (
         <pre
-          className="text-[11px] whitespace-pre-wrap font-[inherit] m-0 px-2"
+          className="text-ui-11 whitespace-pre-wrap font-[inherit] m-0 px-2"
           style={{ color: 'var(--color-text-tertiary)' }}
           aria-label="Footer added on send"
           title="Added to every mail when it is sent"
@@ -207,7 +207,7 @@ export function DraftComposer({
           {footer}
         </pre>
       )}
-      <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
         {sendOn
           ? 'Send sends the text as edited here, with the footer filled in; edits aren’t saved back to Hermes.'
           : 'Edits stay on this screen; they aren’t saved or sent anywhere.'}
@@ -218,13 +218,13 @@ export function DraftComposer({
   return (
     <div className="flex flex-col gap-2" data-composer-touch={touch}>
       {groups.length > 0 && (
-        <label className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <label className="flex items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           Template
           <select
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
             aria-label="Template"
-            className="rounded-md px-1.5 py-1 text-[11.5px] cursor-pointer max-w-[16rem]"
+            className="rounded-md px-1.5 py-1 text-ui-11-5 cursor-pointer max-w-[16rem]"
             style={field}
           >
             <option value={HERMES}>{draft.draft_source && draft.draft_source !== HERMES ? 'Hermes draft (from a template)' : 'Hermes draft'}</option>
@@ -244,7 +244,7 @@ export function DraftComposer({
 
       {compact && !open ? (
         <div className="flex items-center gap-2">
-          <span className="text-[12px] min-w-0 truncate" style={{ color: 'var(--color-text)' }} title={subject}>
+          <span className="text-ui-12 min-w-0 truncate" style={{ color: 'var(--color-text)' }} title={subject}>
             {subject}
           </span>
           <SmallButton onClick={() => setOpen(true)} title="Edit the subject and body">
@@ -311,7 +311,7 @@ export function DraftComposer({
               <BookmarkPlus size={11} /> Save as template…
             </SmallButton>
             {savedNote && (
-              <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }} role="status">
+              <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }} role="status">
                 {savedNote}
               </span>
             )}

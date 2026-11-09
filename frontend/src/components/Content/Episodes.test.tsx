@@ -483,7 +483,7 @@ describe('the composer on the episode lane', () => {
     expect(html).toContain('value="5"');
     expect(html).toContain('https://example.com/a');
     expect(html).not.toContain('Target queries');
-    expect(html).not.toContain('<span class="text-[10.5px] uppercase tracking-wide" style="color:var(--color-text-tertiary)">URL</span>');
+    expect(html).not.toContain('<span class="text-ui-10-5 uppercase tracking-wide" style="color:var(--color-text-tertiary)">URL</span>');
   });
 
   it('puts a Seed as button on the thesis prompt', () => {

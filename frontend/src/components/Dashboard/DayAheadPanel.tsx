@@ -47,7 +47,7 @@ export function DayAheadView({ data, onConnect }: { data: DayAhead; onConnect?: 
           <ul className="flex flex-col gap-1.5">
             {data.events.map((e) => (
               <li key={e.id} className="flex items-baseline gap-2">
-                <span className="shrink-0 font-mono text-[11px]" style={{ color: 'var(--color-text-tertiary)', minWidth: '56px' }}>
+                <span className="shrink-0 font-mono text-ui-11" style={{ color: 'var(--color-text-tertiary)', minWidth: '56px' }}>
                   {formatEventTime(e.time)}
                 </span>
                 <span style={{ color: 'var(--color-text)' }}>{e.title}</span>
@@ -59,7 +59,7 @@ export function DayAheadView({ data, onConnect }: { data: DayAhead; onConnect?: 
 
       {data.tasks_connected && data.tasks.length > 0 && (
         <div className="pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
-          <div className="text-[10px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
+          <div className="text-ui-10 uppercase tracking-wide mb-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
             Open tasks
           </div>
           <ul className="flex flex-col gap-1.5">
@@ -67,7 +67,7 @@ export function DayAheadView({ data, onConnect }: { data: DayAhead; onConnect?: 
               <li key={t.id} className="flex items-baseline gap-2">
                 <span style={{ color: 'var(--color-text)' }}>{t.title}</span>
                 {t.due && (
-                  <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                     {formatTaskDue(t.due)}
                   </span>
                 )}

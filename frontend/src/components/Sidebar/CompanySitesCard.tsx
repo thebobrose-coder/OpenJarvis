@@ -19,11 +19,11 @@ function SiteCard({ row, now }: { row: SiteRow; now: number }) {
       data-site={row.id}
     >
       <span className="flex flex-wrap items-center justify-between gap-1.5">
-        <span className="font-mono text-[11.5px]" style={{ color: 'var(--color-text)' }}>
+        <span className="font-mono text-ui-11-5" style={{ color: 'var(--color-text)' }}>
           {hostOf(row.apex) ?? row.id}
         </span>
         <span
-          className="text-[11px] tabular-nums"
+          className="text-ui-11 tabular-nums"
           style={{ color: stale ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }}
           data-checked={stale ? 'stale' : 'fresh'}
           title={row.checked_at ?? undefined}
@@ -34,7 +34,7 @@ function SiteCard({ row, now }: { row: SiteRow; now: number }) {
       </span>
       <ul className="flex flex-col gap-1">
         {row.serve.map((s) => (
-          <li key={s.path} className="flex flex-wrap items-center gap-1.5 text-[11px]" data-serve={s.ok ? 'ok' : 'fail'}>
+          <li key={s.path} className="flex flex-wrap items-center gap-1.5 text-ui-11" data-serve={s.ok ? 'ok' : 'fail'}>
             <Chip tone={s.ok ? 'success' : 'error'} title={s.error ?? undefined}>
               {s.status ?? '—'}
             </Chip>
@@ -46,7 +46,7 @@ function SiteCard({ row, now }: { row: SiteRow; now: number }) {
           </li>
         ))}
       </ul>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px]">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-ui-11">
         <dt style={{ color: 'var(--color-text-tertiary)' }}>Privacy</dt>
         <dd className="font-mono" data-privacy>
           {row.privacy_sha256 ? row.privacy_sha256.slice(0, HASH_CHARS) : 'none'}

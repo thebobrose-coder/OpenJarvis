@@ -62,7 +62,7 @@ export function CommerceHeader({
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             Refresh
           </span>
           {REFRESH_BUTTONS.map((b) => (
@@ -107,7 +107,7 @@ export function CommerceHeader({
       </div>
 
       {notes.length > 0 && (
-        <div className="flex flex-wrap gap-x-4 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <div className="flex flex-wrap gap-x-4 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           {notes.map((b) => (
             <span key={b.target}>
               {b.label} refresh: {REFRESH_NOTES[refreshStatus[b.target] as Exclude<RefreshStatus, 'idle'>]}

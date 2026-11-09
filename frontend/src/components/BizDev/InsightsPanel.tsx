@@ -35,7 +35,7 @@ export function EngagementStatsBlock({ e, templates }: { e: EngagementStats; tem
         <Tile label="Opened" value={pct(e.open_rate_nonproxy)} sub="not counting mail proxies" />
         <Tile label="Time to reply" value={hours(e.median_time_to_reply_h)} sub="median" />
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px]">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-ui-11-5">
         {(['1', '2', '3'] as const).map((t) => (
           <span key={t}>
             touch {t} replies {pct(byTouch[t])}
@@ -44,7 +44,7 @@ export function EngagementStatsBlock({ e, templates }: { e: EngagementStats; tem
         <span>bounces this week {pct(e.bounce_rate_week)}</span>
       </div>
       {(e.cards_multi_recipient != null || e.reply_rate_by_draft_edited || e.median_send_latency_h !== undefined) && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px]" data-engagement-v0106>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-ui-11-5" data-engagement-v0106>
           {e.cards_multi_recipient != null && <span>Cards with more than one recipient {num(e.cards_multi_recipient)}</span>}
           {e.reply_rate_by_draft_edited && (
             <span>
@@ -58,7 +58,7 @@ export function EngagementStatsBlock({ e, templates }: { e: EngagementStats; tem
         </div>
       )}
       {bySource.length > 0 && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px]">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-ui-11-5">
           {bySource.map(([source, rate]) => (
             <span key={source}>
               {sourceLabel(source, templates)} replies {pct(rate)}
@@ -67,7 +67,7 @@ export function EngagementStatsBlock({ e, templates }: { e: EngagementStats; tem
         </div>
       )}
       {slots.length > 0 && (
-        <table className="w-full text-[12px] tabular-nums">
+        <table className="w-full text-ui-12 tabular-nums">
           <thead>
             <tr style={{ color: 'var(--color-text-tertiary)' }}>
               <th className="py-1 px-2 text-left font-medium">Sent (Central)</th>
@@ -88,7 +88,7 @@ export function EngagementStatsBlock({ e, templates }: { e: EngagementStats; tem
           </tbody>
         </table>
       )}
-      <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
         {e.pulled_at ? `Engagement read ${shortDateTime(e.pulled_at)}` : 'Engagement isn’t being read yet.'}
       </span>
     </div>
@@ -136,7 +136,7 @@ export function InsightsPanel({
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px]">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-ui-11-5">
             <span>sent → replied {pct(stats.conversion?.sent_to_replied)}</span>
             <span>replied → meeting {pct(stats.conversion?.replied_to_meeting)}</span>
             <span>meeting → won {pct(stats.conversion?.meeting_to_won)}</span>
@@ -147,7 +147,7 @@ export function InsightsPanel({
           {insights.length === 0 || sent < INSIGHTS_MIN_SENT ? (
             <Quiet>Signal insights appear once at least {INSIGHTS_MIN_SENT} emails have been sent.</Quiet>
           ) : (
-            <table className="w-full text-[12px] tabular-nums">
+            <table className="w-full text-ui-12 tabular-nums">
               <thead>
                 <tr style={{ color: 'var(--color-text-tertiary)' }}>
                   <th className="py-1 px-2 text-left font-medium">Signal</th>
@@ -184,12 +184,12 @@ export function ResearchLog({ prospects, loading, error }: { prospects: BdProspe
         <Quiet>No research batch yet.</Quiet>
       ) : (
         <div className="flex flex-col gap-2">
-          <span className="text-[11.5px]">
+          <span className="text-ui-11-5">
             {num(prospects.counts?.surfaced ?? prospects.prospects.length)} surfaced · {num(prospects.counts?.with_contacts)} with contacts ·{' '}
             {num(prospects.counts?.with_draft)} drafted
           </span>
           <details>
-            <summary className="cursor-pointer text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            <summary className="cursor-pointer text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
               Skipped ({skipped.length})
             </summary>
             <ul className="mt-1 flex flex-col gap-0.5 pl-3">
@@ -201,7 +201,7 @@ export function ResearchLog({ prospects, loading, error }: { prospects: BdProspe
             </ul>
           </details>
           <details>
-            <summary className="cursor-pointer text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            <summary className="cursor-pointer text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
               Errors ({errors.length})
             </summary>
             <ul className="mt-1 flex flex-col gap-0.5 pl-3">

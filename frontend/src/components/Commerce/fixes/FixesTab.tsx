@@ -402,7 +402,7 @@ function FixesHeader({
   const w = feed.writer;
   const warnings = writerWarnings(w, paused, storeNames);
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
       <SmallButton
         tone={paused ? 'warning' : 'neutral'}
         onClick={() => onPause(!paused)}
@@ -506,17 +506,17 @@ function ClassPanel({
         <Quiet>No fix classes yet.</Quiet>
       ) : (
         <div className="overflow-x-auto">
-          <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
+          <p className="text-ui-11 mb-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
             Streak: {STREAK_EXPLAINED} Bulk: approvals through “Approve these N”, which don’t count toward it.
             Reverts are revert decisions; Applied to Reverted count the writer’s outcomes.
           </p>
-          <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+          <p className="text-ui-11 mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
             {panelRule(classes)} Reverted and Failed verify are the all-time record.
           </p>
-          <p className="text-[11px] mb-1.5" data-policy-line style={{ color: 'var(--color-text-secondary)' }}>
+          <p className="text-ui-11 mb-1.5" data-policy-line style={{ color: 'var(--color-text-secondary)' }}>
             {policyLine(policy)}
           </p>
-          <table className="w-full text-[12px]">
+          <table className="w-full text-ui-12">
             <thead>
               <tr className="text-left" style={{ color: 'var(--color-text-tertiary)' }}>
                 {[
@@ -555,7 +555,7 @@ function ClassPanel({
                     <td className="pr-3 py-0.5">{storeNames[c.store] ?? c.store}</td>
                     <td className="pr-3">{ruleLabel(c.rule)}</td>
                     <td className="pr-3">{c.field}</td>
-                    <td className="pr-3 py-0.5 text-[11px] align-top min-w-[16rem] max-w-[18rem]" data-auto-apply>
+                    <td className="pr-3 py-0.5 text-ui-11 align-top min-w-[16rem] max-w-[18rem]" data-auto-apply>
                       <span className="flex flex-col gap-1">
                         {c.demoted && (
                           <span data-demoted style={{ color: 'var(--color-warning)' }}>
@@ -577,7 +577,7 @@ function ClassPanel({
                     <td className="pr-3 tabular-nums">
                       {num(c.streak)}
                       {c.streak_since && (
-                        <span className="block text-[10.5px]" data-streak-since style={{ color: 'var(--color-text-tertiary)' }}>
+                        <span className="block text-ui-10-5" data-streak-since style={{ color: 'var(--color-text-tertiary)' }}>
                           streak since {shortDateTime(c.streak_since)}
                         </span>
                       )}
@@ -797,7 +797,7 @@ export function FixesTab({
           <div className="flex flex-col gap-3">
             {!feed.writer.live && (
               <div
-                className="rounded-lg px-3 py-2 text-[12px]"
+                className="rounded-lg px-3 py-2 text-ui-12"
                 role="note"
                 style={{ border: '1px solid var(--color-accent-subtle)', color: 'var(--color-text-secondary)' }}
               >
@@ -807,7 +807,7 @@ export function FixesTab({
             <FixesHeader feed={feed} paused={paused} pausePending={pausePending} onPause={onPause} storeNames={storeNames} />
             {notice && (
               <div
-                className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-[12px]"
+                className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-ui-12"
                 style={{ border: '1px solid var(--color-warning)', color: 'var(--color-text-secondary)' }}
                 role="status"
               >
@@ -829,7 +829,7 @@ export function FixesTab({
               <Select label="Status" value={status} options={statusOptions} onChange={setStatus} />
               <Select label="Class" value={cls} options={[{ value: 'all', label: 'All' }, ...classOptions]} onChange={setCls} />
               <Select label="Source" value={source} options={sourceOptions} onChange={setSource} />
-              <span className="text-[11px] ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
+              <span className="text-ui-11 ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
                 j / k move · a approve · e edit · r reject or withdraw · c confirm
               </span>
             </div>
@@ -851,7 +851,7 @@ export function FixesTab({
                 return (
                   <section key={g.key} className="flex flex-col gap-2.5">
                     <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <span className="text-[12.5px] font-semibold" style={{ color: 'var(--color-text)' }}>
+                      <span className="text-ui-12-5 font-semibold" style={{ color: 'var(--color-text)' }}>
                         {storeNames[g.cls.store] ?? g.cls.store} · {ruleLabel(g.cls.rule)} · {g.cls.field}
                       </span>
                       <Chip tone="muted">{g.patches.length}</Chip>
@@ -862,7 +862,7 @@ export function FixesTab({
                               <CheckCheck size={11} /> Confirm: approve these {approvable.length}
                             </SmallButton>
                             <SmallButton onClick={() => setConfirmClass(null)}>Cancel</SmallButton>
-                            <span className="text-[11px]" role="note" style={{ color: 'var(--color-text-secondary)' }}>
+                            <span className="text-ui-11" role="note" style={{ color: 'var(--color-text-secondary)' }}>
                               {classConfirmText(reviewOnly)}
                             </span>
                           </>
@@ -895,12 +895,12 @@ export function FixesTab({
                         ))}
                     </div>
                     {hasConfirm && confirmNotes.length > 0 && (
-                      <p className="text-[11px]" role="note" data-confirm-notes style={{ color: 'var(--color-text-secondary)' }}>
+                      <p className="text-ui-11" role="note" data-confirm-notes style={{ color: 'var(--color-text-secondary)' }}>
                         {confirmNotes.join(' ')}
                       </p>
                     )}
                     {blockers.length > 0 && (
-                      <p className="text-[11px]" role="note" data-blockers style={{ color: 'var(--color-warning)' }}>
+                      <p className="text-ui-11" role="note" data-blockers style={{ color: 'var(--color-warning)' }}>
                         {BLOCKERS_LEAD}{' '}
                         {blockers.map((id, i) => (
                           <span key={id}>
@@ -921,7 +921,7 @@ export function FixesTab({
                       </p>
                     )}
                     {result && (
-                      <p className="text-[11.5px]" role="status" style={{ color: 'var(--color-text-secondary)' }}>
+                      <p className="text-ui-11-5" role="status" style={{ color: 'var(--color-text-secondary)' }}>
                         {result.action === 'approve' ? 'Approved' : 'Confirmed'} {result.done.length}
                         {result.refused.length > 0 &&
                           `; refused ${result.refused.length}: ${result.refused.map(refusalText).join(', ')}`}
@@ -949,7 +949,7 @@ export function FixesTab({
               })
             )}
             {hidden > 0 && (
-              <div className="flex items-center gap-2 text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+              <div className="flex items-center gap-2 text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
                 <SmallButton onClick={() => setShown((n) => n + ARCHIVE_PAGE)}>Show {Math.min(ARCHIVE_PAGE, hidden)} more</SmallButton>
                 <span>{hidden} older not shown</span>
               </div>

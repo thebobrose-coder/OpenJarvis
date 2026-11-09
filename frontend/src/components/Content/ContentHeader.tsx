@@ -85,7 +85,7 @@ export function ContentHeader({
             </SmallButton>
           </div>
           {onRunIntake && intakeStatus !== 'idle' && (
-            <span className="text-[10.5px]" style={{ color: intakeStatus === 'error' ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-10-5" style={{ color: intakeStatus === 'error' ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>
               {intakeStatus === 'running'
                 ? 'Starting the intake…'
                 : intakeStatus === 'error'
@@ -95,7 +95,7 @@ export function ContentHeader({
                     }`}
             </span>
           )}
-          <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
             {researchStatus === 'queued'
               ? 'Queued -- new proposals appear within a few minutes'
               : locked
@@ -121,7 +121,7 @@ export function ContentHeader({
           <FeedFreshness label="Foundry snapshot" ageSeconds={snapshot.age_hours * 3600} staleAfterSeconds={26 * 3600} />
         ) : (
           seedbank && (
-            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
               Foundry snapshot · not received yet
             </span>
           )
@@ -138,7 +138,7 @@ export function ContentHeader({
           <FeedFreshness label="Proposals" ageSeconds={proposals.age_seconds} stale={proposals.stale} staleAfterSeconds={26 * 3600} />
         )}
         {cost && (
-          <span className="flex flex-wrap items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="flex flex-wrap items-center gap-1 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             This month ${cost.month_usd.toFixed(2)}:
             {Object.entries(cost.by_engine).map(([engine, usd]) => (
               <Chip key={engine} tone="muted">

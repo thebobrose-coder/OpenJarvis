@@ -40,7 +40,7 @@ function RollupTable({ label, dim, rows }: { label: string; dim: RollupKey; rows
         <Quiet>No posts yet.</Quiet>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px] tabular-nums">
+          <table className="w-full text-ui-12 tabular-nums">
             <thead>
               <tr style={{ color: 'var(--color-text-tertiary)' }}>
                 <Th>{humanize(dim)}</Th>
@@ -76,7 +76,7 @@ function RecentPosts({ posts, showProperty }: { posts: (Post & { property: strin
     <div className="flex flex-col gap-1 min-w-0">
       <SectionLabel>Recent posts{posts.length > RECENT_MAX ? ` (latest ${RECENT_MAX} of ${posts.length})` : ''}</SectionLabel>
       <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-        <table className="w-full text-[12px] tabular-nums">
+        <table className="w-full text-ui-12 tabular-nums">
           <thead>
             <tr style={{ color: 'var(--color-text-tertiary)' }}>
               <Th>Post</Th>
@@ -97,7 +97,7 @@ function RecentPosts({ posts, showProperty }: { posts: (Post & { property: strin
                     <span className="line-clamp-2" style={{ color: 'var(--color-text)' }}>
                       {p.excerpt || p.post_id}
                     </span>
-                    <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
                       {showProperty ? `${p.property} · ` : ''}
                       {p.content_type ? `${p.content_type} · ` : ''}
                       {shortDateTime(p.distributed_at)}

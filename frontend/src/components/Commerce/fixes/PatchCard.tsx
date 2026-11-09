@@ -118,7 +118,7 @@ export function NoteConfirm({
           if (e.key === 'Escape') onCancel();
         }}
         placeholder="Note (optional)"
-        className="flex-1 min-w-[12rem] rounded-md px-2 py-1 text-[12px]"
+        className="flex-1 min-w-[12rem] rounded-md px-2 py-1 text-ui-12"
         style={textareaStyle}
       />
       <SmallButton tone={tone} onClick={() => onConfirm(note)}>
@@ -132,7 +132,7 @@ export function NoteConfirm({
 /** The judge's flag, shown where the operator decides to override it. */
 function JudgeFlag({ judge }: { judge: NonNullable<Patch['judge']> }) {
   return (
-    <span className="text-[11.5px]" data-judge-flag style={{ color: 'var(--color-warning)' }}>
+    <span className="text-ui-11-5" data-judge-flag style={{ color: 'var(--color-warning)' }}>
       Judge: {judge.quote && <span className="italic">“{judge.quote}”</span>} {judge.reason}
     </span>
   );
@@ -142,7 +142,7 @@ function JudgeFlag({ judge }: { judge: NonNullable<Patch['judge']> }) {
 function DropLines({ drops }: { drops: SpecDrops }) {
   if (!drops.finding.length && !drops.judge.length) return null;
   return (
-    <ul className="flex flex-col gap-0.5 text-[11.5px]" data-drop-lines style={{ color: 'var(--color-text-secondary)' }}>
+    <ul className="flex flex-col gap-0.5 text-ui-11-5" data-drop-lines style={{ color: 'var(--color-text-secondary)' }}>
       {drops.finding.map((f) => (
         <li key={f.id}>
           Dropped under finding {f.id.slice(0, 8)}: {f.tokens.join(', ')}
@@ -162,7 +162,7 @@ function History({ history }: { history: Patch['history'] }) {
   if (history.length < 2 && !history.some(isWriterEntry)) return null;
   const last = history[history.length - 1];
   return (
-    <details open={!!last && isWriterEntry(last)} className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+    <details open={!!last && isWriterEntry(last)} className="text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
       <summary className="cursor-pointer" style={{ color: 'var(--color-text-tertiary)' }}>
         History ({history.length})
       </summary>
@@ -217,7 +217,7 @@ function AltEditor({
               onKeyDown={(e) => e.key === 'Escape' && onCancel()}
               rows={2}
               spellCheck
-              className="w-full rounded-md p-2 text-[12px]"
+              className="w-full rounded-md p-2 text-ui-12"
               style={textareaStyle}
             />
             <AltCount text={drafts[img.media_id]} />
@@ -228,10 +228,10 @@ function AltEditor({
         value={note}
         onChange={(e) => setNote(e.target.value.slice(0, 500))}
         placeholder="Note (optional)"
-        className="rounded-md px-2 py-1 text-[12px]"
+        className="rounded-md px-2 py-1 text-ui-12"
         style={textareaStyle}
       />
-      <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <p className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         {ALT_EDIT_HINT}
       </p>
       <div className="flex gap-2">
@@ -269,12 +269,12 @@ function Editor({
       {patch.changes.map((c, i) => (
         <div key={c.field} className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+            <span className="text-ui-11 font-medium" style={{ color: 'var(--color-text-secondary)' }}>
               {c.field}
             </span>
             <DroppedFigures before={c.before} after={drafts[c.field]} />
             {isSeoField(c.field) && (
-              <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+              <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
                 <CharCount text={drafts[c.field]} range={SEO_RANGE[c.field]} />
               </span>
             )}
@@ -286,10 +286,10 @@ function Editor({
             onKeyDown={(e) => e.key === 'Escape' && onCancel()}
             rows={c.field === 'descriptionHtml' ? 10 : 2}
             spellCheck
-            className="w-full rounded-md p-2 font-mono text-[11.5px]"
+            className="w-full rounded-md p-2 font-mono text-ui-11-5"
             style={textareaStyle}
           />
-          <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
             Live diff against the current copy
           </span>
           <DiffBody
@@ -303,10 +303,10 @@ function Editor({
         value={note}
         onChange={(e) => setNote(e.target.value.slice(0, 500))}
         placeholder="Note (optional)"
-        className="rounded-md px-2 py-1 text-[12px]"
+        className="rounded-md px-2 py-1 text-ui-12"
         style={textareaStyle}
       />
-      <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <p className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         Saving approves your text. Hermes re-checks edited text; the new check results appear on the next feed
         refresh (about 2 minutes).
       </p>
@@ -439,25 +439,25 @@ export function PatchCard({
             read-back differs
           </Chip>
         )}
-        <span className="text-[13px] font-medium" style={{ color: 'var(--color-text)' }}>
+        <span className="text-ui-13 font-medium" style={{ color: 'var(--color-text)' }}>
           <ExtLink url={patch.admin_url} title="Open in Shopify admin">
             {patch.product_title}
           </ExtLink>
         </span>
         <ExtIcon url={patch.admin_url} title="Open in Shopify admin" />
         {collection && patch.product_url && (
-          <span className="text-[11px]" data-storefront-link style={{ color: 'var(--color-accent)' }}>
+          <span className="text-ui-11" data-storefront-link style={{ color: 'var(--color-accent)' }}>
             <ExtLink url={patch.product_url} title="Open the collection on the storefront">
               storefront
             </ExtLink>
           </span>
         )}
-        <span className="text-[11px] ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11 ml-auto" style={{ color: 'var(--color-text-tertiary)' }}>
           {storeName} · {shortDateTime(patch.decided_at ?? patch.created_at)}
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <div className="flex flex-wrap items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         {(alt || collection) && (
           <span data-rule={patch.fix_class.rule}>
             <Chip tone="neutral" title={`Class ${patch.fix_class.rule}`}>
@@ -537,7 +537,7 @@ export function PatchCard({
       </div>
 
       {superseded && (
-        <p className="text-[11.5px]" role="status" data-superseded-by={superseded} style={{ color: 'var(--color-warning)' }}>
+        <p className="text-ui-11-5" role="status" data-superseded-by={superseded} style={{ color: 'var(--color-warning)' }}>
           Why {statusLabel(patch.status)}: superseded by{' '}
           {onOpenPatch ? (
             <button
@@ -557,12 +557,12 @@ export function PatchCard({
         </p>
       )}
       {reason && (
-        <p className="text-[11.5px]" role="status" data-status-reason style={{ color: 'var(--color-warning)' }}>
+        <p className="text-ui-11-5" role="status" data-status-reason style={{ color: 'var(--color-warning)' }}>
           Why {statusLabel(patch.status)}: {reason}
         </p>
       )}
       {failed.some((c) => c.detail) && (
-        <ul className="flex flex-col gap-0.5 text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+        <ul className="flex flex-col gap-0.5 text-ui-11-5" style={{ color: 'var(--color-error)' }}>
           {failed
             .filter((c) => c.detail)
             .map((c) => (
@@ -573,7 +573,7 @@ export function PatchCard({
         </ul>
       )}
       {judge?.verdict === 'finding' && (judge.quote || judge.reason) && !overJudge && (
-        <p className="text-[11.5px]" style={{ color: 'var(--color-warning)' }}>
+        <p className="text-ui-11-5" style={{ color: 'var(--color-warning)' }}>
           Judge: {judge.quote && <span className="italic">“{judge.quote}”</span>} {judge.reason}
         </p>
       )}
@@ -591,7 +591,7 @@ export function PatchCard({
 
       {seoVerify && (
         <div
-          className="flex flex-col gap-0.5 text-[11.5px]"
+          className="flex flex-col gap-0.5 text-ui-11-5"
           data-seo-verify={seoVerify.result}
           data-page-cleared={seoVerify.page_cleared}
         >
@@ -616,13 +616,13 @@ export function PatchCard({
       )}
 
       {patch.note && (
-        <p className="text-[11.5px] italic" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="text-ui-11-5 italic" style={{ color: 'var(--color-text-secondary)' }}>
           Note: “{patch.note}”
         </p>
       )}
       <History history={patch.history} />
       {cardNote && (
-        <p className="text-[12px]" role="status" style={{ color: 'var(--color-warning)' }}>
+        <p className="text-ui-12" role="status" style={{ color: 'var(--color-warning)' }}>
           {cardNote}
         </p>
       )}
@@ -634,7 +634,7 @@ export function PatchCard({
       ) : panel === 'reject' && actions.includes('reject') ? (
         patch.status === 'confirm' ? (
           <div className="flex flex-col gap-1.5" data-withdraw>
-            <span className="text-[12px]" style={{ color: 'var(--color-text)' }}>
+            <span className="text-ui-12" style={{ color: 'var(--color-text)' }}>
               {WITHDRAW_QUESTION}
             </span>
             <NoteConfirm
@@ -646,7 +646,7 @@ export function PatchCard({
           </div>
         ) : foundry ? (
           <div className="flex flex-col gap-1.5" data-foundry-reject>
-            <span className="text-[12px]" style={{ color: 'var(--color-warning)' }}>
+            <span className="text-ui-12" style={{ color: 'var(--color-warning)' }}>
               {FOUNDRY_REJECT_HINT}
             </span>
             <div className="flex flex-wrap items-center gap-2">
@@ -681,7 +681,7 @@ export function PatchCard({
         </div>
       ) : panel === 'revert' && actions.includes('revert') ? (
         <div className="flex flex-col gap-1.5">
-          <span className="text-[12px]" style={{ color: 'var(--color-text)' }}>
+          <span className="text-ui-12" style={{ color: 'var(--color-text)' }}>
             {REVERT_QUESTION}
           </span>
           <NoteConfirm

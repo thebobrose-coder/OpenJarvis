@@ -60,34 +60,34 @@ function LineTile({ line }: { line: SpendLine }) {
       data-status={line.status}
     >
       <span className="flex items-center gap-1.5 min-w-0">
-        <span className="text-[11px] font-medium truncate" style={{ color: 'var(--color-text)' }} title={line.scope ?? undefined}>
+        <span className="text-ui-11 font-medium truncate" style={{ color: 'var(--color-text)' }} title={line.scope ?? undefined}>
           {line.id}
         </span>
         <span className="ml-auto">
           <Chip tone={tone}>{line.status.replace('_', ' ')}</Chip>
         </span>
       </span>
-      <span className="text-[13px] tabular-nums" style={{ color: muted ? 'var(--color-text-tertiary)' : 'var(--color-text)' }}>
+      <span className="text-ui-13 tabular-nums" style={{ color: muted ? 'var(--color-text-tertiary)' : 'var(--color-text)' }}>
         {amount(line.actual, line.unit)}
         <span style={{ color: 'var(--color-text-tertiary)' }}> / {line.cap == null ? 'no cap' : amount(line.cap, line.unit)}</span>
         {line.pct != null && (
-          <span className="ml-1.5 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
+          <span className="ml-1.5 text-ui-11" style={{ color: 'var(--color-text-secondary)' }}>
             {line.pct.toFixed(1)} %
           </span>
         )}
       </span>
       {line.status === 'not_read' && line.not_read && (
-        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           not read: {line.not_read}
         </span>
       )}
       {line.alerts === 'campaign_cap' && (
-        <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }} title="Its alerts come from campaign_daily, not from the ledger">
+        <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }} title="Its alerts come from campaign_daily, not from the ledger">
           alerts: campaign cap
         </span>
       )}
       {line.top_episode && (
-        <span className="text-[11px] truncate" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="text-ui-11 truncate" style={{ color: 'var(--color-text-secondary)' }}>
           top episode: {line.top_episode}
         </span>
       )}
@@ -100,7 +100,7 @@ export function CostReaderLine({ reader }: { reader: CostReader | null | undefin
   if (!reader) return null;
   if (!reader.configured) return <Quiet>cost reader not configured</Quiet>;
   return (
-    <p className="text-[11px] tabular-nums" style={{ color: 'var(--color-text-tertiary)' }} data-cost-reader>
+    <p className="text-ui-11 tabular-nums" style={{ color: 'var(--color-text-tertiary)' }} data-cost-reader>
       AWS month to date {amount(reader.total, 'usd')} (Bedrock {amount(reader.bedrock, 'usd')}) · forecast {amount(reader.forecast_total, 'usd')}{' '}
       (Bedrock {amount(reader.forecast_bedrock, 'usd')}) · read {reader.read_at ? shortDateTime(reader.read_at) : '—'}
       {reader.calls_month != null ? ` · ${reader.calls_month} calls this month` : ''}
@@ -114,12 +114,12 @@ function AlertRow({ alert }: { alert: SpendAlert }) {
   const tone: Tone = paused || alert.level === 100 ? 'error' : alert.lane === 'act' ? 'warning' : 'muted';
   const color = tone === 'error' ? 'var(--color-error)' : tone === 'warning' ? 'var(--color-warning)' : 'var(--color-text-secondary)';
   return (
-    <li className="flex flex-col gap-0.5 text-[12px]" style={{ color }} data-spend-alert={alert.line} data-action={alert.action ?? ''}>
+    <li className="flex flex-col gap-0.5 text-ui-12" style={{ color }} data-spend-alert={alert.line} data-action={alert.action ?? ''}>
       <span className="flex flex-wrap items-center gap-1.5">
         <Chip tone={tone}>{paused ? 'studio paused' : alert.action === 'budget_filter' ? 'budget filter' : alert.level != null ? `${alert.level} %` : alert.lane}</Chip>
         <span>{alert.line}</span>
         <span style={{ color: 'var(--color-text-tertiary)' }}>{alert.period}</span>
-        {alert.raised_at && <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>{shortDateTime(alert.raised_at)}</span>}
+        {alert.raised_at && <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>{shortDateTime(alert.raised_at)}</span>}
       </span>
       <span>{alert.message}</span>
       {paused && (
@@ -145,7 +145,7 @@ export function SpendLedgerPanel({ ledger, loading, error }: SpendLedgerPanelPro
     <DashboardPanel icon={Wallet} title="Spend ledger" tag="read only" size="full" loading={loading && !ledger} error={error}>
       <div id="spend-ledger" className="flex flex-col gap-3">
         {errors.length > 0 && (
-          <p role="alert" className="text-[12px]" style={{ color: 'var(--color-warning)' }} data-parse-errors>
+          <p role="alert" className="text-ui-12" style={{ color: 'var(--color-warning)' }} data-parse-errors>
             The ledger has {errors.length === 1 ? 'a line' : `${errors.length} lines`} Hermes couldn’t read: {errors.join('; ')}
           </p>
         )}
@@ -158,7 +158,7 @@ export function SpendLedgerPanel({ ledger, loading, error }: SpendLedgerPanelPro
         ) : (
           groups.map(([period, lines]) => (
             <div key={period} className="flex flex-col gap-1.5" data-period={period}>
-              <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+              <span className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
                 {PERIOD_LABEL[period] ?? period}
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
@@ -175,7 +175,7 @@ export function SpendLedgerPanel({ ledger, loading, error }: SpendLedgerPanelPro
         )}
         {alerts.length > 0 && (
           <div className="flex flex-col gap-1.5" data-spend-alerts>
-            <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+            <span className="text-ui-10 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
               Alerts this period
             </span>
             <ul className="flex flex-col gap-2">

@@ -37,7 +37,7 @@ function StoreSection({ store }: { store: StorePerformanceEntry }) {
           <p style={{ color: 'var(--color-error)' }}>{shopify.error}</p>
         ) : (
           <div className="flex flex-col gap-2">
-            <div className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            <div className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
               {shopify.catalog_count} products tracked
             </div>
             {(shopify.new_today?.length ?? 0) === 0 &&
@@ -48,7 +48,7 @@ function StoreSection({ store }: { store: StorePerformanceEntry }) {
               <>
                 {shopify.new_today && shopify.new_today.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <div className="text-ui-10 uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-tertiary)' }}>
                       New today ({shopify.new_today.length})
                     </div>
                     {shopify.new_today.slice(0, 5).map((p, i) => (
@@ -58,7 +58,7 @@ function StoreSection({ store }: { store: StorePerformanceEntry }) {
                 )}
                 {shopify.price_changes && shopify.price_changes.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <div className="text-ui-10 uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-tertiary)' }}>
                       Price changes ({shopify.price_changes.length})
                     </div>
                     {shopify.price_changes.slice(0, 5).map((p, i) => (
@@ -77,7 +77,7 @@ function StoreSection({ store }: { store: StorePerformanceEntry }) {
                 )}
                 {shopify.stockouts && shopify.stockouts.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'var(--color-error)' }}>
+                    <div className="text-ui-10 uppercase tracking-wide mb-1" style={{ color: 'var(--color-error)' }}>
                       Stockouts ({shopify.stockouts.length})
                     </div>
                     {shopify.stockouts.slice(0, 5).map((p, i) => (
@@ -172,7 +172,7 @@ function ProductSearchBlock({ ps }: { ps: ProductSearch }) {
   return (
     <div className="flex flex-col gap-1">
       <div
-        className="text-[10px] uppercase tracking-wide"
+        className="text-ui-10 uppercase tracking-wide"
         style={muted}
         title="Product and collection pages. Counted per page shown, so it can be larger than the property total."
       >
@@ -209,7 +209,7 @@ function QueryRows({ queries }: { queries: SearchConsoleQuery[] }) {
       {queries.slice(0, QUERY_LIMIT).map((q, i) => (
         <div key={i} className="flex items-center justify-between gap-2">
           <span className="truncate">{q.query}</span>
-          <span className="text-[11px] shrink-0" style={muted}>
+          <span className="text-ui-11 shrink-0" style={muted}>
             {q.clicks}c / {q.impressions}i / pos {q.position.toFixed(1)}
           </span>
         </div>
@@ -232,7 +232,7 @@ function PageRows({ pages }: { pages: SearchConsolePage[] }) {
                 {pageLabel(p.page, host)}
               </span>
             </span>
-            <span className="text-[11px] shrink-0" style={muted}>
+            <span className="text-ui-11 shrink-0" style={muted}>
               {p.impressions}i / pos {p.position.toFixed(1)}
               {p.organic ? ` / ${p.organic.sessions} sessions` : ''}
             </span>
@@ -245,7 +245,7 @@ function PageRows({ pages }: { pages: SearchConsolePage[] }) {
 
 function SubHead({ children }: { children: ReactNode }) {
   return (
-    <div className="text-[10px] uppercase tracking-wide" style={muted}>
+    <div className="text-ui-10 uppercase tracking-wide" style={muted}>
       {children}
     </div>
   );
@@ -276,13 +276,13 @@ export function StoreSearchView({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-col gap-0.5">
-        <div className="flex gap-4 text-[11px]" style={muted}>
+        <div className="flex gap-4 text-ui-11" style={muted}>
           <span>{gsc.total_clicks} clicks</span>
           <span>{gsc.total_impressions} impressions</span>
           <span>avg pos {gsc.avg_position}</span>
         </div>
         {hidden > 0 && (
-          <div className="text-[11px]" style={muted}>
+          <div className="text-ui-11" style={muted}>
             {num(hidden)} impressions on searches Google keeps private
           </div>
         )}
@@ -336,7 +336,7 @@ export function StoreSearchView({
       )}
 
       {(gsc.terms_version != null || gsc.window) && (
-        <div className="text-[10px]" style={muted}>
+        <div className="text-ui-10" style={muted}>
           {[
             gsc.terms_version != null ? `terms v${gsc.terms_version}` : null,
             gsc.window ? `${gsc.window.start}–${gsc.window.end}` : null,
@@ -409,6 +409,7 @@ export function StorePerformancePanel() {
       loading={loading}
       error={error}
       onRegenerate={load}
+      regenerateKind="reload"
     >
       <FeedFreshness
         ageSeconds={data?.age_seconds}
@@ -426,7 +427,7 @@ export function StorePerformancePanel() {
             <div key={store.slug}>
               {stores.length > 1 && (
                 <div
-                  className="text-[11px] font-semibold uppercase tracking-wide mb-2"
+                  className="text-ui-11 font-semibold uppercase tracking-wide mb-2"
                   style={{
                     color: 'var(--color-text-secondary)',
                     borderTop: i > 0 ? '1px solid var(--color-border)' : 'none',

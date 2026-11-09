@@ -95,7 +95,7 @@ export function BizDevView(props: BizDevViewProps) {
 
   return (
     <SendChecks.Provider value={{ states: props.sendChecks ?? {}, check: props.onCheckSend }}>
-    <div className="max-w-[1800px] mx-auto">
+    <div>
       <BizDevHeader
         lines={lines}
         selectedLine={lineId ?? ''}
@@ -110,7 +110,7 @@ export function BizDevView(props: BizDevViewProps) {
 
       {props.notice && (
         <div
-          className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 mb-4 text-[12px]"
+          className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 mb-4 text-ui-12"
           style={{ border: '1px solid var(--color-warning)', color: 'var(--color-text-secondary)' }}
           role="status"
         >

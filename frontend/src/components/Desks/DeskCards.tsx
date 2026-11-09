@@ -66,7 +66,7 @@ export function DeskCardsView({
         </div>
       )}
       {dropped.map((d, i) => (
-        <div key={i} role="note" className="text-[11px]" style={{ color: 'var(--color-warning, var(--color-text-tertiary))' }}>
+        <div key={i} role="note" className="text-ui-11" style={{ color: 'var(--color-warning, var(--color-text-tertiary))' }}>
           Dropped a card “{d.label}”: {d.reason}.
         </div>
       ))}
@@ -79,7 +79,7 @@ export function OutcomeLine({ text }: { text: string }) {
   return (
     <div className="flex justify-center mb-4" data-outcome>
       <span
-        className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full"
+        className="inline-flex items-center gap-1.5 text-ui-11 px-2.5 py-1 rounded-full"
         style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
       >
         <Info size={11} /> {text}
@@ -93,7 +93,7 @@ export function DeskThreadHeader({ desk, context }: { desk: DeskId; context?: st
   const info = DESK_DEFAULTS[desk];
   const Icon = deskIcon(desk);
   return (
-    <div className="flex items-center gap-2 min-w-0 text-[12px]" data-desk-header>
+    <div className="flex items-center gap-2 min-w-0 text-ui-12" data-desk-header>
       <Icon size={13} style={{ color: 'var(--color-accent)' }} />
       <span className="font-medium" style={{ color: 'var(--color-text)' }}>
         {info.name}

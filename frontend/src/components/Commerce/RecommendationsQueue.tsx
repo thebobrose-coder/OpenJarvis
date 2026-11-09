@@ -64,7 +64,7 @@ function DecisionControls({
           onChange={(e) => setNote(e.target.value.slice(0, 500))}
           rows={2}
           placeholder="Optional note (kept with the decision)"
-          className="w-full rounded-md px-2 py-1.5 text-[12px] resize-y"
+          className="w-full rounded-md px-2 py-1.5 text-ui-12 resize-y"
           style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
         />
       )}
@@ -98,7 +98,7 @@ function DecisionControls({
         {!noteOpen && (
           <button
             onClick={() => setNoteOpen(true)}
-            className="inline-flex items-center gap-1 text-[11px] cursor-pointer ml-1"
+            className="inline-flex items-center gap-1 text-ui-11 cursor-pointer ml-1"
             style={{ background: 'transparent', border: 'none', color: 'var(--color-text-tertiary)' }}
           >
             <MessageSquarePlus size={11} /> Add note
@@ -117,7 +117,7 @@ function PatchReady({ id, onOpenFix }: { id?: string | null; onOpenFix?: (patchI
       onClick={() => onOpenFix(id)}
       data-patch-ready={id}
       title="Open the patch on the Fixes tab"
-      className="cursor-pointer underline text-[11px]"
+      className="cursor-pointer underline text-ui-11"
       style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-accent)' }}
     >
       patch ready
@@ -164,7 +164,7 @@ export function RecommendationCard({
       <div className="flex flex-wrap items-center gap-1.5">
         <Chip tone={p.tone}>{p.label}</Chip>
         <Chip>{CATEGORY_LABELS[item.category] ?? item.category}</Chip>
-        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           {storeName} · {shortDateTime(item.created_at)}
         </span>
         {r.note && (
@@ -184,12 +184,12 @@ export function RecommendationCard({
         )}
       </div>
 
-      <h3 className="text-[13.5px] font-semibold leading-snug" style={{ color: 'var(--color-text)' }}>
+      <h3 className="text-ui-13-5 font-semibold leading-snug" style={{ color: 'var(--color-text)' }}>
         {item.title}
       </h3>
 
       {target?.ref && (
-        <div className="text-[11.5px]" style={{ color: 'var(--color-accent)' }}>
+        <div className="text-ui-11-5" style={{ color: 'var(--color-accent)' }}>
           <span style={{ color: 'var(--color-text-tertiary)' }}>{target.type ?? 'target'}: </span>
           <ExtLink url={target.url} title={target.ref}>{targetLabel}</ExtLink>
         </div>
@@ -212,7 +212,7 @@ export function RecommendationCard({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-ui-11">
         <Meta label="Confidence" value={r.confidence} />
         <Meta label="Effort" value={r.effort} />
         <Meta label="Owner" value={r.owner} />
@@ -275,7 +275,7 @@ function LinkButton({ onClick, title, data, children }: { onClick: () => void; t
       onClick={onClick}
       title={title}
       {...data}
-      className="cursor-pointer underline text-[11px]"
+      className="cursor-pointer underline text-ui-11"
       style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-accent)' }}
     >
       {children}
@@ -294,7 +294,7 @@ function RowHead({ item, storeNames, chip }: { item: LedgerItem; storeNames: Rec
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {chip}
-      <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
         {storeNames[item.store] ?? item.store} · {shortDateTime(item.decided_at)}
       </span>
     </div>
@@ -304,7 +304,7 @@ function RowHead({ item, storeNames, chip }: { item: LedgerItem; storeNames: Rec
 function Reason({ text }: { text?: string | null }) {
   if (!text) return null;
   return (
-    <span className="text-[11.5px]" data-route-reason style={{ color: 'var(--color-text-secondary)' }}>
+    <span className="text-ui-11-5" data-route-reason style={{ color: 'var(--color-text-secondary)' }}>
       {text}
     </span>
   );
@@ -430,7 +430,7 @@ function InFlightRow({ item, storeNames, links }: { item: LedgerItem; storeNames
 function Group({ title, count, hint, children }: { title: string; count: number; hint: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[11px] uppercase tracking-wide" title={hint} style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-11 uppercase tracking-wide" title={hint} style={{ color: 'var(--color-text-tertiary)' }}>
         {title} ({count})
       </span>
       {children}
@@ -477,7 +477,7 @@ export function LedgerGroups({
       <div className="flex flex-col gap-2">
         <button
           onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide cursor-pointer"
+          className="flex items-center gap-1.5 text-ui-11 uppercase tracking-wide cursor-pointer"
           style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--color-text-tertiary)' }}
           aria-expanded={open}
         >
@@ -492,7 +492,7 @@ export function LedgerGroups({
                 <li key={i.id} id={`rec-${i.id}`} className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }}>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Chip tone={STATUS_TONE[i.status] ?? 'neutral'}>{i.status}</Chip>
-                    <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                    <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
                       {storeNames[i.store] ?? i.store} · {shortDateTime(i.decided_at)}
                     </span>
                     <PatchReady id={i.fix_patch_id} onOpenFix={links.onOpenFix} />
@@ -500,7 +500,7 @@ export function LedgerGroups({
                   <span style={{ color: 'var(--color-text)' }}>{i.title}</span>
                   <OwnNote note={i.note} />
                   {splitNote(i.note).auto.map((a) => (
-                    <span key={a} className="text-[11px]" data-auto-close style={{ color: 'var(--color-text-secondary)' }}>
+                    <span key={a} className="text-ui-11" data-auto-close style={{ color: 'var(--color-text-secondary)' }}>
                       {a}
                     </span>
                   ))}

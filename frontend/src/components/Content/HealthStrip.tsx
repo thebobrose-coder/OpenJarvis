@@ -34,7 +34,7 @@ export function HealthStrip({ alerts, showProperty }: { alerts: HealthAlert[]; s
         const warn = a.severity === 'warn';
         const Icon = warn ? AlertTriangle : Info;
         return (
-          <div key={i} className="flex items-start gap-2 text-[12px]" data-severity={a.severity}>
+          <div key={i} className="flex items-start gap-2 text-ui-12" data-severity={a.severity}>
             <Icon
               size={13}
               style={{ color: warn ? 'var(--color-warning)' : 'var(--color-text-tertiary)', flexShrink: 0, marginTop: 2 }}

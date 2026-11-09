@@ -196,7 +196,7 @@ export function seedProblems(form: SeedForm, lane: Lane | undefined, verify: Ver
 
 function Label({ children }: { children: string }) {
   return (
-    <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+    <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
       {children}
     </span>
   );
@@ -213,7 +213,7 @@ export function VerifyLine({ verify }: { verify: VerifyResult | 'checking' | nul
           ? ['var(--color-error)', 'Not found in the store']
           : ['var(--color-warning)', `Couldn’t check (${verify.reason}); you can still queue, the intake checks again`];
   return (
-    <span role="status" className="text-[11px]" style={{ color }}>
+    <span role="status" className="text-ui-11" style={{ color }}>
       {text}
     </span>
   );
@@ -238,24 +238,24 @@ export function SeedSent({
     <div role="status" className="flex flex-col gap-1.5 rounded-lg p-3" style={{ border: '1px solid var(--color-accent-subtle)', background: 'var(--color-bg)' }}>
       <div className="flex flex-wrap items-center gap-1.5">
         <Chip tone="success">sent</Chip>
-        <span className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
           Proposal <code>{proposalId}</code>
         </span>
         {status && <Chip tone={status.tone}>{status.label}</Chip>}
         {position != null && <Chip tone="accent">lane position {position}</Chip>}
       </div>
       {!proposal && (
-        <span className="text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
           Hermes checks it within about 2 minutes; Foundry’s intake queues it at :20, or now with Run intake now.
         </span>
       )}
       {proposal && isSeedRefusal(proposal.note) && (
-        <span className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+        <span className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
           {proposal.note}
         </span>
       )}
       {reasons.length > 0 && (
-        <span className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+        <span className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
           Intake reasons: {reasons.map(humanize).join(', ')}
         </span>
       )}
@@ -384,7 +384,7 @@ export function SeedComposer({
       {phase === 'sent' && sentId ? (
         <SeedSent proposalId={sentId} proposal={sentProposal} lanePositions={lanePositions} />
       ) : props.length === 0 ? (
-        <p className="text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <p className="text-ui-12" style={{ color: 'var(--color-text-tertiary)' }}>
           No seedable property in the seedbank yet.
         </p>
       ) : (
@@ -392,7 +392,7 @@ export function SeedComposer({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label className="flex flex-col gap-1">
               <Label>Property</Label>
-              <select value={propertyId} onChange={(e) => pickProperty(e.target.value)} className="rounded-md px-1.5 py-1 text-[12px] cursor-pointer" style={field}>
+              <select value={propertyId} onChange={(e) => pickProperty(e.target.value)} className="rounded-md px-1.5 py-1 text-ui-12 cursor-pointer" style={field}>
                 {props.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.id}
@@ -421,7 +421,7 @@ export function SeedComposer({
           <label className="flex flex-col gap-1">
             <span className="flex items-center justify-between gap-2">
               <Label>Text</Label>
-              <span className="text-[10.5px]" style={{ color: text.trim().length > SEED_LIMITS.text ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>
+              <span className="text-ui-10-5" style={{ color: text.trim().length > SEED_LIMITS.text ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>
                 {text.trim().length} / {SEED_LIMITS.text}
               </span>
             </span>
@@ -430,11 +430,11 @@ export function SeedComposer({
               onChange={(e) => setText(e.target.value.slice(0, SEED_LIMITS.text + 200))}
               rows={longForm ? 10 : 4}
               placeholder={longForm ? 'Title on the first line, then the seed' : episode ? 'The episode topic' : 'The seed topic'}
-              className="w-full rounded-md px-2 py-1.5 text-[12.5px] resize-y"
+              className="w-full rounded-md px-2 py-1.5 text-ui-12-5 resize-y"
               style={field}
             />
             {longForm && seedTitle(text) && (
-              <span className="text-[11.5px]" style={{ color: 'var(--color-text-secondary)' }}>
+              <span className="text-ui-11-5" style={{ color: 'var(--color-text-secondary)' }}>
                 Title: <strong style={{ color: 'var(--color-text)' }}>{seedTitle(text)}</strong>
               </span>
             )}
@@ -443,7 +443,7 @@ export function SeedComposer({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label className="flex flex-col gap-1">
               <Label>Pillar</Label>
-              <select value={pillar} onChange={(e) => setPillar(e.target.value)} className="rounded-md px-1.5 py-1 text-[12px] cursor-pointer" style={field}>
+              <select value={pillar} onChange={(e) => setPillar(e.target.value)} className="rounded-md px-1.5 py-1 text-ui-12 cursor-pointer" style={field}>
                 <option value="">None</option>
                 {pillars.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -463,7 +463,7 @@ export function SeedComposer({
                   }}
                   placeholder="Product handle (optional)"
                   aria-label="Product handle"
-                  className="flex-1 min-w-0 rounded-md px-2 py-1 text-[12px]"
+                  className="flex-1 min-w-0 rounded-md px-2 py-1 text-ui-12"
                   style={field}
                 />
                 <SmallButton onClick={() => void check()} disabled={!handleOk || verify === 'checking'} title="Is this handle in the property's store?">
@@ -479,7 +479,7 @@ export function SeedComposer({
               <label className="flex flex-col gap-1">
                 <Label>Episode class</Label>
                 <span className="flex items-center gap-1.5">
-                  <select value={episodeClass} onChange={(e) => setEpisodeClass(e.target.value)} className="flex-1 rounded-md px-1.5 py-1 text-[12px] cursor-pointer" style={field} aria-label="Episode class">
+                  <select value={episodeClass} onChange={(e) => setEpisodeClass(e.target.value)} className="flex-1 rounded-md px-1.5 py-1 text-ui-12 cursor-pointer" style={field} aria-label="Episode class">
                     <option value="">Pick a class</option>
                     {classes.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -504,14 +504,14 @@ export function SeedComposer({
                   step={1}
                   value={minutes}
                   onChange={(e) => setMinutes(Number(e.target.value))}
-                  className="w-20 rounded-md px-2 py-1 text-[12px]"
+                  className="w-20 rounded-md px-2 py-1 text-ui-12"
                   style={field}
                 />
               </label>
               <label className="flex flex-col gap-1 sm:col-span-2">
                 <span className="flex items-center justify-between gap-2">
                   <Label>Sources, one https link per line</Label>
-                  <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
                     {parseSources(sourcesText).length} / {EPISODE_LIMITS.sources}
                   </span>
                 </span>
@@ -520,7 +520,7 @@ export function SeedComposer({
                   onChange={(e) => setSourcesText(e.target.value)}
                   rows={3}
                   placeholder="https://… (public primary sources: the studio scripts from these)"
-                  className="w-full rounded-md px-2 py-1.5 text-[12px] resize-y"
+                  className="w-full rounded-md px-2 py-1.5 text-ui-12 resize-y"
                   style={field}
                 />
               </label>
@@ -534,7 +534,7 @@ export function SeedComposer({
                 value={url}
                 onChange={(e) => setUrl(e.target.value.slice(0, SEED_LIMITS.url))}
                 placeholder="https:// source link (optional)"
-                className="rounded-md px-2 py-1 text-[12px]"
+                className="rounded-md px-2 py-1 text-ui-12"
                 style={field}
               />
             </label>
@@ -574,12 +574,12 @@ export function SeedComposer({
           )}
 
           <details>
-            <summary className="cursor-pointer text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+            <summary className="cursor-pointer text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
               What Queue sends
             </summary>
             <pre
               aria-label="Seed JSON"
-              className="mt-1.5 rounded-md p-2 text-[11px] whitespace-pre-wrap break-words max-h-64 overflow-y-auto"
+              className="mt-1.5 rounded-md p-2 text-ui-11 whitespace-pre-wrap break-words max-h-64 overflow-y-auto"
               style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
             >
               {JSON.stringify(body, null, 2)}
@@ -587,18 +587,18 @@ export function SeedComposer({
           </details>
 
           {problems.length > 0 && text.trim() && (
-            <ul className="text-[11.5px] pl-4 list-disc" style={{ color: 'var(--color-warning)' }}>
+            <ul className="text-ui-11-5 pl-4 list-disc" style={{ color: 'var(--color-warning)' }}>
               {problems.map((p) => (
                 <li key={p}>{p}</li>
               ))}
             </ul>
           )}
           {error && (
-            <p role="alert" className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+            <p role="alert" className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
               {error}
             </p>
           )}
-          <p className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <p className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             Your seed, born approved. Hermes checks the lane, pillar and wording; Foundry’s intake, compliance scan and G1 still apply.
             {episode ? ' An episode also waits for your G0 script review in the studio.' : ''}
             {fromPrompt ? ' The prompt is marked used once the seed reaches the outbox.' : ''}

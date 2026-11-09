@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { Drawer } from '../shared/Drawer';
 import { Check, X } from 'lucide-react';
 import { Chip, Quiet, SmallButton } from '../shared/ui';
 import { useWaiting } from '../../lib/WaitingContext';
@@ -20,7 +20,7 @@ export function expiresLabel(expiresAt: string, now: number): string | null {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+      <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
         {label}
       </span>
       {children}
@@ -63,7 +63,7 @@ function G1Media({ item, load }: { item: G1Item; load: (which: 'still' | 'clip')
         ))}
       {!item.hasClip && item.hasStill && (urls.still ? <img src={urls.still} alt={item.headline} className="w-full rounded-md" /> : <Quiet>Loading the still…</Quiet>)}
       {failed && (
-        <span className="text-[11.5px]" style={{ color: 'var(--color-error)' }}>
+        <span className="text-ui-11-5" style={{ color: 'var(--color-error)' }}>
           {failed}
         </span>
       )}
@@ -105,7 +105,7 @@ export function G1View({
         <Chip tone={item.decidable ? 'warning' : 'error'}>{item.gate}</Chip>
         <Chip tone="accent">{item.propertyId}</Chip>
         <Chip tone="muted">{episode ? 'episode' : item.contentType ?? 'post'}</Chip>
-        <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           asked {ago(item.createdAt, now)}
           {due ? ` · ${due}` : ''}
         </span>
@@ -114,7 +114,7 @@ export function G1View({
       <G1Media item={item} load={load} />
 
       <Field label={episode ? 'Title' : 'Headline'}>
-        <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text)' }}>
+        <span className="text-ui-14 font-semibold" style={{ color: 'var(--color-text)' }}>
           {item.headline || item.executionName}
         </span>
       </Field>
@@ -187,7 +187,7 @@ export function G1View({
               rows={2}
               placeholder="Note (optional)"
               aria-label="G1 note"
-              className="w-full rounded-md px-2 py-1.5 text-[12px] resize-y"
+              className="w-full rounded-md px-2 py-1.5 text-ui-12 resize-y"
               style={{ background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
             />
             {arm ? (
@@ -243,13 +243,6 @@ export function G1Drawer() {
       .finally(() => setLoading(false));
   }, [g1Open]);
 
-  useEffect(() => {
-    if (!g1Open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setG1Open(null);
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [g1Open, setG1Open]);
-
   const load = useCallback((which: 'still' | 'clip') => (g1Open ? g1Media(g1Open, which) : Promise.reject(new Error('closed'))), [g1Open]);
 
   if (!g1Open) return null;
@@ -266,31 +259,21 @@ export function G1Drawer() {
     }
   };
 
-  const drawer = (
-    <div className="fixed inset-0 z-[70] flex justify-end" style={{ background: 'rgba(0,0,0,0.35)' }} onClick={() => setG1Open(null)}>
-      <aside
-        role="dialog"
-        aria-label="G1 approval"
-        onClick={(e) => e.stopPropagation()}
-        className="h-full w-full max-w-[36rem] overflow-y-auto flex flex-col gap-4 p-5 text-[12.5px]"
-        style={{ background: 'var(--color-surface)', borderLeft: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-      >
-        <header className="flex items-center justify-between gap-2">
-          <h2 className="text-[15px] font-semibold" style={{ color: 'var(--color-text)' }}>
-            {item && !item.decidable ? 'Flagged for G2 (decide in Telegram)' : item?.contentType === 'episode' ? 'Episode to approve (G1)' : 'Post to approve (G1)'}
-          </h2>
-          <button onClick={() => setG1Open(null)} aria-label="Close" className="cursor-pointer" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
-            <X size={16} />
-          </button>
-        </header>
-        {item ? (
-          <G1View item={item} now={Date.now()} outcome={outcome} busy={busy} onDecide={(d, n) => void decide(d, n)} load={load} />
-        ) : (
-          <Quiet>{loading ? 'Loading…' : error ?? 'Nothing to show.'}</Quiet>
-        )}
-      </aside>
-    </div>
+  return (
+    <Drawer open onClose={() => setG1Open(null)} label="G1 approval" width="narrow">
+      <header className="flex items-center justify-between gap-2">
+        <h2 className="text-ui-15 font-semibold" style={{ color: 'var(--color-text)' }}>
+          {item && !item.decidable ? 'Flagged for G2 (decide in Telegram)' : item?.contentType === 'episode' ? 'Episode to approve (G1)' : 'Post to approve (G1)'}
+        </h2>
+        <button onClick={() => setG1Open(null)} aria-label="Close" className="cursor-pointer" style={{ background: 'transparent', border: 'none', color: 'inherit' }}>
+          <X size={16} />
+        </button>
+      </header>
+      {item ? (
+        <G1View item={item} now={Date.now()} outcome={outcome} busy={busy} onDecide={(d, n) => void decide(d, n)} load={load} />
+      ) : (
+        <Quiet>{loading ? 'Loading…' : error ?? 'Nothing to show.'}</Quiet>
+      )}
+    </Drawer>
   );
-  // Portalled to <body>, like the other drawers.
-  return typeof document === 'undefined' ? drawer : createPortal(drawer, document.body);
 }

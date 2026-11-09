@@ -4,6 +4,85 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * Widescreen (hq plan 2026-11-09, Phase 0).
+ * 3xl = the operator's 2560x1440 CSS viewport (4K at 150%). The UI type scale is a set
+ * of tokens so the operator pages grow their text at 3xl without touching markup:
+ * text-ui-<px> reads today's size below 1920 and the wide size at or above it.
+ */
+@theme {
+  --breakpoint-3xl: 1920px;
+}
+
+:root {
+  --text-ui-9: 9px;
+  --text-ui-10: 10px;
+  --text-ui-10-5: 10.5px;
+  --text-ui-11: 11px;
+  --text-ui-11-5: 11.5px;
+  --text-ui-12: 12px;
+  --text-ui-12-5: 12.5px;
+  --text-ui-13: 13px;
+  --text-ui-13-5: 13.5px;
+  --text-ui-14: 14px;
+  --text-ui-15: 15px;
+  --text-ui-20: 20px;
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --text-ui-9: 10px;
+    --text-ui-10: 11.5px;
+    --text-ui-10-5: 12px;
+    --text-ui-11: 12.5px;
+    --text-ui-11-5: 13px;
+    --text-ui-12: 13.5px;
+    --text-ui-12-5: 14px;
+    --text-ui-13: 14.5px;
+    --text-ui-13-5: 15px;
+    --text-ui-14: 16px;
+    --text-ui-15: 17px;
+    --text-ui-20: 24px;
+  }
+}
+
+@utility text-ui-9 {
+  font-size: var(--text-ui-9);
+}
+@utility text-ui-10 {
+  font-size: var(--text-ui-10);
+}
+@utility text-ui-10-5 {
+  font-size: var(--text-ui-10-5);
+}
+@utility text-ui-11 {
+  font-size: var(--text-ui-11);
+}
+@utility text-ui-11-5 {
+  font-size: var(--text-ui-11-5);
+}
+@utility text-ui-12 {
+  font-size: var(--text-ui-12);
+}
+@utility text-ui-12-5 {
+  font-size: var(--text-ui-12-5);
+}
+@utility text-ui-13 {
+  font-size: var(--text-ui-13);
+}
+@utility text-ui-13-5 {
+  font-size: var(--text-ui-13-5);
+}
+@utility text-ui-14 {
+  font-size: var(--text-ui-14);
+}
+@utility text-ui-15 {
+  font-size: var(--text-ui-15);
+}
+@utility text-ui-20 {
+  font-size: var(--text-ui-20);
+}
+
+/*
  * OpenJarvis design tokens.
  * Zinc/slate neutrals, blue accent. Light default, dark via class or system pref.
  */

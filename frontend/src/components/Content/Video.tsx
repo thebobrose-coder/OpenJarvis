@@ -42,7 +42,7 @@ const field = {
 
 function Label({ children }: { children: string }) {
   return (
-    <span className="text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
+    <span className="text-ui-10-5 uppercase tracking-wide" style={{ color: 'var(--color-text-tertiary)' }}>
       {children}
     </span>
   );
@@ -101,7 +101,7 @@ export function VideoFields({
           ]}
         />
         {release && (
-          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
             {RELEASE[release] ?? release}
           </span>
         )}
@@ -109,7 +109,7 @@ export function VideoFields({
       <label className="flex flex-col gap-1">
         <span className="flex items-center justify-between gap-2">
           <Label>Beat</Label>
-          <span className="text-[10.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-ui-10-5" style={{ color: 'var(--color-text-tertiary)' }}>
             {beat.trim().length} / {LIMITS.motion_brief}
           </span>
         </span>
@@ -119,12 +119,12 @@ export function VideoFields({
           disabled={!enabled}
           placeholder="what happens in the frame — not a caption"
           aria-label="Beat"
-          className="rounded-md px-2 py-1 text-[12px] disabled:opacity-50"
+          className="rounded-md px-2 py-1 text-ui-12 disabled:opacity-50"
           style={field}
         />
       </label>
       <details>
-        <summary className="cursor-pointer text-[11.5px]" style={{ color: 'var(--color-text-tertiary)' }}>
+        <summary className="cursor-pointer text-ui-11-5" style={{ color: 'var(--color-text-tertiary)' }}>
           Advanced
         </summary>
         <label className="mt-1.5 flex flex-col gap-1">
@@ -135,17 +135,17 @@ export function VideoFields({
             placeholder={`assets/${propertyId}/… .mp4 (your own clip, optional)`}
             aria-label="Video asset key"
             autoComplete="off"
-            className="rounded-md px-2 py-1 text-[12px]"
+            className="rounded-md px-2 py-1 text-ui-12"
             style={field}
           />
         </label>
         {keyProblem && (
-          <span className="text-[11px]" style={{ color: 'var(--color-warning)' }}>
+          <span className="text-ui-11" style={{ color: 'var(--color-warning)' }}>
             {keyProblem}
           </span>
         )}
         {currentKey && onRemoveKey && (
-          <label className="mt-1 flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
+          <label className="mt-1 flex items-center gap-1.5 text-ui-11" style={{ color: 'var(--color-text-secondary)' }}>
             <input type="checkbox" checked={!!removeKey} onChange={(e) => onRemoveKey(e.target.checked)} />
             Remove the current key (<code>{currentKey}</code>)
           </label>

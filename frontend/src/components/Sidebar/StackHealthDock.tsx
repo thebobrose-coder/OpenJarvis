@@ -22,7 +22,7 @@ const TINT: Record<'fail' | 'warn', { color: string; background: string; border:
 
 function MutedLine({ children, title }: { children: string; title?: string }) {
   return (
-    <div className="mx-3 mb-1 px-3 py-1 text-[12px] shrink-0 truncate" style={{ color: 'var(--color-text-tertiary)' }} title={title}>
+    <div className="mx-3 mb-1 px-3 py-1 text-ui-12 shrink-0 truncate" style={{ color: 'var(--color-text-tertiary)' }} title={title}>
       {children}
     </div>
   );
@@ -57,7 +57,7 @@ export function StackHealthDockView({ health, level, age, noticeOnly, missing, e
     const notices = health.cloud_events.length;
     return (
       <div
-        className="mx-3 mb-1 px-3 py-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] shrink-0 min-w-0"
+        className="mx-3 mb-1 px-3 py-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ui-12 shrink-0 min-w-0"
         style={{ color: 'var(--color-text-tertiary)' }}
         data-stack-level={level}
       >
@@ -74,7 +74,7 @@ export function StackHealthDockView({ health, level, age, noticeOnly, missing, e
           </button>
         </span>
         {/* Wraps under the sentence when the sidebar is narrow, never truncating it. */}
-        <span className="shrink-0 tabular-nums text-[11px] pl-3.5">
+        <span className="shrink-0 tabular-nums text-ui-11 pl-3.5">
           {clock(health.ran_at)}
           {age != null ? ` · ${formatAge(age)}` : ''}
         </span>
@@ -100,12 +100,12 @@ export function StackHealthDockView({ health, level, age, noticeOnly, missing, e
       onClick={onOpen}
       aria-live="polite"
       data-stack-level={level}
-      className={`mx-3 mb-1 px-3 py-1.5 flex flex-col items-start gap-0.5 rounded-lg text-left text-[12px] shrink-0 min-w-0 cursor-pointer${pulse ? ' animate-pulse' : ''}`}
+      className={`mx-3 mb-1 px-3 py-1.5 flex flex-col items-start gap-0.5 rounded-lg text-left text-ui-12 shrink-0 min-w-0 cursor-pointer${pulse ? ' animate-pulse' : ''}`}
       style={{ background: tint.background, border: `1px solid ${tint.border}`, color: tint.color, width: 'calc(100% - 1.5rem)' }}
       title="Open stack health"
     >
       <span className="w-full truncate font-medium">{first}</span>
-      <span className="w-full truncate text-[11px]" style={{ color: 'var(--color-text-secondary)' }}>
+      <span className="w-full truncate text-ui-11" style={{ color: 'var(--color-text-secondary)' }}>
         {second}
       </span>
     </button>

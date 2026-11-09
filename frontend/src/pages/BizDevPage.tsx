@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { PageFrame } from '../components/shared/PageFrame';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useAppStore } from '../lib/store';
 import { contextBlock } from '../lib/desks-api';
@@ -50,7 +51,7 @@ export function BizDevPage() {
   const draft = handoff?.kind === 'draft' && handoff.page === '/bizdev' && Number(handoff.focus) === openId ? handoff.draft : null;
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-10">
+    <PageFrame>
       <BizDevView
         feeds={data.feeds}
         pending={data.pending}
@@ -88,6 +89,6 @@ export function BizDevPage() {
           navigate('/');
         }}
       />
-    </div>
+    </PageFrame>
   );
 }
