@@ -80,9 +80,12 @@ The OpenJarvis backend proxies these under `/api/voice/*`.
 ## Setup
 
 1. Create the venv and install `requirements.txt` (commands at its top).
-2. Register the task: `.\install_task.ps1 -LeasePath <path to the shared gpu\lease.json> [-VoiceName <label>]`.
-   This writes `config.json` next to the cache (`lease_path`, and `voice_name`, the expressive voice's label in
-   the UI) and starts the worker. Logs go to `%LOCALAPPDATA%\openjarvis\logs\voice-worker.log`.
+2. Register the task:
+   `.\install_task.ps1 -LeasePath <path to the shared gpu\lease.json> [-VoiceName <label>] [-StudioDir <episode root>]`.
+   This updates `config.json` next to the cache (`lease_path`; `voice_name`, the expressive voice's label in
+   the UI; `studio_dir` when passed) and starts the worker. The installer preserves every other key in
+   `config.json`, so it is safe to re-run; `-ConfigOnly` updates the file without touching the task.
+   Logs go to `%LOCALAPPDATA%\openjarvis\logs\voice-worker.log`.
 
 Test flags: create an empty `fake_busy` file in the data folder (or set `OPENJARVIS_VOICE_FAKE_BUSY=1`) to make the
 GPU look busy, and pass `--fallback-minutes` to shorten the fast-lane deadline.
