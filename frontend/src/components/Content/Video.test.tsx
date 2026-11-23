@@ -11,10 +11,10 @@ import type {
 } from '../../lib/content-api';
 import { applyDecisions } from '../../hooks/useContentData';
 import { PerformancePanel } from './PerformancePanel';
-import { ApproveEditor, DecidedItem, ProposalCard, approvalEdits } from './ProposalsQueue';
+import { ApproveEditor, DecidedItem, FormatChip, ProposalCard, approvalEdits } from './ProposalsQueue';
 import { SeedComposer, seedBody, seedProblems, seedVideoAllowed, type SeedForm } from './SeedComposer';
 import { assetKeyProblem, skippedLabel, videoAllowed } from './Video';
-import { WinnersPanel, reelsLine } from './WinnersPanel';
+import { WinnersPanel, checkpointLabel, reelsEmptyLine, reelsLine } from './WinnersPanel';
 import { lane } from '../../test/fixtures';
 
 // Neutral fixtures only: this repo is public, and real proposals name the
@@ -266,7 +266,11 @@ describe('measurement and winners', () => {
     expect(html).toContain('aria-label="Reels"');
     expect(html).toContain('3 Reels, 3 unmeasured');
     expect(html).toContain('grit: 3 Reels · avg eng. 12.5');
-    expect(html).toContain('Reels aren’t ranked yet');
+    expect(html).toContain('No Reel has an Instagram reading yet (3 unmeasured). Reels are ranked by reach, then shares.');
+    expect(html).not.toContain('page score');
+    expect(reelsEmptyLine({ posts: 2, unmeasured: 0, top: [], bottom: [], by_pillar: [] })).toBe(
+      'No Reel has an Instagram reading yet. Reels are ranked by reach, then shares.',
+    );
     expect(reelsLine({ posts: 1, unmeasured: 0, top: [], bottom: [], by_pillar: [] })).toBe('1 Reel');
   });
 
@@ -275,14 +279,62 @@ describe('measurement and winners', () => {
       winners({
         posts: 2,
         unmeasured: 0,
-        top: [{ post_id: 'r1', excerpt: 'Sample top reel', score: 4.2, video_key: 'sample-reel' }],
-        bottom: [{ post_id: 'r2', excerpt: 'Sample bottom reel', score: 1.1, video_key: 'sample-reel-2' }],
+        top: [{ post_id: 'r1', excerpt: 'Sample top reel', video_key: 'sample-reel', reach: 1432, shares: 3, checkpoint_day: 7, pillar: 'grit' }],
+        bottom: [{ post_id: 'r2', excerpt: 'Sample bottom reel', video_key: 'sample-reel-2', reach: 12, shares: 0, checkpoint_day: 1 }],
         by_pillar: [],
       }),
     );
-    expect(html).toContain('Top Reels');
+    expect(html).toContain('Top Reels, by reach');
     expect(html).toContain('Sample top reel');
     expect(html).toContain('Sample bottom reel');
-    expect(html).not.toContain('aren’t ranked yet');
+    expect(html).not.toContain('Instagram reading yet');
+    // v1.31.3: each ranked Reel shows reach, shares and its checkpoint day.
+    const [, top, bottom] = html.split('data-reel=');
+    expect(top).toContain('reach 1,432');
+    expect(top).toContain('3 shares');
+    expect(top).toContain('read at day 7');
+    expect(top).not.toContain('day 1 reading');
+    expect(bottom).toContain('reach 12');
+    expect(bottom).toContain('0 shares');
+    expect(bottom).toContain('day 1 reading');
+    // Not drawn as a long-form post: no score, no search figures.
+    expect(html).not.toContain('Winner score');
+    expect(html).not.toContain('impr.');
+    expect(html).not.toContain('sessions');
+    // A feed from before the reach ranking: the entry keeps its long-form row.
+    const older = panel(
+      winners({ posts: 1, unmeasured: 0, top: [{ post_id: 'r0', excerpt: 'Older scored reel', score: 4.2, video_key: 'sample-reel' }], bottom: [], by_pillar: [] }),
+    );
+    expect(older).toContain('Winner score');
+    expect(older).not.toContain('by reach');
+    expect(older).not.toContain('data-reel=');
+    expect(checkpointLabel(28)).toBe('day 28');
+    expect(checkpointLabel(null)).toBeNull();
+  });
+});
+
+describe('the format chip on a proposal (hq 0031 B1)', () => {
+  it('names the four formats, shows an unknown one as written, and nothing without one', () => {
+    const chip = (format?: string | null) => renderToStaticMarkup(<FormatChip format={format} />);
+    expect(chip('problem-first')).toContain('Problem first');
+    expect(chip('game-cut')).toContain('Game cut');
+    expect(chip('whats-in-it')).toContain('What’s in it');
+    expect(chip('quants-take')).toContain('Quant’s take');
+    expect(chip('new-format')).toContain('new');
+    expect(chip(null)).toBe('');
+    expect(chip(undefined)).toBe('');
+  });
+});
+
+describe('a short with a format on the proposal card', () => {
+  it('shows the format chip, and a refused approve as Hermes worded it', () => {
+    const refusal = 'edit refused: product-required: 2 product-less quants-take seeds are already queued or ran inside 7 days; add a product that fits, or approve it later';
+    const html = renderToStaticMarkup(
+      <ProposalCard proposal={proposal({ format: 'quants-take', note: refusal })} pillars={[]} showProperty={false} onApprove={vi.fn()} onReject={vi.fn()} />,
+    );
+    expect(html).toContain('Quant’s take');
+    expect(html).toContain(refusal);
+    const plain = renderToStaticMarkup(<ProposalCard proposal={proposal()} pillars={[]} showProperty={false} onApprove={vi.fn()} onReject={vi.fn()} />);
+    expect(plain).not.toContain('Format:');
   });
 });

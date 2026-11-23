@@ -199,6 +199,8 @@ export interface Proposal {
   target_minutes?: number | null;
   /** The episode tag (foundry-seed-proposal.md v2.8): a long-form proposal's companion episode; null or absent without one. */
   episode?: EpisodeTag | null;
+  /** v1.31 (hq 0031 B1): a short's format, set by Hermes; read-only here. */
+  format?: string | null;
 }
 
 /** A companion episode on a thesis or Expedition Debrief proposal (v2.8). */
@@ -387,6 +389,12 @@ export interface WinnerPost {
   target_queries?: string[] | null;
   targets_hit?: TargetsHit | null;
   video_key?: string | null;
+  // v1.31.3 (hq 0031 D6), on `video.top[]` and `video.bottom[]` only: the
+  // Reel's Instagram reading at its latest checkpoint.
+  reach?: number | null;
+  shares?: number | null;
+  /** 1, 7 or 28. A day-1 reading is not comparable with later ones. */
+  checkpoint_day?: number | null;
 }
 
 export interface PageQuery {
@@ -423,7 +431,8 @@ export interface WinnersProperty {
   video?: VideoWinners | null;
 }
 
-/** Reels have no page score yet, so `top` and `bottom` stay empty for now. */
+/** Reels ranked among themselves by Instagram reach, then shares (v1.31.3);
+ * one with no Instagram reading is counted in `unmeasured`, not ranked. */
 export interface VideoWinners {
   posts: number;
   unmeasured?: number | null;

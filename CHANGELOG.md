@@ -974,6 +974,13 @@ angle on the clipboard.
 
 ### Changed
 
+**Content: ranked Reels show their Instagram reading** (contract v1.31.3, hq
+0031 D6). A Reel in the winners panel's Top and Bottom lists is drawn with its
+reach, shares and the checkpoint day of the reading (a day-1 reading is
+marked, since it is not comparable with later ones) instead of as a long-form
+row. With none ranked, the line says no Reel has an Instagram reading yet and
+gives the unmeasured count. A pending short shows its format as a chip.
+
 **Sidebar: the admin pages share one row of icons.** Settings, Data Sources,
 Logs and Get Started moved from four rows to one row of icons (named on hover)
 under the page list, and the page rows are a little tighter, so the list, the

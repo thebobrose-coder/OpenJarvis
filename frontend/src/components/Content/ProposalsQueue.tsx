@@ -669,6 +669,23 @@ export function EpisodeChips({ proposal, classes = [] }: { proposal: Proposal; c
   );
 }
 
+/** The short's format (hq 0031 B1), set by Hermes; not editable here. */
+export const FORMAT_LABEL: Record<string, string> = {
+  'whats-in-it': 'What’s in it',
+  'problem-first': 'Problem first',
+  'quants-take': 'Quant’s take',
+  'game-cut': 'Game cut',
+};
+
+export function FormatChip({ format }: { format?: string | null }) {
+  if (!format) return null;
+  return (
+    <Chip tone="accent" title="Format: what the Reel’s hook promises (set by Hermes)">
+      {FORMAT_LABEL[format] ?? humanize(format)}
+    </Chip>
+  );
+}
+
 function ProposalMeta({ proposal, showProperty, classes }: { proposal: Proposal; showProperty: boolean; classes?: EpisodeClass[] }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -676,6 +693,7 @@ function ProposalMeta({ proposal, showProperty, classes }: { proposal: Proposal;
       <OriginChip proposal={proposal} />
       <Chip>{laneLabel(proposal.lane)}</Chip>
       <EpisodeChips proposal={proposal} classes={classes} />
+      <FormatChip format={proposal.format} />
       {proposal.signal_type && <Chip tone="muted">{humanize(proposal.signal_type)}</Chip>}
       {proposal.pillar_hint && <Chip title="Pillar">{proposal.pillar_hint}</Chip>}
       {proposal.product_handle && (

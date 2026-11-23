@@ -66,7 +66,69 @@ function Entry({ post, queries }: { post: WinnerPost; queries?: PageQuery[] }) {
   );
 }
 
-function Column({ label, posts, property, empty }: { label: string; posts: WinnerPost[]; property: WinnersProperty; empty: string }) {
+/** "day 7", or "day 1": which checkpoint the reading was taken at. Null when
+ * the feed gives none. */
+export function checkpointLabel(day?: number | null): string | null {
+  return day == null ? null : `day ${day}`;
+}
+
+/** Does the entry carry the v1.31.3 Instagram reading? A feed written before
+ * Hermes ranked Reels by reach has entries with a page score and neither key. */
+export const hasReading = (p: WinnerPost) => p.reach != null || p.checkpoint_day != null;
+
+/** A ranked Reel (v1.31.3): its Instagram reach and shares at the latest
+ * checkpoint, and which checkpoint that is. No page score, no search line. */
+function ReelEntry({ post }: { post: WinnerPost }) {
+  const day = checkpointLabel(post.checkpoint_day);
+  const early = post.checkpoint_day === 1;
+  const where = [post.pillar, post.distributed_at ? shortDateTime(post.distributed_at) : null].filter(Boolean).join(' · ');
+  return (
+    <li className="flex flex-col gap-1 rounded-md p-2" style={{ background: 'var(--color-bg-secondary)' }} data-reel={post.post_id}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="line-clamp-2" style={{ color: 'var(--color-text)' }} title={post.excerpt ?? undefined}>
+          {post.excerpt || post.post_id}
+        </span>
+        <Chip tone="accent" title="Instagram reach at the latest checkpoint">
+          reach {num(post.reach)}
+        </Chip>
+      </div>
+      {(post.site_path || where) && (
+        <span className="text-ui-10-5 tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>
+          {post.url ? <ExtLink url={post.url}>{post.site_path}</ExtLink> : post.site_path}
+          {post.site_path && where ? ' · ' : ''}
+          {where}
+        </span>
+      )}
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-ui-11 tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
+        <span>{num(post.shares)} shares</span>
+        {day &&
+          (early ? (
+            <Chip tone="warning" title="A first-day reading: not comparable with a day-7 or day-28 one">
+              day 1 reading
+            </Chip>
+          ) : (
+            <span title="The checkpoint this reading was taken at">read at {day}</span>
+          ))}
+        {post.video_key && <ReelMarks videoKey={post.video_key} />}
+      </span>
+    </li>
+  );
+}
+
+function Column({
+  label,
+  posts,
+  property,
+  empty,
+  reels = false,
+}: {
+  label: string;
+  posts: WinnerPost[];
+  property: WinnersProperty;
+  empty: string;
+  /** Draw each post as a ranked Reel instead of a long-form post. */
+  reels?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-1.5 min-w-0">
       <SectionLabel>{label}</SectionLabel>
@@ -74,9 +136,13 @@ function Column({ label, posts, property, empty }: { label: string; posts: Winne
         <Quiet>{empty}</Quiet>
       ) : (
         <ul className="flex flex-col gap-1.5">
-          {posts.map((p) => (
-            <Entry key={p.post_id} post={p} queries={p.site_path ? property.page_queries?.[p.site_path] : undefined} />
-          ))}
+          {posts.map((p) =>
+            reels && hasReading(p) ? (
+              <ReelEntry key={p.post_id} post={p} />
+            ) : (
+              <Entry key={p.post_id} post={p} queries={p.site_path ? property.page_queries?.[p.site_path] : undefined} />
+            ),
+          )}
         </ul>
       )}
     </div>
@@ -88,15 +154,26 @@ export function reelsLine(v: VideoWinners): string {
   return `${num(v.posts)} Reel${v.posts === 1 ? '' : 's'}${v.unmeasured ? `, ${num(v.unmeasured)} unmeasured` : ''}`;
 }
 
+/** Why no Reel is ranked yet: none has an Instagram reading. */
+export function reelsEmptyLine(v: VideoWinners): string {
+  const n = v.unmeasured ?? 0;
+  return n > 0
+    ? `No Reel has an Instagram reading yet (${num(n)} unmeasured). Reels are ranked by reach, then shares.`
+    : 'No Reel has an Instagram reading yet. Reels are ranked by reach, then shares.';
+}
+
 /**
- * Reels, ranked among themselves (v1.14): a Reel never displaces a still.
- * Reels have no page score yet, so the lists stay empty until they fill;
- * engagement by pillar shows meanwhile.
+ * Reels, ranked among themselves by Instagram reach, then shares (v1.31.3,
+ * hq 0031 D6): a Reel never displaces a long-form post. Until one has a
+ * reading the lists are empty and engagement by pillar shows meanwhile.
  */
 export function ReelsList({ video, property }: { video: VideoWinners; property: WinnersProperty }) {
   const top = video.top ?? [];
   const bottom = video.bottom ?? [];
   const pillars = video.by_pillar ?? [];
+  // Until the first run that ranks by reach, a listed Reel is an older,
+  // page-scored entry and is drawn as it was.
+  const byReach = [...top, ...bottom].some(hasReading);
   return (
     <div className="flex flex-col gap-1.5" aria-label="Reels">
       <SectionLabel>Reels</SectionLabel>
@@ -114,11 +191,11 @@ export function ReelsList({ video, property }: { video: VideoWinners; property: 
       )}
       {top.length + bottom.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Column label="Top Reels" posts={top} property={property} empty="No scored Reels yet." />
-          <Column label="Bottom Reels" posts={bottom} property={property} empty="Not enough scored Reels yet." />
+          <Column label={byReach ? 'Top Reels, by reach' : 'Top Reels'} posts={top} property={property} empty="No Reel with a reading yet." reels />
+          <Column label="Bottom Reels" posts={bottom} property={property} empty="Not enough Reels with a reading yet." reels />
         </div>
       ) : (
-        <Quiet>Reels aren’t ranked yet: they have no page score.</Quiet>
+        <Quiet>{reelsEmptyLine(video)}</Quiet>
       )}
     </div>
   );
