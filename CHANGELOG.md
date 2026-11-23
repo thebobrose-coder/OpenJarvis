@@ -949,6 +949,29 @@ the mic is open only while a conversation is active.
   header gains a voice indicator and a conversation drawer with "That's all"
   and "Open in chat" (text only, on click).
 
+**Outreach page** (`/outreach`, hq decision 0031 Part C, contract v1.31). The
+target accounts for the operator's hand outreach on Instagram, per brand. The
+app never posts, likes, follows, messages or logs in to Instagram and holds no
+Instagram credential: Open hands a profile link to the browser, Copy puts an
+angle on the clipboard.
+- The target list (tier, niche, why, status, collab state, notes, last
+  engaged) with a drawer to edit an account; paste handles or profile links,
+  one or many, with duplicates refused; a Candidates tab over Hermes's
+  `ig_target_candidates` with Accept and Dismiss.
+- Today's round: five accounts per brand picked by code (active, least
+  recently engaged first, one from each tier that has any), each with Open,
+  three comment angles from the local model (200 characters or fewer, screened
+  by code against the brand's compliance phrases in Foundry's bundle), and
+  Done, Skip and Undo, which write the log.
+- A daily checklist with the days kept, and Hermes's `ig_reach` as a results
+  strip ("not yet" until the feed exists, "not read" for a missing figure).
+- "Waiting on you" gains one `outreach` row per brand per Central day, in the
+  For you lane, until the round is done.
+- The store is `social/targets.json` and `social/outreach-log.jsonl` under the
+  workspace data folder, written only by this app. Brands come from local
+  config (`[desks] OUTREACH_BRANDS`). Every `/api/outreach/*` route answers
+  loopback only.
+
 ### Changed
 
 **One feed proxy, one clock, one send state** (the 2026-11-04 stack pass; no

@@ -604,6 +604,7 @@ def test_local_kinds_lane_table():
         "g1": "act",
         "decision": "act",
         "x402": "act",
+        "outreach": "act",
     }
     assert wr.WORKORDER_LANES == {
         "blocked": "act",

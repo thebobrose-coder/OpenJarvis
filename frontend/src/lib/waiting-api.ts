@@ -2,7 +2,8 @@
  * "Waiting on you" (hq 0020 P1): one list of everything waiting on the
  * operator, for the bell and the Dashboard panel. /api/waiting merges Hermes's
  * `approvals` feed (contract v1.17 block 2) with the local kinds: x402 from
- * `trading_status`, G0 episodes, inbox decision boxes, work orders and the G1
+ * `trading_status`, G0 episodes, inbox decision boxes, work orders, the day's
+ * outreach round per brand (hq 0031 D4) and the G1
  * mirror's open approvals (when configured). It is
  * an index: every row links to the page that already holds the action.
  * /api/decisions and its tick are the Decisions drawer (0020 A5). Pure
@@ -30,7 +31,8 @@ export type WaitingKind =
   | 'g1'
   | 'notice'
   | 'spend_cap'
-  | 'spark';
+  | 'spark'
+  | 'outreach';
 
 export interface WaitingItem {
   kind: WaitingKind | (string & {});
@@ -169,6 +171,7 @@ export const KIND_ORDER: WaitingKind[] = [
   'proposal',
   'thesis_prompt',
   'follow_up',
+  'outreach',
   'patch',
   'patch_class',
   'rec',
@@ -185,6 +188,7 @@ export const KIND_LABEL: Record<string, string> = {
   proposal: 'Content proposals',
   thesis_prompt: 'Thesis prompts',
   follow_up: 'BD follow-ups',
+  outreach: 'Outreach rounds',
   patch: 'Catalog fixes',
   patch_class: 'Invalid patches, by class',
   rec: 'Store recommendations',
@@ -200,6 +204,7 @@ export const SOURCE_LABEL: Record<string, string> = {
   inbox: 'Inbox',
   studio: 'Studio',
   workorders: 'Work orders',
+  social: 'Outreach list',
   g1_mirror: 'G1 mirror',
   content_proposals: 'Content',
   catalog_fixes: 'Catalog fixes',

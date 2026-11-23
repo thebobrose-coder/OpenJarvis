@@ -29,6 +29,7 @@ from openjarvis.server.dispatch_routes import dispatch_router
 from openjarvis.server.fixes_routes import fixes_router
 from openjarvis.server.g1_routes import g1_router
 from openjarvis.server.hermes_router import hermes_usage_router
+from openjarvis.server.outreach_routes import outreach_router
 from openjarvis.server.research_router import router as research_router
 from openjarvis.server.routes import router
 from openjarvis.server.stack_routes import stack_router
@@ -561,6 +562,7 @@ def create_app(
     app.include_router(commerce_router)
     app.include_router(bizdev_router)
     app.include_router(content_router)
+    app.include_router(outreach_router)
     app.include_router(trading_router)
     app.include_router(stack_router)
     app.include_router(waiting_router)

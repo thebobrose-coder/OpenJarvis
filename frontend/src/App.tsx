@@ -9,6 +9,7 @@ import { OpsPage } from './pages/OpsPage';
 import { CommercePage } from './pages/CommercePage';
 import { BizDevPage } from './pages/BizDevPage';
 import { ContentPage } from './pages/ContentPage';
+import { OutreachPage } from './pages/OutreachPage';
 import { TradingPage } from './pages/TradingPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { GetStartedPage } from './pages/GetStartedPage';
@@ -203,6 +204,7 @@ export default function App() {
           <Route path="commerce" element={<CommercePage />} />
           <Route path="bizdev" element={<BizDevPage />} />
           <Route path="content" element={<ContentPage />} />
+          <Route path="outreach" element={<OutreachPage />} />
           <Route path="studio" element={<StudioPage />} />
           <Route path="ops" element={<OpsPage />} />
           <Route path="trading" element={<TradingPage />} />

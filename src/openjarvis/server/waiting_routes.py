@@ -10,6 +10,7 @@ Sources, merged per request (the page polls every 60 s):
 - G0: studio manifests at ``awaiting-g0`` (foundry-studio.md);
 - decision boxes: unticked ``- [ ] **Dn.`` lines in the inbox briefs (0020 A5);
 - blocked work orders and failed orders from the dispatcher's reports;
+- the day's outreach round per brand, from the Outreach store (hq 0031 D4);
 - G1 and G2 rows from Foundry's G1 mirror (foundry-g1-mirror.md), when its URL
   and AWS profile are configured (``g1_routes``); they open the G1 drawer.
 
@@ -74,7 +75,14 @@ HERMES_KINDS = (
 # v1.29 (hq 0028): a spend_cap item opens its line in the Commerce page's spend
 # ledger, a spark item the Content page's spark block. Hermes links both to
 # its own /ops, which has no view here; a page OpenJarvis serves is kept.
-OWN_PAGES = ("/content", "/commerce", "/bizdev", "/trading", "/dashboard")
+OWN_PAGES = (
+    "/content",
+    "/commerce",
+    "/bizdev",
+    "/trading",
+    "/dashboard",
+    "/outreach",
+)
 LEDGER_LINKS = {"spend_cap": "/commerce", "spark": "/content"}
 # v1.27 (hq 0026 D5): a company-site notice. The approvals item says which
 # kind only in its title, so the kind is read from Hermes's titles first and
@@ -88,12 +96,26 @@ NOTICE_TITLES = {
     "Company privacy page changed": "privacy_changed",
     "Company site page updated": "last_modified_changed",
 }
-LOCAL_KINDS = ("g0", "decision", "x402", "workorder", "g1")
+LOCAL_KINDS = ("g0", "decision", "x402", "workorder", "g1", "outreach")
 LANES = ("act", "delegate", "fyi")
-LOCAL_SOURCES = ("trading_status", "inbox", "studio", "workorders", "g1_mirror")
+LOCAL_SOURCES = (
+    "trading_status",
+    "inbox",
+    "studio",
+    "workorders",
+    "g1_mirror",
+    "social",
+)
 # hq 0023 "Lane rules" for the local kinds; a work order goes by its report's
 # status. No match is ``act``: a missing rule never hides a decision.
-LOCAL_LANES = {"g0": "act", "g1": "act", "decision": "act", "x402": "act"}
+LOCAL_LANES = {
+    "g0": "act",
+    "g1": "act",
+    "decision": "act",
+    "x402": "act",
+    # v1.31 (hq 0031 D4): the day's hand outreach round, one row per brand.
+    "outreach": "act",
+}
 WORKORDER_LANES = {"blocked": "act", "rejected": "act", "failed": "act", "done": "fyi"}
 # The order-id form both issuers use (``wo-<yyyymmdd>-<slug>-<hex6>``).
 ORDER_ID = re.compile(r"^wo-\d{8}-[a-z0-9-]{1,40}-[0-9a-f]{6}$")
@@ -998,6 +1020,20 @@ async def build_waiting(now: datetime | None = None) -> dict[str, Any]:
             sources["workorders"] = _source(newest, now)
         except OSError as exc:
             sources["workorders"] = {"generated_at": None, "error": type(exc).__name__}
+        # v1.31 (hq 0031 D4): the outreach rounds, from OpenJarvis's own store.
+        from openjarvis.server import outreach_routes
+
+        brands = outreach_routes.brand_ids()
+        if brands:
+            try:
+                rows = _local_lane(
+                    outreach_routes.waiting_items(data / "social", brands, now)
+                )
+                counts["outreach"] = len(rows)
+                items += rows
+                sources["social"] = _source(now, now)
+            except (OSError, outreach_routes.StoreError) as exc:
+                sources["social"] = {"generated_at": None, "error": type(exc).__name__}
 
     g1, error = await _g1()
     if g1 is not None:
@@ -1170,6 +1206,7 @@ KIND_WORDS = {
     "x402": "trading alert",
     "workorder": "work order",
     "notice": "company site notices",
+    "outreach": "outreach round",
 }
 _header_cache: dict[str, Any] = {"at": 0.0, "text": None}
 
