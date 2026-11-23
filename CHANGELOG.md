@@ -974,6 +974,17 @@ angle on the clipboard.
 
 ### Changed
 
+**Sidebar: the admin pages share one row of icons.** Settings, Data Sources,
+Logs and Get Started moved from four rows to one row of icons (named on hover)
+under the page list, and the page rows are a little tighter, so the list, the
+stack-health strip and Latest News fit a 1440 px window without scrolling.
+
+**Desktop: this fork no longer polls for upstream updates.** The updater's
+endpoint is the upstream release, and installing it would replace a fork build
+with upstream's. The automatic 30-minute poll is off unless a build sets
+`VITE_OPENJARVIS_NO_UPDATER=0`; "Check now" in Settings still reports whether
+upstream has a newer version.
+
 **One feed proxy, one clock, one send state** (the 2026-11-04 stack pass; no
 route shapes change, contract v1.28.1).
 - **Feeds:** the Commerce, Content, Business Development and Trading routes read
@@ -1050,6 +1061,11 @@ themselves stay; upstream code still uses them.
 `digest_collect.py` and `news_rss.py` are back to upstream.
 
 ### Fixed
+
+**Desktop: a banner above the app no longer pushes the page off the window.**
+The update banner sat above a layout that still took the full window height,
+so the sidebar's Latest News ran off the bottom by the banner's height. The
+banner now takes its own row and the pages fill the rest.
 
 **Decisions drawer: boxes written `**Dn.** Text` no longer show blank.** A
 brief whose bold holds only the number (`- [ ] **D1.** Split the contract…`)

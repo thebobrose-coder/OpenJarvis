@@ -93,6 +93,16 @@ This is purely a dev escape hatch — it has no effect on production
 builds (where `import.meta.env.VITE_OPENJARVIS_NO_UPDATER` will be
 `undefined` unless you explicitly set it at build time).
 
+### In this fork
+
+The updater's endpoint above is the upstream release, so an update would
+replace a fork build with upstream's. This fork therefore skips the automatic
+poll in every build unless `VITE_OPENJARVIS_NO_UPDATER` is set to `0` (or
+`false`) at build time. "Check now" in Settings still asks on purpose and only
+reports the answer. Deploy a fork build by rebuilding the exe from the working
+tree (`npx tauri build --no-bundle`), never through the updater or an
+installer.
+
 ## Verifying a release manually
 
 ```bash
