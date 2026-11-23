@@ -195,7 +195,11 @@ export default function App() {
 
   return (
     <>
+      {/* The banner takes its own height and the pages get the rest: a full-height
+          Layout under it would run off the bottom of the window by the banner's height. */}
+      <div className="flex flex-col h-full w-full">
       <UpdateChecker />
+      <div className="flex-1 min-h-0">
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<ChatPage />} />
@@ -216,6 +220,8 @@ export default function App() {
           <Route path="logs" element={<LogsPage />} />
         </Route>
       </Routes>
+      </div>
+      </div>
       <Toaster position="bottom-right" />
       {commandPaletteOpen && <CommandPalette />}
       {optInModalOpen && (

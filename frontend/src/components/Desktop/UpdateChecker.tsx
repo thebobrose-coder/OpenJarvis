@@ -62,6 +62,13 @@ export function UpdateChecker() {
     if (noUpdater === '1' || noUpdater === 'true') {
       return;
     }
+    // This fork: the updater's endpoint is upstream's release, and installing
+    // it would replace this build with vanilla upstream. No automatic poll
+    // unless a build sets VITE_OPENJARVIS_NO_UPDATER=0. "Check now" in
+    // Settings still asks on purpose.
+    if (noUpdater !== '0' && noUpdater !== 'false') {
+      return;
+    }
 
     checkForUpdate();
     const interval = setInterval(checkForUpdate, CHECK_INTERVAL_MS);
