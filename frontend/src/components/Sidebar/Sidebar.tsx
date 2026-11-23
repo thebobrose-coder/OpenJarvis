@@ -36,6 +36,14 @@ import { modelDisplayName } from '../../lib/chat-routing';
  * ever shows in the nav. */
 export const ROUTES_READY: { inbox: boolean; studio: boolean; ops: boolean } = { inbox: true, studio: true, ops: true };
 
+/** The admin pages: set up once, opened rarely. One row of icons, named on hover. */
+export const ADMIN_ITEMS = [
+  { path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/data-sources', icon: Database, label: 'Data Sources' },
+  { path: '/logs', icon: ScrollText, label: 'Logs' },
+  { path: '/get-started', icon: Rocket, label: 'Get Started' },
+];
+
 export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,8 +75,10 @@ export function Sidebar() {
     navigate('/');
   };
 
-  // Chat and the hub first; the functional units alphabetical; then the
-  // admin items in rank. The Briefing page stays reachable at /briefing.
+  // Chat and the hub first, then the functional units alphabetical, one row
+  // each. The admin pages share one row of icons under them (ADMIN_ITEMS), so
+  // the column fits without scrolling. The Briefing page stays reachable at
+  // /briefing.
   const navItems = [
     { path: '/', icon: MessageSquare, label: 'Chat' },
     { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
@@ -81,10 +91,6 @@ export function Sidebar() {
     { path: '/trading', icon: CandlestickChart, label: 'Trading' },
     { path: '/agents', icon: Bot, label: 'Desks' },
     { path: '/ops', icon: Gauge, label: 'Ops', ready: ROUTES_READY.ops },
-    { path: '/data-sources', icon: Database, label: 'Data Sources' },
-    { path: '/logs', icon: ScrollText, label: 'Logs' },
-    { path: '/settings', icon: Settings, label: 'Settings' },
-    { path: '/get-started', icon: Rocket, label: 'Get Started' },
   ].filter((item) => item.ready !== false);
 
   return (
@@ -218,14 +224,14 @@ export function Sidebar() {
 
           {/* Nav: a fixed position under the conversation list; the docks below
               it come and go with their data (widescreen plan, Phase 0) */}
-          <nav className="px-2 pb-3 pt-2 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--color-border)' }}>
+          <nav className="px-2 pb-2 pt-2 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--color-border)' }}>
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
                 <button
                   key={item.path}
                   onClick={() => navigate(item.path)}
-                  className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left cursor-pointer"
+                  className="relative flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors w-full text-left cursor-pointer"
                   style={{
                     background: isActive ? 'var(--color-accent-subtle)' : 'transparent',
                     color: isActive ? 'var(--color-text)' : 'var(--color-text-secondary)',
@@ -253,6 +259,33 @@ export function Sidebar() {
                 </button>
               );
             })}
+            <div className="flex items-center gap-1 px-1 pt-1.5 mt-1" style={{ borderTop: '1px solid var(--color-border)' }} data-admin-nav>
+              {ADMIN_ITEMS.map((item) => {
+                const isActive = location.pathname === item.path;
+                return (
+                  <button
+                    key={item.path}
+                    onClick={() => navigate(item.path)}
+                    title={item.label}
+                    aria-label={item.label}
+                    aria-current={isActive ? 'page' : undefined}
+                    className="flex-1 flex items-center justify-center py-1.5 rounded-lg transition-colors cursor-pointer"
+                    style={{
+                      background: isActive ? 'var(--color-accent-subtle)' : 'transparent',
+                      color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) e.currentTarget.style.background = 'var(--color-bg-secondary)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <item.icon size={16} />
+                  </button>
+                );
+              })}
+            </div>
           </nav>
 
           <div style={{ borderTop: '1px solid var(--color-border)' }} />
