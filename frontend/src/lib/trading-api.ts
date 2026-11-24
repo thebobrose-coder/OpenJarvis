@@ -409,6 +409,17 @@ export function stopDistancePct(p: Pick<Position, 'side' | 'mark' | 'stop'>): nu
   return ((short ? stop - mark : mark - stop) / mark) * 100;
 }
 
+/** A position's open gain or loss in % of its entry, from the last mark: up
+ * when a long's mark is above its entry or a short's below. Null without a
+ * mark or an entry. */
+export function positionPnlPct(p: Pick<Position, 'side' | 'entry' | 'mark'>): number | null {
+  const entry = money(p.entry);
+  const mark = money(p.mark);
+  if (entry == null || mark == null || entry === 0) return null;
+  const short = /^(short|sell)$/i.test(String(p.side));
+  return ((short ? entry - mark : mark - entry) / entry) * 100;
+}
+
 /** A roll's or a leg's state as a tone: in flight is info, refused a
  * warning (a refused second leg leaves the underlying flat), done and
  * skipped muted. */

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { OVER_CAP, spendTone, type Sleeve, type TradingStatus } from '../../lib/trading-api';
+import { OVER_CAP, positionPnlPct, spendTone, type Position, type Sleeve, type TradingStatus } from '../../lib/trading-api';
 import { SOURCE_LABELS } from '../../lib/voice-api';
 import { TradingSummaryView } from './TradingSummaryPanel';
 
@@ -50,13 +50,51 @@ function status(over: Partial<TradingStatus> = {}): TradingStatus {
 const view = (s: TradingStatus, now = NOW) => renderToStaticMarkup(<TradingSummaryView status={s} now={now} onOpen={() => {}} />);
 
 describe('Trading Summary (Dashboard)', () => {
-  it('shows each sleeve’s halt state and equity and spend; positions and order activity stay on /trading', () => {
+  it('lists a sleeve’s open positions one line each: product, side and size, gain from entry, room to the stop', () => {
+    const pos = (over: Partial<Position> = {}): Position => ({ product: 'SAMPLE-A', side: 'LONG', size: '12', entry: '100.00', mark: '104.00', stop: '96.00', held_days: 3, ...over });
+    const html = view(
+      status({
+        sleeves: {
+          equities: sleeve({ positions: [pos(), pos({ product: 'SAMPLE-B', side: 'SHORT', size: 2, entry: '50.00', mark: '51.00', stop: '51.50' })] }),
+          crypto: sleeve(),
+          futures: sleeve({ positions: [pos({ product: 'SAMPLE-C', mark: '95.00' })] }),
+        },
+      }),
+    );
+    expect(html.match(/data-summary-positions=/g)?.length).toBe(2);
+    expect(html).not.toContain('data-summary-positions="crypto"');
+    expect(html.match(/data-summary-position=/g)?.length).toBe(3);
+    // A long up 4 % with 7.7 % of room: no warning tone.
+    expect(html).toContain('long 12');
+    expect(html).toContain('+4.0%');
+    expect(html).toContain('stop 7.7% away');
+    expect(html).toContain('entry 100.00 · mark 104.00 · stop 96.00 · held 3 d');
+    // A short loses when the mark rises; under 2 % from its stop is amber.
+    expect(html).toContain('short 2');
+    expect(html).toContain('−2.0%');
+    expect(html).toMatch(/color:var\(--color-warning\)[^>]*>stop 1% away/);
+    // Through the stop is red.
+    expect(html).toMatch(/color:var\(--color-error\)[^>]*>past stop/);
+    expect(positionPnlPct(pos())).toBeCloseTo(4);
+    expect(positionPnlPct(pos({ side: 'SHORT' }))).toBeCloseTo(-4);
+    expect(positionPnlPct(pos({ mark: null }))).toBeNull();
+  });
+
+  it('a position without a mark shows its product, side and size alone', () => {
+    const html = view(status());
+    expect(html).toContain('data-summary-positions="equities"');
+    expect(html).toContain('SAMPLE-A');
+    expect(html).not.toContain('data-position-pnl');
+    expect(html).not.toContain('data-position-stop');
+  });
+
+  it('shows each sleeve’s halt state and equity and spend; order activity stays on /trading', () => {
     const html = view(status());
     expect(html).toContain('data-trading-sleeves');
     expect(html.match(/data-halt="NORMAL"/g)?.length).toBe(2);
     expect(html).toContain('10,240.50');
     expect(html).toContain('5,000.00');
-    expect(html).not.toContain('data-summary-positions');
+    expect(html).toContain('1 open');
     expect(html).not.toContain('data-latest-order');
     expect(html).toContain('x402 today: 3 payments');
     expect(html).toContain('0.03 of 3.00 USDC');

@@ -9,16 +9,22 @@ import {
   killWhen,
   money,
   OVER_CAP,
+  positionPnlPct,
+  signedPct,
+  sleeveColor,
   sleeveLabel,
   sleeveNames,
   spendTone,
   staleness,
+  stopDistancePct,
+  stopTone,
+  type Position,
   type TradingStatus,
 } from '../../lib/trading-api';
 import { firstBlock } from '../../lib/voice-api';
 import { Meter } from '../Trading/Meter';
 import { HaltPill } from '../Trading/TradingHeader';
-import { shortDateTime } from '../shared/format';
+import { num, shortDateTime } from '../shared/format';
 import { Quiet, SmallButton } from '../shared/ui';
 import { SpeakButton } from '../shared/SpeakButton';
 import { DashboardPanel } from './DashboardPanel';
@@ -30,9 +36,46 @@ const STALE_AFTER_S = 15 * 60;
 
 export const NO_STATUS = 'No trading status yet. The trader publishes it every 5 minutes.';
 
+/** One open position as a line: what it is, which way and how much, how it
+ * stands against its entry, and the room left before its stop (amber under
+ * 2 %, red once through). Prices are on hover and on /trading. */
+function PositionLine({ p }: { p: Position }) {
+  const pnl = positionPnlPct(p);
+  const stop = stopDistancePct(p);
+  const tone = stopTone(stop);
+  const hover = [
+    `entry ${fmtMoney(p.entry)}`,
+    p.mark != null ? `mark ${fmtMoney(p.mark)}` : null,
+    p.stop ? `stop ${fmtMoney(p.stop)}` : null,
+    p.held_days != null ? `held ${p.held_days} d` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-2" data-summary-position title={hover}>
+      <span className="font-medium" style={{ color: 'var(--color-text)' }}>
+        {p.product}
+      </span>
+      <span style={{ color: 'var(--color-text-secondary)' }}>
+        {String(p.side).toLowerCase()} {String(p.size)}
+      </span>
+      {pnl != null && (
+        <span data-position-pnl style={{ color: pnl > 0 ? 'var(--color-success)' : pnl < 0 ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>
+          {signedPct(pnl, 1)}
+        </span>
+      )}
+      {stop != null && (
+        <span className="text-ui-11" data-position-stop style={{ color: tone ? `var(--color-${tone})` : 'var(--color-text-tertiary)' }}>
+          {stop <= 0 ? 'past stop' : `stop ${num(stop, 1)}% away`}
+        </span>
+      )}
+    </li>
+  );
+}
+
 /** The top line of the x402 paper trader for the Dashboard: halt state, today's
- * x402 spend against the cap, equity per sleeve, and the stale or KILL warnings.
- * Positions and order activity live on /trading (widescreen plan, Phase 1). Read-only. */
+ * x402 spend against the cap, equity per sleeve with its open positions one line
+ * each, and the stale or KILL warnings. Order activity lives on /trading. Read-only. */
 export function TradingSummaryView({ status, now, onOpen }: { status: TradingStatus; now: number; onOpen?: () => void }) {
   const stale = staleness(status, now);
   const sleeves = sleeveNames(status);
@@ -86,18 +129,32 @@ export function TradingSummaryView({ status, now, onOpen }: { status: TradingSta
         <ul className="flex flex-col gap-1.5" data-trading-sleeves>
           {sleeves.map((name) => {
             const s = status.sleeves![name];
+            const positions = s.positions ?? [];
             return (
-              <li key={name} className="flex flex-wrap items-center gap-2 text-ui-12">
-                <span className="font-medium" style={{ color: 'var(--color-text)', minWidth: '4.5rem' }}>
-                  {sleeveLabel(name)}
-                </span>
-                <HaltPill state={s.halt_state} />
-                <span className="tabular-nums" style={{ color: 'var(--color-text)' }}>
-                  {fmtMoney(s.equity)}
-                </span>
-                <span className="tabular-nums text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
-                  drawdown {s.drawdown_pct ?? '—'}% · {(s.positions ?? []).length} open
-                </span>
+              <li key={name} className="flex flex-col gap-1 text-ui-12">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium" style={{ color: 'var(--color-text)', minWidth: '4.5rem' }}>
+                    {sleeveLabel(name)}
+                  </span>
+                  <HaltPill state={s.halt_state} />
+                  <span className="tabular-nums" style={{ color: 'var(--color-text)' }}>
+                    {fmtMoney(s.equity)}
+                  </span>
+                  <span className="tabular-nums text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
+                    drawdown {s.drawdown_pct ?? '—'}% · {positions.length} open
+                  </span>
+                </div>
+                {positions.length > 0 && (
+                  <ul
+                    className="ml-1 flex flex-col gap-0.5 pl-2 text-ui-11-5 tabular-nums"
+                    data-summary-positions={name}
+                    style={{ borderLeft: `2px solid ${sleeveColor(name)}` }}
+                  >
+                    {positions.map((p, i) => (
+                      <PositionLine key={`${p.product}-${i}`} p={p} />
+                    ))}
+                  </ul>
+                )}
               </li>
             );
           })}
