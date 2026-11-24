@@ -981,6 +981,14 @@ marked, since it is not comparable with later ones) instead of as a long-form
 row. With none ranked, the line says no Reel has an Instagram reading yet and
 gives the unmeasured count. A pending short shows its format as a chip.
 
+**Dashboard: the Trading Summary lists each sleeve's open positions.** The
+panel said how many positions a sleeve held but not which. Each open position
+is now one line under its sleeve: the product, side and size, the gain or loss
+since entry, and the room left before the stop (amber under 2 %, red once the
+mark is through it, as on the Trading page). Entry, mark, stop and days held
+are on hover; the full table and order activity stay on the Trading page. A
+position without a mark shows its product, side and size alone.
+
 **Sidebar: the admin pages share one row of icons.** Settings, Data Sources,
 Logs and Get Started moved from four rows to one row of icons (named on hover)
 under the page list, and the page rows are a little tighter, so the list, the
