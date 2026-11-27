@@ -242,6 +242,8 @@ export interface LedgerItem {
   fix_patch_id?: string | null;
   /** v1.28: on accepted recs and on recs the router closed; absent until routed. */
   route?: RecRoute;
+  /** v1.31.7: the rec targets the store's focus line; absent means false. */
+  focus_line?: boolean;
 }
 
 export interface EcomRecommendations extends FeedMeta {

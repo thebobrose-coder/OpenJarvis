@@ -88,7 +88,13 @@ export function applyDecisions(
 
   const open = ledger.open
     .filter((i) => !localIds.has(i.id))
-    .sort((a, b) => a.priority - b.priority || b.created_at.localeCompare(a.created_at));
+    // Hermes's order (v1.31.7): priority, the focus line first, newest first.
+    .sort(
+      (a, b) =>
+        a.priority - b.priority ||
+        Number(b.focus_line === true) - Number(a.focus_line === true) ||
+        b.created_at.localeCompare(a.created_at),
+    );
   const recent = [...local, ...ledger.recent_decided.filter((i) => !localIds.has(i.id))];
   return { open, recent };
 }

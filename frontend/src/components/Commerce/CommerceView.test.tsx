@@ -373,6 +373,51 @@ describe('decision reconciliation', () => {
     expect(recent[0]).toMatchObject({ id: 'aaaaaaaaaaa1', status: 'rejected' });
   });
 
+  it('lists the focus line first at equal priority, newest first inside each group', () => {
+    const at = (day: number) => `2026-09-${day}T07:00:00`;
+    const ledger: EcomRecommendations = {
+      ...LEDGER,
+      open: [
+        ledgerItem('plain-new', { created_at: at(28) }),
+        ledgerItem('focus-old', { created_at: at(20), focus_line: true }),
+        ledgerItem('p2-focus', { priority: 2, created_at: at(29), focus_line: true }),
+        ledgerItem('plain-old', { created_at: at(21), focus_line: false }),
+        ledgerItem('focus-new', { created_at: at(27), focus_line: true }),
+      ],
+    };
+    expect(applyDecisions(ledger, {}).open.map((i) => i.id)).toEqual([
+      'focus-new',
+      'focus-old',
+      'plain-new',
+      'plain-old',
+      'p2-focus',
+    ]);
+  });
+
+  it('sorts a feed with no focus_line by priority then newest, as before', () => {
+    const at = (day: number) => `2026-09-${day}T07:00:00`;
+    const ledger: EcomRecommendations = {
+      ...LEDGER,
+      open: [
+        ledgerItem('p1-old', { created_at: at(20) }),
+        ledgerItem('p2-new', { priority: 2, created_at: at(29) }),
+        ledgerItem('p1-new', { created_at: at(28) }),
+        ledgerItem('p3', { priority: 3, created_at: at(30) }),
+      ],
+    };
+    expect(applyDecisions(ledger, {}).open.map((i) => i.id)).toEqual(['p1-new', 'p1-old', 'p2-new', 'p3']);
+  });
+
+  it('marks a focus-line rec with a chip and leaves the others bare', () => {
+    const ledger: EcomRecommendations = {
+      ...LEDGER,
+      open: [ledgerItem('aaaaaaaaaaa1', { focus_line: true }), ledgerItem('aaaaaaaaaaa2')],
+    };
+    const html = render(feeds({ ecom_recommendations: state(ledger) }));
+    expect(html.split('>focus line<').length - 1).toBe(1);
+    expect(render(feeds())).not.toContain('>focus line<');
+  });
+
   it('drops a local decision once the ledger records it', () => {
     const recorded: EcomRecommendations = {
       ...LEDGER,

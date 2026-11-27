@@ -168,6 +168,11 @@ export function RecommendationCard({
       <div className="flex flex-wrap items-center gap-1.5">
         <Chip tone={p.tone}>{p.label}</Chip>
         <Chip>{CATEGORY_LABELS[item.category] ?? item.category}</Chip>
+        {item.focus_line === true && (
+          <Chip tone="accent" title="On the store's focus line: listed first at its priority">
+            focus line
+          </Chip>
+        )}
         <span className="text-ui-11" style={{ color: 'var(--color-text-tertiary)' }}>
           {storeName} · {shortDateTime(item.created_at)}
         </span>
