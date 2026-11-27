@@ -989,6 +989,13 @@ mark is through it, as on the Trading page). Entry, mark, stop and days held
 are on hover; the full table and order activity stay on the Trading page. A
 position without a mark shows its product, side and size alone.
 
+**Commerce: recommendations on a store's focus line list first.** Hermes marks
+a recommendation whose target is on the store's current focus line
+(`focus_line`, contract v1.31.7). The open list now sorts by priority, then the
+focus line, then newest first, and a focus row carries a "focus line" chip.
+Nothing is hidden and no priority changes; a feed without the field sorts as
+before.
+
 **Sidebar: the admin pages share one row of icons.** Settings, Data Sources,
 Logs and Get Started moved from four rows to one row of icons (named on hover)
 under the page list, and the page rows are a little tighter, so the list, the
